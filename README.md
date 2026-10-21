@@ -105,6 +105,12 @@ A missing model price is **not** a $0 expense. The v0.2 analytics preview shows 
 
 [Understand unknown costs and safe pricing remediation](docs/UNKNOWN_COSTS.md).
 
+## Live-stack release check (v0.2 candidate)
+
+The development branch includes a GitHub Actions end-to-end check against **real, disposable PostgreSQL**, a localhost API and real Chromium. It verifies seeded customer economics and posts synthetic usage/revenue through the TypeScript SDK without contacting any AI provider.
+
+The test runs only in GitHub Actions CI and cleans up its demo containers. See [Local demo and verification](docs/DEMO.md). **Passing this test does not establish production security.**
+
 ## Accuracy and security
 
 - Revenue and costs are stored in **USD microdollars** (`1 USD = 1,000,000 micros`).

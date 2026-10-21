@@ -52,3 +52,5 @@ jobs:
           .browser-venv/bin/python -m pip install --disable-pip-version-check playwright==1.56.0
           .browser-venv/bin/python -m playwright install --with-deps chromium
           .browser-venv/bin/python scripts/browser-smoke.py
+      - name: Live demo E2E (Docker PostgreSQL, authenticated API, SDK, Chromium)
+        run: .browser-venv/bin/python scripts/live-demo-smoke.py

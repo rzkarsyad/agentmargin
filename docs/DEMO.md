@@ -57,4 +57,6 @@ For a different loopback PostgreSQL port, set `AGENTMARGIN_DEMO_DB_PORT=55433` o
 - GitHub CI — also verifies PostgreSQL concurrency, source secrets, dependencies, and a mocked-API Chromium smoke test
 - `bash -n scripts/demo-local.sh` — shell syntax check
 
+- `scripts/live-demo-smoke.py` — CI-only live end-to-end smoke test: launches `npm run demo` on an isolated GitHub runner, checks real HTTP authentication and seeded financial totals in Chromium (desktop + mobile), submits a synthetic event with the OpenAI SDK helper, verifies the updated dashboard, and stops the demo. The generated key is held in memory and redacted from diagnostics. This is not a production deployment or penetration test.
+
 These checks do **not** establish production security. Refer to [SECURITY.md](../SECURITY.md).
