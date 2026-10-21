@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
-import { ANALYTICS_SQL } from '../src/postgres.ts';
+import { ANALYTICS_SQL, UNKNOWN_MODELS_SQL } from '../src/postgres.ts';
 
 const one='11111111-1111-4111-8111-111111111111';
 const two='22222222-2222-4222-8222-222222222222';
@@ -36,6 +36,20 @@ test('real embedded Postgres migrations and tenant-scoped analytics SQL',async()
     assert.equal(rows.rows[0]?.revenue_micros,'15000000');
     assert.equal(rows.rows[0]?.known_cost_micros,'5000000');
     assert.equal(rows.rows[0]?.usage_events,'2');
+    // Diagnostic counts include only unknown events in the authenticated workspace and period.
+    // An untrusted model identifier must remain ordinary text; the SQL is parameterized.
+    const untrustedModel='<svg/onload=alert(1)>';
+    await db.query(`INSERT INTO usage_events(workspace_id,event_id,customer_id,model,occurred_at,
+       input_tokens,output_tokens,calculated_cost_micros,cost_source,payload_digest)
+       VALUES ($1,'u1','same',$3,'2026-10-04T00:00:00Z',0,0,null,'unknown','d1'),
+              ($1,'u2','same',$3,'2026-10-05T00:00:00Z',0,0,null,'unknown','d2'),
+              ($2,'u3','same','secret-other-workspace','2026-10-05T00:00:00Z',0,0,null,'unknown','d3')`,[one,two,untrustedModel]);
+    const unknown=await db.query<{model:string;event_count:string}>(UNKNOWN_MODELS_SQL,
+      [one,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z']);
+    assert.deepEqual(unknown.rows.map(r=>[r.model,r.event_count]),[[untrustedModel,'2']]);
+    const wrongPeriod=await db.query(UNKNOWN_MODELS_SQL,
+      [one,'2026-11-01T00:00:00Z','2026-12-01T00:00:00Z']);
+    assert.equal(wrongPeriod.rows.length,0);
     await assert.rejects(db.query(`INSERT INTO usage_events(workspace_id,event_id,customer_id,model,occurred_at,
       input_tokens,output_tokens,calculated_cost_micros,cost_source) VALUES($1,'e1','same','m',now(),0,0,0,'reported')`,[one]),/duplicate key/);
   } finally {await db.close();}

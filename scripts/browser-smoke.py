@@ -13,7 +13,9 @@ URL=HTML.as_uri()
 MOCK={'periodStart':'2026-10-01T00:00:00Z','periodEnd':'2026-11-01T00:00:00Z',
       'customers':[{'customerId':INJECTION,'revenueMicros':'49000000',
       'knownAiCostMicros':'12000000','contributionMicros':'37000000',
-      'marginBasisPoints':'7551','usageEvents':1,'unknownEvents':0}], 'truncated':True}
+      'marginBasisPoints':'7551','usageEvents':1,'unknownEvents':0}], 'truncated':True,
+      'unknownModels':[{'model':'<svg/onload=alert(1)>','eventCount':4}],
+      'unknownModelsTruncated':True}
 try:
     with sync_playwright() as p:
         browser_path = os.environ.get('AGENTMARGIN_CHROMIUM_PATH') or shutil.which('chromium') or shutil.which('chromium-browser')
@@ -32,6 +34,10 @@ try:
             page.wait_for_function("document.querySelector('#status').textContent.includes('Partial results')")
             assert page.locator('#rows tr').count()==1
             assert page.locator('#rows img').count()==0, 'Customer ID injected HTML'
+            assert page.locator('#missing-panel').is_visible(), 'Missing model diagnostics not visible'
+            assert page.locator('#missing-rows svg').count()==0, 'Model name injected SVG'
+            assert '<svg/onload=alert(1)>' in page.locator('#missing-rows').inner_text()
+            assert 'Top 20 models shown' in page.locator('#missing-note').inner_text()
             assert INJECTION in page.locator('#rows').inner_text()
             assert page.locator('#revenue').inner_text()=='$49.00'
             assert not errors, errors

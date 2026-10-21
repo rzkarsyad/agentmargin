@@ -15,7 +15,7 @@ test('dashboard renders incomplete/truncated data without HTML injection or pers
     assert.match(String((init?.headers as Record<string,string>).authorization),/^Bearer am_/);
     return new Response(JSON.stringify({truncated:true,customers:[
       {customerId:'<img src=x onerror=alert(1)>',revenueMicros:'9007199254740993000000',knownAiCostMicros:'1000000',contributionMicros:null,marginBasisPoints:null,unknownEvents:1,usageEvents:1}
-    ]}),{status:200});
+    ],unknownModels:[{model:'<svg/onload=alert(1)>',eventCount:7}],unknownModelsTruncated:true}),{status:200});
   };
   window.eval(script);
   const key=window.document.getElementById('key') as HTMLInputElement;
@@ -26,6 +26,10 @@ test('dashboard renders incomplete/truncated data without HTML injection or pers
   assert.match(window.document.getElementById('status')?.textContent??'',/Partial results/);
   assert.match(window.document.getElementById('revenue')?.textContent??'',/9,007,199,254,740,993/);
   assert.equal(window.document.querySelector('#rows img'),null);
+  assert.equal(window.document.querySelector('#missing-rows svg'),null);
+  assert.match(window.document.getElementById('missing-rows')?.textContent??'',/<svg\/onload=alert\(1\)>/);
+  assert.match(window.document.getElementById('missing-note')?.textContent??'',/Top 20 models shown/);
+  assert.equal((window.document.getElementById('missing-panel') as HTMLElement).hidden,false);
   assert.match(window.document.getElementById('rows')?.textContent??'',/<img src=x/);
   assert.equal(window.localStorage.length,0);
   assert.equal(window.sessionStorage.length,0);

@@ -99,6 +99,12 @@ Record customer revenue through SDK/API
 
 The OpenAI adapter is a **post-call helper**, not automatic capture. Never send model prompts, responses, provider API keys or real customer information to an unreviewed deployment.
 
+## When AI cost is unknown
+
+A missing model price is **not** a $0 expense. The v0.2 analytics preview shows which model names have unknown-cost events, counts them per workspace and time period, and warns when more than 20 distinct models are affected.
+
+[Understand unknown costs and safe pricing remediation](docs/UNKNOWN_COSTS.md).
+
 ## Accuracy and security
 
 - Revenue and costs are stored in **USD microdollars** (`1 USD = 1,000,000 micros`).

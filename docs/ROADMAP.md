@@ -19,7 +19,7 @@ This is a direction of work, not a delivery promise. We prioritize problems supp
 
 - [ ] Single-command local synthetic-data demo (v0.2 branch under CI verification; do not mark complete until independently tested)
 - [ ] Automated integration fixture for the Responses API (no user prompts captured)
-- [ ] Better visibility into unknown-price events and completeness
+- [ ] Unknown-cost model diagnostics (implemented on v0.2 branch; merge gated on CI and local demo)
 - [ ] Provider pricing import workflow with auditable effective dates and version pinning
 - [ ] CI coverage for real API + database + browser flow
 - [ ] Create starter examples for common Node/Next.js server applications
