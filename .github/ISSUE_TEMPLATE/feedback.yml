@@ -1,0 +1,29 @@
+name: Use case and feedback
+description: Help prioritize real developer needs
+title: "[Feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: "We're validating the core workflow. Please share anonymized examples only."
+  - type: textarea
+    id: usecase
+    attributes:
+      label: What are you building?
+      description: Describe your AI application and why customer-level margins matter.
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: What data can you access?
+      description: Customer identifiers, model usage, billing or invoice data (no actual customer records).
+  - type: textarea
+    id: friction
+    attributes:
+      label: What did you try and what blocked you?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would make AgentMargin useful to you?

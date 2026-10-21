@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible bug in the experimental local preview
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Please do not include API keys, connection strings, prompts, customer data, or private logs."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      placeholder: Explain the incorrect behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      placeholder: Steps with synthetic data, expected result, actual result.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Node version, PostgreSQL version, OS
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets and private customer information from this report.
+          required: true
