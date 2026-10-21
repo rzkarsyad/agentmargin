@@ -46,6 +46,22 @@ Starts a localhost-only PostgreSQL database, applies migrations and seeds **fict
 
 See [Local demo instructions](docs/DEMO.md) for stopping and intentionally resetting data. **This remains experimental software: do not expose the local API to the public internet.**
 
+## Track a completed OpenAI request (v0.2 candidate)
+
+The source-first SDK now accepts a completed OpenAI Responses or Chat Completions result in one call:
+
+```ts
+await margin.trackOpenAIResponse(response, trustedCustomerId);
+// or
+await margin.trackOpenAIChatCompletion(completion, trustedCustomerId);
+```
+
+The helpers send **usage metadata only**—no prompts or generated text—and refuse responses without usage. Use a trusted customer ID from server-side authentication; do not expose keys in a browser bundle.
+
+- [Next.js App Router integration recipe](examples/nextjs-openai/README.md) (requires your own authentication and OpenAI SDK)
+- [Synthetic end-to-end example](examples/track-synthetic-openai.ts) (no OpenAI API key or OpenAI request)
+- [Tracking semantics and safety notes](docs/OPENAI_INTEGRATION.md)
+
 ## Try the cost engine
 
 Requires **Node.js 22.18+** (Node 24 recommended) and npm. No API key or database is necessary for this demo.

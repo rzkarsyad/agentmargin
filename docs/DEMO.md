@@ -18,6 +18,17 @@ The command installs dependencies only when missing, starts PostgreSQL 16 with a
 
 Copy the printed **AgentMargin demo key** and paste it into the dashboard. Select a date range including the current UTC date. The demo includes a profitable customer, a negative-contribution customer, and a customer with unknown inference cost. The demo intentionally uses **synthetic reported costs**, not real provider pricing.
 
+
+### Exercise the OpenAI-shaped SDK path
+
+With the demo API running, open a second terminal and use the **new key printed by** `npm run demo`:
+
+```bash
+AGENTMARGIN_API_KEY='am_replace_with_local_key' node --experimental-strip-types examples/track-synthetic-openai.ts
+```
+
+This posts fictional usage and revenue; it does not call OpenAI or send a prompt. Because the demo has no trusted provider price for that model, the new event has **unknown** cost. See the [Next.js integration recipe](../examples/nextjs-openai/README.md).
+
 ### Run it again
 
 `npm run demo` reuses the existing local Docker volume and refreshes the fictional events' timestamps. Every start revokes the previous `local-demo` key and prints a newly generated one; the key is **not** saved to a file or browser storage. No external telemetry or OpenAI calls are made.
