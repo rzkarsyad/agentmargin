@@ -34,6 +34,18 @@ AgentMargin brings these records together:
 
 **Not yet available:** automatic instrumentation, an official provider price catalog, Stripe synchronization, publicly hosted service, or production-hardening. The SDK is **source-first** and is not published to npm.
 
+## One-command local demo (v0.2 candidate)
+
+With **OrbStack/Docker Compose**, Node.js 22.18+ and npm:
+
+```bash
+npm run demo
+```
+
+Starts a localhost-only PostgreSQL database, applies migrations and seeds **fictional** revenue and model usage for three example customers. Copy the freshly generated AgentMargin API key from the terminal and open `http://127.0.0.1:8787/dashboard`. No OpenAI account or real customer data is required.
+
+See [Local demo instructions](docs/DEMO.md) for stopping and intentionally resetting data. **This remains experimental software: do not expose the local API to the public internet.**
+
 ## Try the cost engine
 
 Requires **Node.js 22.18+** (Node 24 recommended) and npm. No API key or database is necessary for this demo.

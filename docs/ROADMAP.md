@@ -17,7 +17,7 @@ This is a direction of work, not a delivery promise. We prioritize problems supp
 
 ## Next: make setup genuinely effortless
 
-- [ ] Single-command self-hosted local demo with disposable seed data
+- [ ] Single-command local synthetic-data demo (v0.2 branch under CI verification; do not mark complete until independently tested)
 - [ ] Automated integration fixture for the Responses API (no user prompts captured)
 - [ ] Better visibility into unknown-price events and completeness
 - [ ] Provider pricing import workflow with auditable effective dates and version pinning
