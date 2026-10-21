@@ -2,7 +2,7 @@
 
 **Know your margin. Not just your tokens.**
 
-An open-source, self-hosted developer tool for attributing AI inference costs to customers and calculating contribution margins. This repository is currently **pre-release (release gate preparation, not released)**. It includes a core engine, PostgreSQL API, TypeScript SDK, OpenAI usage adapters, and local analytics dashboard. It does not yet offer automatic instrumentation or a production-hardened deployment.
+An open-source, self-hosted developer tool for attributing AI inference costs to customers and calculating contribution margins. This repository is currently **experimental open-source preview (not production-ready)**. It includes a core engine, PostgreSQL API, TypeScript SDK, OpenAI usage adapters, and local analytics dashboard. It does not yet offer automatic instrumentation or a production-hardened deployment.
 
 ## What works today
 
@@ -123,7 +123,7 @@ Open `http://127.0.0.1:8787/dashboard` on the same machine after starting the AP
 
 ## Security status
 
-See [SECURITY.md](SECURITY.md). Standalone PostgreSQL concurrency tests passed in a prior maintainer-provided OrbStack run for v0.10. The expanded tests in this version have not yet been executed. TLS proxy, abuse protection, observability, deployment checks, and an independent security review remain production blockers. **Do not deploy as a public service.**
+See [SECURITY.md](SECURITY.md). Standalone PostgreSQL usage/revenue idempotency, concurrency, reversed batch order and tenant isolation tests passed locally on OrbStack and in [GitHub Actions CI run #1](https://github.com/rzkarsyad/agentmargin/actions/runs/39653058627) for commit `022808f`. This is a source-release validation, not a production security certification. TLS proxy, abuse protection, observability, deployment checks, and an independent security review remain production blockers. **Do not deploy as a public service.**
 
 ### Standalone PostgreSQL release test
 
@@ -133,11 +133,11 @@ An opt-in test is available for a **dedicated empty database named exactly `agen
 AGENTMARGIN_STANDALONE_DATABASE_URL='postgresql://postgres:password@127.0.0.1:5432/agentmargin_ci' npm run test:postgres
 ```
 
-Use a disposable local PostgreSQL server (version 15+), never a production or shared database. The command does not drop the test database afterwards. Earlier v0.10 PostgreSQL tests passed on the maintainer’s OrbStack. The expanded v0.13 test has not yet run; execute it again before release.
+Use a disposable local PostgreSQL server (version 15+), never a production or shared database. The command does not drop the test database afterwards. The expanded PostgreSQL tests passed locally on OrbStack and in GitHub Actions CI run #1 for commit `022808f`.
 
 ### CI release gate
 
-The `.github/workflows/ci.yml` workflow is prepared to run unit/integration tests, TypeScript checks, standalone PostgreSQL concurrency tests against a disposable PostgreSQL 16 service, heuristic source secret scanning, `npm audit`, and mocked-analytics Chromium browser smoke tests. **It has not run on GitHub yet.** See `docs/phase13-security-and-ci-audit.md` for the security review and release gates.
+The `.github/workflows/ci.yml` workflow is prepared to run unit/integration tests, TypeScript checks, standalone PostgreSQL concurrency tests against a disposable PostgreSQL 16 service, heuristic source secret scanning, `npm audit`, and mocked-analytics Chromium browser smoke tests. **GitHub Actions CI run #1 passed** on commit `022808f`, including the PostgreSQL service, mocked-analytics Chromium smoke tests, source secret scan and dependency audit. Later commits must pass CI independently. See `docs/phase13-security-and-ci-audit.md` for the security review and release gates.
 
 ## License
 
