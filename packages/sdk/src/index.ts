@@ -1,0 +1,47 @@
+export interface UsageInput {
+  id:string; customerId:string; model:string; occurredAt:string;
+  inputTokens:number; outputTokens:number; cachedInputTokens?:number;
+  /** USD microdollars, serialized as decimal string. */
+  reportedCostMicros?:string;
+}
+export interface RevenueInput {
+  id:string; customerId:string; occurredAt:string;
+  /** USD microdollars, serialized as a nonnegative decimal integer string. */
+  amountMicros:string;
+}
+export interface AgentMarginOptions {
+  endpoint:string; apiKey:string; fetchImpl?:typeof fetch;
+}
+export class AgentMarginClient {
+  readonly endpoint:URL;
+  readonly apiKey:string;
+  readonly fetchImpl:typeof fetch;
+  constructor(options:AgentMarginOptions) {
+    this.endpoint=new URL(options.endpoint);
+    if (this.endpoint.protocol !== 'https:' && !['localhost','127.0.0.1','::1'].includes(this.endpoint.hostname))
+      throw new Error('HTTPS required outside localhost');
+    if (!/^am_[A-Za-z0-9_-]{32,}$/.test(options.apiKey)) throw new Error('Invalid AgentMargin API key format');
+    this.apiKey=options.apiKey;
+    this.fetchImpl=options.fetchImpl??fetch;
+  }
+  async track(events:UsageInput[], signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}> {
+    if (events.length < 1 || events.length > 100) throw new Error('Batch must contain 1-100 events');
+    const url=new URL('/v1/events',this.endpoint);
+    const response=await this.fetchImpl(url,{method:'POST',headers:{
+      'authorization':`Bearer ${this.apiKey}`,'content-type':'application/json'
+    },body:JSON.stringify({events}),signal});
+    if (!response.ok) {
+      const body=await response.text();
+      throw new Error(`AgentMargin HTTP ${response.status}: ${body.slice(0,300)}`);
+    }
+    return await response.json() as {inserted:number;duplicate:number;received:number};
+  }
+  async trackRevenue(records:RevenueInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
+    if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 records');
+    const response=await this.fetchImpl(new URL('/v1/revenue',this.endpoint),{method:'POST',headers:{
+      authorization:`Bearer ${this.apiKey}`,'content-type':'application/json'
+    },body:JSON.stringify({records}),signal});
+    if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
+    return await response.json() as {inserted:number;duplicate:number;received:number};
+  }
+}

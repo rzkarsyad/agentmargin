@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agentmargin_ci
+          POSTGRES_USER: agentmargin_ci
+          POSTGRES_PASSWORD: ci-only-disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentmargin_ci -d agentmargin_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AGENTMARGIN_STANDALONE_DATABASE_URL: postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:5432/agentmargin_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:postgres
+      - run: python3 scripts/check-release-files.py
+      - run: npm audit --audit-level=low
+      # Browser uses a mocked analytics response; this is not a deployed-service E2E.
+      - name: Browser smoke test (Chromium desktop + mobile)
+        run: |
+          python3 -m venv .browser-venv
+          .browser-venv/bin/python -m pip install --disable-pip-version-check playwright==1.56.0
+          .browser-venv/bin/python -m playwright install --with-deps chromium
+          .browser-venv/bin/python scripts/browser-smoke.py

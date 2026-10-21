@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>AgentMargin — Customer economics</title>
+<style>
+  :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#171b20;background:#eeece6;font-synthesis:none}
+  *{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{cursor:pointer}
+  .layout{display:grid;grid-template-columns:244px minmax(0,1fr);min-height:100vh}
+  aside{background:#17221c;color:#f6f8f1;padding:32px 20px;display:flex;flex-direction:column;gap:50px}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px;letter-spacing:-.05em}
+  .mark{width:32px;height:32px;border:2px solid #b9ef7b;display:grid;place-items:center;border-radius:9px;color:#b9ef7b}
+  nav{display:grid;gap:6px}.nav-item{padding:12px;border-radius:9px;font-size:14px;color:#a2afa5}.nav-item.active{background:#2f4032;color:#fff}
+  .aside-footer{margin-top:auto;font-size:11px;line-height:1.8;color:#8e9e92}
+  main{padding:44px clamp(22px,5vw,82px);max-width:1600px;width:100%;margin:auto}
+  .eyebrow{color:#5f7960;letter-spacing:.14em;font-size:11px;font-weight:800;text-transform:uppercase}
+  h1{font-size:clamp(36px,4vw,58px);line-height:1.06;letter-spacing:-.07em;margin:12px 0 8px;font-weight:750}
+  .lede{color:#71766e;font-size:15px;max-width:640px}
+  .credentials{display:flex;gap:10px;flex-wrap:wrap;margin:32px 0 38px;align-items:end}
+  label{display:grid;gap:8px;color:#5c6259;font-size:12px;font-weight:700}
+  input{border:1px solid #d4d4cb;background:#fffefa;border-radius:8px;padding:12px 13px;color:#171b20;outline-color:#698963;min-width:170px}
+  input[type=password]{min-width:280px}
+  button{border:0;border-radius:8px;background:#25382b;color:white;padding:13px 20px;font-size:13px;font-weight:700}
+  button:hover{background:#435b48}
+  .disclaimer{font-size:12px;color:#7b7e78;max-width:760px;line-height:1.5}
+  .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .metric{background:#f9f8f4;border:1px solid #dcdcd3;border-radius:12px;padding:21px;min-height:145px;display:flex;flex-direction:column;justify-content:space-between}
+  .metric .name{font-size:12px;font-weight:700;color:#747a70}.metric .number{font-variant-numeric:tabular-nums;font-size:clamp(24px,2.5vw,36px);letter-spacing:-.06em;font-weight:750}
+  .metric.green{background:#ddebce;border-color:#c7dfbc}
+  .panel{background:#f9f8f4;border:1px solid #dcdcd3;border-radius:12px;margin-top:20px;overflow:hidden}
+  .panel-head{padding:24px 24px 18px;display:flex;justify-content:space-between;gap:14px;align-items:center}
+  h2{font-size:21px;letter-spacing:-.04em;margin:0}.small{font-size:12px;color:#777c75}
+  table{border-collapse:collapse;width:100%;text-align:left;white-space:nowrap}th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:#737a70;background:#f0efe8;font-weight:750}
+  td,th{padding:17px 24px;border-top:1px solid #e1e0d9;font-size:13px}td:nth-child(n+2),th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:#f1f2e9}.negative{color:#ae4634;font-weight:700}.unknown{color:#9d7b38}
+  .empty{text-align:center;padding:48px 20px;color:#74796f;font-size:14px}
+  #status{font-size:12px;color:#787b73;min-height:20px;margin-top:14px}
+  @media(max-width:1000px){.metrics{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:720px){.layout{display:block}aside{padding:17px 24px;gap:0}nav,.aside-footer{display:none}main{padding:24px 17px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.credentials{align-items:stretch}.credentials label{width:100%}input{width:100%}.panel{overflow-x:auto}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside><div class="brand"><div class="mark">↗</div> AgentMargin</div><nav><div class="nav-item active">Overview</div><div class="nav-item">Customer economics</div><div class="nav-item">Usage explorer · soon</div><div class="nav-item">Settings · soon</div></nav><div class="aside-footer">SELF-HOSTED PREVIEW<br>PHASE 3 / LOCAL ONLY</div></aside>
+<main>
+  <div class="eyebrow">Customer intelligence / 01</div><h1>Know your<br>real margins.</h1>
+  <p class="lede">See which customers create margin, and which quietly consume it. Cost coverage matters as much as the number itself.</p>
+  <div class="credentials">
+    <label>Workspace API key<input id="key" type="password" placeholder="am_…" autocomplete="off" aria-label="Workspace API key"></label>
+    <label>From<input id="start" type="date"></label><label>To (inclusive)<input id="end" type="date"></label>
+    <button id="load" type="button">Load analysis ↗</button>
+  </div>
+  <div class="metrics">
+    <div class="metric"><span class="name">Customer revenue</span><span class="number" id="revenue">—</span></div>
+    <div class="metric"><span class="name">Known AI cost</span><span class="number" id="cost">—</span></div>
+    <div class="metric green"><span class="name">Verified contribution</span><span class="number" id="contribution">—</span></div>
+    <div class="metric"><span class="name">Customers with unknown costs</span><span class="number" id="unknown">—</span></div>
+  </div>
+  <div class="panel"><div class="panel-head"><div><h2>Customer economics</h2><div class="small">Margins include AI inference cost only; incomplete data is never presented as final.</div></div><div class="small" id="count">0 customers</div></div>
+    <table><thead><tr><th>Customer ID</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Coverage</th></tr></thead><tbody id="rows"></tbody></table>
+    <div class="empty" id="empty">Enter your local API key to load analytics.</div>
+  </div>
+  <div id="status" role="status" aria-live="polite"></div>
+  <p class="disclaimer">This preview never stores your key in local storage or cookies. It is held only in the input field for the current page. Do not expose the local API directly to the public internet.</p>
+</main></div>
+<script>
+(() => {
+  const $=id=>document.getElementById(id);
+  const today=new Date(), end=today.toISOString().slice(0,10), start=new Date(today.getTime()-29*86400000).toISOString().slice(0,10);
+  $('start').value=start;$('end').value=end;
+  const dollars=s=>{const n=BigInt(s),a=n<0n?-n:n,cents=(a+5000n)/10000n;
+    const whole=(cents/100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
+    return (n<0n?'−':'')+'$'+whole+'.'+(cents%100n).toString().padStart(2,'0');};
+  const write=(id,value)=>{$(id).textContent=value};
+  $('load').addEventListener('click',async()=>{
+    const key=$('key').value.trim();if(!key){write('status','Enter an API key.');return}
+    const periodStart=$('start').value+'T00:00:00.000Z',periodEnd=new Date(Date.parse($('end').value+'T00:00:00.000Z')+86400000).toISOString();
+    write('status','Loading verified workspace data…');$('load').disabled=true;
+    try{
+      const url='/v1/analytics?start='+encodeURIComponent(periodStart)+'&end='+encodeURIComponent(periodEnd);
+      const r=await fetch(url,{headers:{authorization:'Bearer '+key},cache:'no-store'});
+      if(!r.ok)throw new Error('Request failed ('+r.status+'). Verify the key and selected period.');
+      const data=await r.json();let revenue=0n,cost=0n,contribution=0n,unknown=0;
+      const rows=$('rows');rows.replaceChildren();
+      for(const c of data.customers){
+        revenue+=BigInt(c.revenueMicros);cost+=BigInt(c.knownAiCostMicros);
+        if(c.unknownEvents)unknown++;else contribution+=BigInt(c.contributionMicros);
+        const tr=document.createElement('tr');
+        const values=[c.customerId,dollars(c.revenueMicros),dollars(c.knownAiCostMicros),c.contributionMicros===null?'Unknown':dollars(c.contributionMicros),c.marginBasisPoints===null?'—':(Number(c.marginBasisPoints)/100).toFixed(2)+'%',c.unknownEvents?'Incomplete':'Complete'];
+        values.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===3&&c.contributionMicros!==null&&BigInt(c.contributionMicros)<0n)td.className='negative';if(c.unknownEvents&&(i===3||i===5))td.className='unknown';tr.append(td)});rows.append(tr);
+      }
+      write('revenue',dollars(revenue));write('cost',dollars(cost));write('contribution',unknown?'Partial · '+dollars(contribution):dollars(contribution));write('unknown',String(unknown));
+      write('count',data.customers.length+(data.truncated?'+ customers':' customers'));$('empty').hidden=data.customers.length>0;
+      write('status',data.truncated?'Partial results: more than 2,000 customers. Displayed totals are NOT workspace-wide. Narrow the date range or use a complete export.':
+        'Updated. '+(unknown?'Contribution excludes customers with unknown usage costs.':'All returned customer costs are known.'));
+    }catch(e){write('status',e.message)}finally{$('load').disabled=false}
+  });
+})();
+</script>
+</body></html>
