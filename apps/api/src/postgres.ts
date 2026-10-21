@@ -105,12 +105,22 @@ export class PostgresEventStore implements EventStore {
   }
   async analytics(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>{
     // Independent aggregates prevent revenue * usage-event join multiplication.
-    const [q, missing] = await Promise.all([
-      this.pool.query<{
-        customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string;
-      }>(ANALYTICS_SQL,[workspaceId,start,end]),
-      this.pool.query<{model:string;event_count:string}>(UNKNOWN_MODELS_SQL,[workspaceId,start,end]),
-    ]);
+    // Read both aggregates from one consistent snapshot. Running queries concurrently
+    // breaks PGlite's pg-wire test adapter and can return mismatched financial views.
+    const client=await this.pool.connect();
+    let q:pg.QueryResult<{
+      customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string;
+    }>;
+    let missing:pg.QueryResult<{model:string;event_count:string}>;
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      q=await client.query(ANALYTICS_SQL,[workspaceId,start,end]);
+      missing=await client.query(UNKNOWN_MODELS_SQL,[workspaceId,start,end]);
+      await client.query('COMMIT');
+    } catch(err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {client.release();}
     const truncated=q.rows.length>2000;
     const customers=q.rows.slice(0,2000).map(r=>{
       const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=Number(r.unknown_events);
