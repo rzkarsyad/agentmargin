@@ -17,10 +17,10 @@ Do not publish vulnerability details in public issues. For private vulnerability
 - Per-process per-workspace request limiter; revocation queries live database state.
 - Basic source credential scan and dependency audit are included in CI.
 
-## v0.3 draft security notes
+## v0.3 alpha security notes
 
 - Workspace model prices are append-only with composite workspace foreign keys and SQL filters. Authenticated workspace keys currently have equal pricing write capability; **no user RBAC** is shipped.
-- The Arc UI React/Vite build is a local static asset bundle served under `/dashboard`, with self-only script loading, same-origin API requests, and no local/session storage of the bearer key.
+- The Arc UI React/Vite frontend is a local static asset bundle served under `/dashboard`, with self-only script loading, same-origin API requests, and no local/session storage of the bearer key.
 - Arc's free MIT components are checked in as source. The app must be rebuilt after source or dependency changes. Source licensing does not replace a dependency/security review.
 - Prior usage event costs remain stored; adding or superseding price versions does **not** retroactively reprice events.
 
@@ -31,9 +31,9 @@ Do not publish vulnerability details in public issues. For private vulnerability
 3. **Local limiter is in-memory only.** Multiple API instances do not share quotas, and unauthenticated invalid-key attempts are not throttled here.
 4. **No operational assurance.** Set up encrypted backups, restore drills, log redaction, structured monitoring, alerts, secret rotation policy, upgrades, and incident response.
 5. **Data governance unimplemented.** No tenant self-service deletion/export policy, retention controls, or compliance review. Customer identifiers may be personal data; avoid production usage.
-6. **Localhost E2E is not a public deployment security review.** v0.2 includes both mocked dashboard checks and an end-to-end test using a live local PostgreSQL/API/SDK/Chromium stack. It does not exercise internet ingress, public authentication abuse, TLS termination, or an independently reviewed deployment.
+6. **Localhost E2E is not a public deployment security review.** v0.3 includes both mocked dashboard checks and an end-to-end test using a live local PostgreSQL/API/SDK/Chromium stack. It does not exercise internet ingress, public authentication abuse, TLS termination, or an independently reviewed deployment.
 7. **Credential scanning is heuristic.** A clean scan or `npm audit` result does not prove absence of secrets or exploitable vulnerabilities. Verify the entire Git history before publishing it, or create a fresh history from clean source.
-8. **Price catalog is trusted operator input.** Do not assume estimated prices reflect provider billing; pricing history/integrity need financial review.
+8. **Price catalog is trusted workspace/operator input.** Immutable workspace records and provenance notes are implemented, but estimates are not provider-invoice verified. Any valid workspace bearer key can add future-effective versions; no role-separated approval process exists.
 
 ## Verification and release policy
 

@@ -1,6 +1,6 @@
-# AgentMargin v0.3 workspace pricing (development preview)
+# AgentMargin v0.3 workspace pricing (experimental alpha)
 
-**Status:** unreleased draft feature, localhost-only. Do not use actual customer or financial records in an unreviewed deployment.
+**Status:** experimental source-first alpha, localhost-only. Do not use actual customer or financial records in an unreviewed deployment.
 
 ## What changes from v0.2
 
@@ -64,7 +64,7 @@ npm run build:web
 npm run start -w @agentmargin/api
 ```
 
-Review database access and take a disposable backup first. **Do not apply this migration to production.** Existing release v0.2 does not include it. The migration is not reversible through a shipped automated down-migration.
+Review database access and take a disposable backup first. **Do not apply this migration to production.** The previous v0.2 release does not include it. The migration is not reversible through a shipped automated down-migration.
 
 ## Security / verification
 

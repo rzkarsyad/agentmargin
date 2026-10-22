@@ -1,8 +1,8 @@
-# One-command local demo — v0.2.0-alpha
+# One-command local demo — v0.3.0-alpha
 
 This workflow is an **experimental, localhost-only, synthetic-data preview**. It is not an internet-facing deployment and should not be given real customer data.
 
-> **v0.3 draft branch note:** `npm run demo` also builds the new React 19 dashboard using original MIT-licensed Arc UI components. The demo API serves the bundled UI at the same localhost `/dashboard` address. Pricing creation is a new tab in that UI; see [docs/PRICING.md](PRICING.md). These changes have not shipped in v0.2.
+> **v0.3:** `npm run demo` builds and serves the React 19 dark dashboard with free MIT Arc UI primitives at `/dashboard`. The **Model pricing** view lets you add workspace-scoped versions with explicit effective dates. See [pricing documentation](PRICING.md).
 
 ## Requirements
 
@@ -16,7 +16,7 @@ From the AgentMargin repository root:
 npm run demo
 ```
 
-The command installs dependencies only when missing, starts PostgreSQL 16 with a local-only port, applies the existing schema migrations, inserts three fictional customers, creates a **fresh workspace-scoped demo API key**, and starts the existing API/dashboard on `http://127.0.0.1:8787/dashboard`.
+The command installs dependencies only when missing, builds the frontend, starts PostgreSQL 16 with a local-only port, applies the existing schema migrations, inserts three fictional customers, creates a **fresh workspace-scoped demo API key**, and starts the localhost API and React dashboard on `http://127.0.0.1:8787/dashboard`.
 
 Copy the printed **AgentMargin demo key** and paste it into the dashboard. Select a date range including the current UTC date. The demo includes a profitable customer, a negative-contribution customer, and a customer with unknown inference cost. The demo intentionally uses **synthetic reported costs**, not real provider pricing.
 
