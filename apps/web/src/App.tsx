@@ -103,7 +103,7 @@ export function App(){
       endDate.setUTCDate(endDate.getUTCDate()+1);
       const result=await fetchJson<Analytics>('/v1/analytics?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(endDate.toISOString()),key.trim());
       setAnalytics(result);setAccessOpen(false);
-      setMessage(result.truncated?'Partial results: customer list is truncated. Displayed sums are not workspace-wide.':'Analytics updated for your local workspace.');
+      setMessage(result.truncated?'Partial results: customer list is truncated. Displayed sums are not workspace-wide.':'');
     }catch(e){setError(e instanceof Error?e.message:'Analytics request failed');setMessage('');}
     finally{setWorking(false);}
   }
@@ -113,11 +113,11 @@ export function App(){
     try{
       const result=await fetchJson<Prices>('/v1/prices',key.trim());
       setPrices(result);setAccessOpen(false);
-      setMessage(result.truncated?'Only the newest 100 versions are shown.':'Price history updated.');
+      setMessage(result.truncated?'Only the newest 100 versions are shown.':'');
     }catch(e){setError(e instanceof Error?e.message:'Pricing request failed');setMessage('');}
     finally{setWorking(false);}
   }
-  function switchTab(tab:View){setView(tab);setError('');setMessage('');}
+  function switchTab(tab:View){setView(tab);setError('');setMessage('');if((tab==='pricing'&&!prices)||(tab==='overview'&&!analytics))setAccessOpen(true);}
   async function createPricing(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(!key.trim()){setError('Enter your local workspace API key.');return;}
     setWorking(true);setError('');setMessage('');
@@ -198,9 +198,9 @@ export function App(){
     <main className="main">
       <header className="topline">
         <div className="breadcrumbs"><span>Workspace</span><span className="crumbDivider">/</span><strong>{view==='overview'?'Overview':'Model pricing'}</strong></div>
-        <div className="topMeta"><span className="localBadge"><span className="instanceDot"/> Local instance</span></div>
+        <div className="topMeta"><button type="button" className="localBadge" aria-label="Change workspace connection" aria-expanded={accessOpen} onClick={()=>setAccessOpen(v=>!v)}><span className="instanceDot"/> Local instance</button></div>
       </header>
-      <section className="queryBar" aria-label="Workspace controls">
+      <section className={accessOpen?"queryBar":"queryBar accessCollapsed"} aria-label="Workspace controls">
         <div className="queryHeader"><div><span className={analytics||prices?'instanceDot':'emptyDot'}/> {analytics||prices?'Workspace connected':'Connect your workspace'}</div><button type="button" className="connectionToggle" onClick={()=>setAccessOpen(v=>!v)} aria-expanded={accessOpen}>{accessOpen?'Hide controls':'Change connection'}</button></div>
         <div className={accessOpen?'authBar':'authBar accessHidden'}>
           <div className="authField"><Input id="key" label="Workspace API key" type="password" value={key} onChange={e=>{setKey(e.target.value);setAnalytics(null);setPrices(null);}} autoComplete="off" placeholder="am_..." /></div>

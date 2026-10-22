@@ -53,6 +53,11 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
             timeout=20_000,
         )
         assert page.locator("#rows tr").count() == customer_count
+        assert page.locator(".queryBar").is_hidden(), "Connection controls should collapse after loading"
+        page.get_by_role("button", name="Change workspace connection").click()
+        assert page.locator("#key").is_visible(), "Topbar must reopen connection controls"
+        page.get_by_role("button", name="Change workspace connection").click()
+        assert page.locator(".queryBar").is_hidden(), "Topbar must collapse connection controls"
         assert page.locator(".uiIcon").count() >= 6, "Product navigation should use the outlined icon system"
         assert page.locator(".barUnverified").count() == unknown_count, "Unknown cost must be explicit in chart"
         assert page.locator(".chartCustomer").count() == customer_count, "Only real customer categories allowed"

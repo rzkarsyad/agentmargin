@@ -302,4 +302,10 @@ footer{padding:11px 0;font-size:9px}
 @media(max-width:750px){.shell{grid-template-columns:1fr}.rail{padding:12px 13px 9px}.railAnalytics,.railSupport,.railBottom{display:none}.railSection{margin-top:10px}.navList{gap:5px}.navItem{min-height:31px;padding:6px 9px}.main{padding:0 11px 23px}.topline{height:45px;margin-bottom:8px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{min-height:88px;padding:10px 12px}.metric:nth-child(2){border-right:0}.metric:nth-child(-n+2){border-bottom:1px solid #303034}.analysisGrid{gap:10px}.barChart{padding-right:8px}.authButton{flex:1 1 100%}.authButton button{width:100%}}
 @media(max-width:480px){.metric strong{font-size:21px}.panelHeading{padding:11px}.chartAxis{font-size:8px}.chartBars{gap:4px}.chartPair{gap:3px}.chartLabel{font-size:8px}.tableToolbar{padding:0 10px 9px}.customerSearch{width:100%;flex:1 1 100%}.queryHeader{padding:7px 9px}.authBar{padding:9px}.coverageCount{padding:7px 11px}.coverageTrack{margin:0 11px 11px}.coverageList{margin:0 11px 8px}footer{padding-top:10px}}
 
+
+/* After successful authentication, prioritize real analytics over connection chrome. */
+.queryBar.accessCollapsed{display:none}
+button.localBadge{cursor:pointer;font-family:inherit}
+button.localBadge:hover{border-color:#59595e;color:#e4e4e6}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
