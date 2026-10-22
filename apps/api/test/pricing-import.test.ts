@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chooseCatalogPrice,dollarsPerTokenToMicrosPerMillion} from '../../../scripts/lib/pricing-catalog.ts';
+import {chooseCatalogPrice,dollarsPerTokenToMicrosPerMillion,scanCatalogPrices} from '../../../scripts/lib/pricing-catalog.ts';
 test('exact USD microdollar conversion, including scientific notation',()=>{
  assert.equal(dollarsPerTokenToMicrosPerMillion(3e-7),'300000');
  assert.equal(dollarsPerTokenToMicrosPerMillion(0),'0');
@@ -24,4 +24,19 @@ test('missing cached price is null, never free',()=>{
  const p=chooseCatalogPrice({m:{litellm_provider:'openai',input_cost_per_token:0,output_cost_per_token:0}},'m','openai');
  assert.equal(p.cachedInputMicrosPerMillion,null);
  assert.equal(p.inputMicrosPerMillion,'0');
+});
+
+test('scheduled candidate scan is deterministic, provider-scoped and never invents unsupported prices',()=>{
+ const catalog={
+  z:{litellm_provider:'openai',input_cost_per_token:1e-6,output_cost_per_token:2e-6},
+  bad:{litellm_provider:'anthropic',input_cost_per_token:1e-14,output_cost_per_token:2e-6},
+  another:{litellm_provider:'unsupported',input_cost_per_token:1e-6,output_cost_per_token:2e-6},
+  a:{litellm_provider:'anthropic',input_cost_per_token:2e-6,output_cost_per_token:3e-6}
+ };
+ const scan=scanCatalogPrices(catalog);
+ assert.deepEqual(scan.entries.map(x=>x.model),['a','z']);
+ assert.equal(scan.scanned,3);
+ assert.equal(scan.skipped,1);
+ assert.equal(scan.entries[1]?.cachedInputMicrosPerMillion,null);
+ assert.throws(()=>scanCatalogPrices([]),/Invalid pricing catalog/);
 });

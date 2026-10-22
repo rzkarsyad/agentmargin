@@ -21,6 +21,7 @@
 - [x] Build a runnable Next.js App Router demo that can send synthetic usage/revenue; optional server-side OpenAI request.
 - [x] Document security and onboarding, verify Next.js production build and dependency audit in CI.
 - [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
+- [x] Add a **weekly, read-only provider pricing candidate scan** and review artifact; not automatic price application or invoice reconciliation.
 - [ ] **Publish SDK to npm:** requires `@agentmargin` scope ownership and npm OIDC trusted publisher. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
 - [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 

@@ -28,3 +28,17 @@ Provider and model must exactly match the upstream community catalog entry. No a
 - For unattended imports, configure a separate scoped runtime secret, explicit approver process, alerting and provider reconciliation first. This initial importer is an operator-triggered automation, not an unattended repricer.
 
 Upstream: https://docs.litellm.ai/docs/proxy/model_cost_map
+
+## Weekly automatic candidate import (unapproved review artifact)
+
+The read-only [weekly pricing scan](../.github/workflows/pricing-catalog-scan.yml) runs every Monday at 05:37 UTC and can also be started manually from GitHub Actions. It fetches the fixed LiteLLM community catalog (16 MB cap, timeout and SHA-256 digest), collects exactly representable OpenAI/Anthropic token-rate candidates, counts unsupported entries and uploads `pricing-candidates.json` as a 14-day artifact.
+
+This is **automated discovery, not automatic billing-rate activation**. The workflow uses `contents: read`, accepts no provider credentials, and never calls `POST /v1/prices`. Every candidate remains unapproved; the artifact does not certify price effective dates, provider-specific tiers, cache-creation costs, or invoice accuracy. A maintainer must compare a selected candidate against the provider's **official** current pricing and a dated billing sample, then use the existing operator-reviewed `pricing:import -- --apply` path if appropriate. Do not use the artifact as a customer invoice or as an unattended repricer.
+
+Run a local preview without an API key:
+
+```bash
+node --experimental-strip-types scripts/pricing-catalog-scan.ts > pricing-candidates.json
+```
+
+If the catalog is unavailable, too large, malformed or its relevant costs cannot be represented exactly, the scan fails or excludes those candidates; it never fills missing values with zero.
