@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '37 5 * * 1'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/pricing-catalog-scan.yml'
+      - 'scripts/pricing-catalog-scan.ts'
+      - 'scripts/lib/pricing-catalog.ts'
 
 # Read-only job: cannot modify rates, repository contents or workspaces.
 permissions:
