@@ -35,7 +35,7 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
     try:
         response = page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
         assert response and response.status == 200, "Dashboard HTTP response was not 200"
-        assert "script-src 'sha256-" in response.headers.get("content-security-policy", "")
+        assert "script-src 'self'" in response.headers.get("content-security-policy", "")
         page.locator("#key").fill(key)
         page.locator("#load").click()
         page.wait_for_function(
