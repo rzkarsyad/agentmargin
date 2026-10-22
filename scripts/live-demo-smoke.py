@@ -36,6 +36,12 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         response = page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
         assert response and response.status == 200, "Dashboard HTTP response was not 200"
         assert "script-src 'self'" in response.headers.get("content-security-policy", "")
+        page.wait_for_selector(".hero h1", timeout=15_000)
+        assert page.evaluate("document.documentElement.dataset.theme") == "dark", "App is not in permanent dark mode"
+        bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert bg == "rgb(11, 14, 18)", f"Expected the dark dashboard background, got {bg}"
+        heading_font = page.evaluate("getComputedStyle(document.querySelector('h1')).fontFamily")
+        assert "Inter" in heading_font and "serif" not in heading_font.split(",")[0].lower(), heading_font
         page.locator("#key").fill(key)
         page.locator("#load").click()
         page.wait_for_function(
