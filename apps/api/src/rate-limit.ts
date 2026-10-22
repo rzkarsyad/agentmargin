@@ -26,9 +26,15 @@ export class WorkspaceRateLimiter {
 export class InvalidCredentialLimiter {
   private start=0;
   private count=0;
-  constructor(readonly maxAttempts=60, readonly windowMs=60000,private readonly now:()=>number=()=>Date.now()){
+  readonly maxAttempts:number;
+  readonly windowMs:number;
+  private readonly now:()=>number;
+  constructor(maxAttempts=60,windowMs=60000,now:()=>number=()=>Date.now()){
     if(!Number.isSafeInteger(maxAttempts)||maxAttempts<1||!Number.isSafeInteger(windowMs)||windowMs<1)
       throw new Error('Invalid invalid-credential limiter config');
+    this.maxAttempts=maxAttempts;
+    this.windowMs=windowMs;
+    this.now=now;
   }
   allowInvalidAttempt():boolean{
     const time=this.now();
