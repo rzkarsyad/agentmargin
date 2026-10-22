@@ -15,3 +15,33 @@ export class WorkspaceRateLimiter {
     old.count++;return true;
   }
 }
+
+/** Process-local preauthentication abuse limiter. Not a replacement for a distributed
+ * edge/gateway rate limit on internet-exposed infrastructure.
+ *
+ * Calls with syntactically invalid or unknown bearer credentials count against
+ * a global unknown-credential bucket; legitimate authenticated calls do not.
+ * This avoids spoofable X-Forwarded-For / per-IP bypasses on localhost.
+ */
+export class InvalidCredentialLimiter {
+  private start=0;
+  private count=0;
+  readonly maxAttempts:number;
+  readonly windowMs:number;
+  private readonly now:()=>number;
+  constructor(maxAttempts=60,windowMs=60000,now:()=>number=()=>Date.now()){
+    if(!Number.isSafeInteger(maxAttempts)||maxAttempts<1||!Number.isSafeInteger(windowMs)||windowMs<1)
+      throw new Error('Invalid invalid-credential limiter config');
+    this.maxAttempts=maxAttempts;
+    this.windowMs=windowMs;
+    this.now=now;
+  }
+  allowInvalidAttempt():boolean{
+    const time=this.now();
+    if(!this.start||time-this.start>=this.windowMs){
+      this.start=time;this.count=1;return true;
+    }
+    if(this.count>=this.maxAttempts)return false;
+    this.count++;return true;
+  }
+}

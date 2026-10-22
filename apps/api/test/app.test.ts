@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp, digest, type EventStore, type StoredEvent } from '../src/app.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
-import {WorkspaceRateLimiter} from '../src/rate-limit.ts';
+import {WorkspaceRateLimiter,InvalidCredentialLimiter} from '../src/rate-limit.ts';
 
 const apiKey='am_'+'x'.repeat(40);
 const price:PriceVersion={id:'p1',model:'m',effectiveFrom:'2026-01-01T00:00:00Z',inputMicrosPerMillion:1_000_000n,outputMicrosPerMillion:2_000_000n};
@@ -74,4 +74,19 @@ test('authenticated requests share a workspace rate limit',async()=>{
   assert.equal((await send(app,{events:[entry]})).status,202);
   assert.equal((await send(app,{events:[{...entry,id:'e2'}]})).status,429);
   assert.equal((await app.request('/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z',{headers:{authorization:`Bearer ${apiKey}`}})).status,429);
+});
+
+test('unauthenticated abuse guard counts malformed and unknown keys, not valid workspace requests',async()=>{
+  let now=100_000;
+  const guard=new InvalidCredentialLimiter(2,60_000,()=>now);
+  const app=createApp(new MemoryStore(),new WorkspaceRateLimiter(50),guard);
+  const valid={authorization:'Bearer '+apiKey};
+  const url='/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z';
+  assert.equal((await app.request(url,{headers:{authorization:'invalid'}})).status,401);
+  assert.equal((await app.request(url,{headers:{authorization:'Bearer am_'+ 'q'.repeat(40)}})).status,401);
+  assert.equal((await app.request(url,{headers:{authorization:'invalid'}})).status,429);
+  // A spike of bad keys does not lock out legitimate customers via global bucket.
+  assert.equal((await app.request(url,{headers:valid})).status,200);
+  now+=61_000;
+  assert.equal((await app.request(url,{headers:{authorization:'invalid'}})).status,401);
 });
