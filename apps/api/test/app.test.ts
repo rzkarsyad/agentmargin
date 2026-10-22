@@ -62,8 +62,11 @@ test('analytics requires auth and validates period',async()=>{
 });
 test('dashboard serves local analytics shell',async()=>{
   const r=await createApp(new MemoryStore()).request('/dashboard');
-  assert.equal(r.status,200);assert.match(await r.text(),/Know your/);
-  assert.match(r.headers.get('content-security-policy')??'',/script-src 'sha256-/);
+  assert.equal(r.status,200);
+  const body=await r.text();
+  assert.match(body,/id="root"/);
+  assert.match(body,/dashboard\/assets\/[A-Za-z0-9_.-]+\.js/);
+  assert.match(r.headers.get('content-security-policy')??'',/script-src 'self'/);
   assert.equal(r.headers.get('cache-control'),'no-store');
 });
 test('authenticated requests share a workspace rate limit',async()=>{
