@@ -60,6 +60,40 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         page.close()
 
 
+def live_pricing_browser(browser, key: str):
+    """Exercise genuine Arc Input/Button price form against the real authenticated API."""
+    page = browser.new_page(viewport={"width": 1280, "height": 850})
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    try:
+        page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
+        page.get_by_role("button", name="Model pricing").click()
+        page.locator("#key").fill(key)
+        page.get_by_role("button", name="Refresh prices").click()
+        page.get_by_text("No workspace price versions yet. Create one above.").wait_for(timeout=15_000)
+
+        page.get_by_label("Provider model identifier").fill("arc-smoke-model")
+        page.get_by_label("Input $ / 1M tokens").fill("1.25")
+        page.get_by_label("Output $ / 1M tokens").fill("4")
+        page.get_by_label("Source / verification note").fill("Synthetic pricing UI smoke check")
+        page.get_by_role("button", name="Add immutable price").click()
+
+        page.get_by_role("status").get_by_text("Price version added", exact=False).wait_for(timeout=15_000)
+        assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
+        assert "$1.25" in page.locator("table").inner_text()
+        assert "$4" in page.locator("table").inner_text()
+
+        # A negative rate is rejected client-side; the old row remains immutable.
+        page.get_by_label("Input $ / 1M tokens").fill("-1")
+        page.get_by_role("button", name="Add immutable price").click()
+        page.get_by_role("alert").get_by_text("Enter a USD amount", exact=False).wait_for(timeout=10_000)
+        assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
+        assert not errors, errors
+        print("PASS: live Arc UI pricing form, authenticated persistence, history, validation")
+    finally:
+        page.close()
+
+
 def main():
     if not (os.environ.get("CI") == "true" and os.environ.get("GITHUB_ACTIONS") == "true"):
         raise SystemExit("This disposable Docker demo smoke test is restricted to GitHub Actions CI.")
@@ -134,6 +168,7 @@ def main():
                 assert "1 inserted" in sdk.stdout, "Synthetic SDK example did not insert usage/revenue"
                 for width in (1280, 390):
                     live_browser(browser, key, width, 4, 2)
+                live_pricing_browser(browser, key)
             finally:
                 browser.close()
         print("PASS: full live demo E2E — Docker PostgreSQL, API auth, SDK metering, and Chromium")
