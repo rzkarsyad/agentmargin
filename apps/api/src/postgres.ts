@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
-import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, PriceInput, WorkspacePrice, ScopedPriceVersion } from './app.ts';
+import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion } from './app.ts';
 
 const { Pool } = pg;
 export const ANALYTICS_SQL = `WITH revenue AS (
@@ -24,6 +24,64 @@ export const UNKNOWN_MODELS_SQL = `SELECT model, COUNT(*)::text AS event_count
   WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz
     AND occurred_at < $3::timestamptz AND cost_source='unknown'
   GROUP BY model ORDER BY COUNT(*) DESC, model ASC LIMIT 21`;
+
+/**
+ * Full-workspace totals and a keyset page share one REPEATABLE READ snapshot.
+ * Never SUM the first N displayed customers to present organization totals.
+ */
+const CUSTOMER_ROWS_CTE=`WITH revenue AS (
+  SELECT customer_id, SUM(amount_micros) AS revenue
+  FROM revenue_records
+  WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz
+  GROUP BY customer_id
+), usage AS (
+  SELECT customer_id, COALESCE(SUM(calculated_cost_micros),0) AS cost,
+    COUNT(*) AS usage_events, COUNT(*) FILTER (WHERE cost_source='unknown') AS unknown_events
+  FROM usage_events
+  WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz
+  GROUP BY customer_id
+), customer_data AS (
+ SELECT COALESCE(r.customer_id,u.customer_id) AS customer_id,
+  COALESCE(r.revenue,0)::numeric AS revenue,
+  COALESCE(u.cost,0)::numeric AS known_cost,
+  COALESCE(u.usage_events,0)::bigint AS usage_events,
+  COALESCE(u.unknown_events,0)::bigint AS unknown_events
+ FROM revenue r FULL OUTER JOIN usage u ON r.customer_id=u.customer_id
+)`;
+export const ANALYTICS_FULL_SUMMARY_SQL=CUSTOMER_ROWS_CTE+`
+ SELECT COUNT(*)::text AS customer_count,
+  COUNT(*) FILTER (WHERE unknown_events=0)::text AS verified_customer_count,
+  COUNT(*) FILTER (WHERE unknown_events=0 AND revenue>known_cost)::text AS profitable_customer_count,
+  COUNT(*) FILTER (WHERE unknown_events=0 AND revenue<=known_cost)::text AS loss_making_customer_count,
+  COUNT(*) FILTER (WHERE unknown_events>0)::text AS unknown_customer_count,
+  COALESCE(SUM(usage_events),0)::text AS usage_event_count,
+  COALESCE(SUM(unknown_events),0)::text AS unknown_usage_event_count,
+  COALESCE(SUM(revenue),0)::text AS total_revenue_micros,
+  COALESCE(SUM(known_cost),0)::text AS total_known_ai_cost_micros,
+  COALESCE(SUM(CASE WHEN unknown_events=0 THEN revenue-known_cost ELSE 0 END),0)::text
+    AS verified_customer_contribution_micros
+ FROM customer_data`;
+export const ANALYTICS_CUSTOMER_PAGE_SQL=CUSTOMER_ROWS_CTE+`
+ SELECT customer_id,revenue::text AS revenue_micros,known_cost::text AS known_cost_micros,
+  usage_events::text AS usage_events,unknown_events::text AS unknown_events
+ FROM customer_data
+ WHERE ($4::text IS NULL OR customer_id>$4::text)
+ ORDER BY customer_id ASC LIMIT $5::integer`;
+
+function mapAnalyticsCustomer(r:{
+  customer_id:string;revenue_micros:string;known_cost_micros:string;
+  usage_events:string;unknown_events:string;
+}):AnalyticsCustomer{
+ const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=BigInt(r.unknown_events);
+ const contribution=unknown>0n?null:revenue-cost;
+ const margin=contribution===null||revenue===0n?null:(contribution<0n
+  ? -((-contribution*10000n+revenue/2n)/revenue)
+  : (contribution*10000n+revenue/2n)/revenue);
+ return {customerId:r.customer_id,revenueMicros:revenue.toString(),
+  knownAiCostMicros:cost.toString(),contributionMicros:contribution?.toString()??null,
+  marginBasisPoints:margin?.toString()??null,
+  usageEvents:Number(r.usage_events),unknownEvents:Number(r.unknown_events)};
+}
 
 export class PostgresEventStore implements EventStore {
   readonly pool: pg.Pool;
@@ -150,6 +208,56 @@ export class PostgresEventStore implements EventStore {
     }catch(err){await client.query('ROLLBACK');throw err;}
     finally{client.release();}
   }
+  async analyticsPage(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>{
+    if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Invalid pagination limit');
+    const client=await this.pool.connect();
+    try{
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const params=[workspaceId,start,end];
+      const summary=await client.query<{
+        customer_count:string;verified_customer_count:string;profitable_customer_count:string;
+        loss_making_customer_count:string;unknown_customer_count:string;
+        usage_event_count:string;unknown_usage_event_count:string;
+        total_revenue_micros:string;total_known_ai_cost_micros:string;
+        verified_customer_contribution_micros:string;
+      }>(ANALYTICS_FULL_SUMMARY_SQL,params);
+      const page=await client.query<{
+        customer_id:string;revenue_micros:string;known_cost_micros:string;
+        usage_events:string;unknown_events:string;
+      }>(ANALYTICS_CUSTOMER_PAGE_SQL,[...params,after,limit+1]);
+      const missing=await client.query<{model:string;event_count:string}>(UNKNOWN_MODELS_SQL,params);
+      await client.query('COMMIT');
+      const row=summary.rows[0];
+      if(!row)throw new Error('Analytics summary unexpectedly empty');
+      const hasMore=page.rows.length>limit;
+      const selected=page.rows.slice(0,limit);
+      const totalRevenue=BigInt(row.total_revenue_micros),totalCost=BigInt(row.total_known_ai_cost_micros);
+      const complete=row.unknown_customer_count==='0';
+      const last=selected[selected.length-1]?.customer_id;
+      return {periodStart:start,periodEnd:end,pageSize:limit,
+        customers:selected.map(mapAnalyticsCustomer),
+        nextCursor:hasMore&&last?Buffer.from(last,'utf8').toString('base64url'):null,
+        summary:{
+          customerCount:row.customer_count,
+          verifiedCustomerCount:row.verified_customer_count,
+          profitableCustomerCount:row.profitable_customer_count,
+          lossMakingCustomerCount:row.loss_making_customer_count,
+          unknownCustomerCount:row.unknown_customer_count,
+          usageEventCount:row.usage_event_count,
+          unknownUsageEventCount:row.unknown_usage_event_count,
+          totalRevenueMicros:row.total_revenue_micros,
+          totalKnownAiCostMicros:row.total_known_ai_cost_micros,
+          verifiedCustomerContributionMicros:row.verified_customer_contribution_micros,
+          completeContributionMicros:complete?(totalRevenue-totalCost).toString():null,
+        },
+        unknownModels:missing.rows.slice(0,20).map(m=>({model:m.model,eventCount:Number(m.event_count)})),
+        unknownModelsTruncated:missing.rows.length>20,
+      };
+    }catch(err){
+      await client.query('ROLLBACK');throw err;
+    }finally{client.release();}
+  }
+
   async analytics(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>{
     // Independent aggregates prevent revenue * usage-event join multiplication.
     // Read both aggregates from one consistent snapshot. Running queries concurrently

@@ -308,4 +308,9 @@ footer{padding:11px 0;font-size:9px}
 button.localBadge{cursor:pointer;font-family:inherit}
 button.localBadge:hover{border-color:#59595e;color:#e4e4e6}
 
+.pagingControls{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 13px;border-top:1px solid #2c2c30;font-size:10px;color:#999}
+.pagingControls button{background:#242427;border:1px solid #36363a;border-radius:4px;padding:6px 10px;color:#dedee0;cursor:pointer}
+.pagingControls button:hover:not(:disabled){background:#323236}
+.pagingControls button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:480px){.pagingControls{flex-wrap:wrap}.pagingControls span{order:-1;flex-basis:100%;text-align:center}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}

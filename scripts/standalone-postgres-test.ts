@@ -93,6 +93,41 @@ try {
   assert.equal(priceListA.status,200);assert.equal(priceListB.status,200);
   assert.equal((await priceListA.json() as {items:{id:string}[]}).items.length,2);
   assert.equal((await priceListB.json() as {items:{id:string}[]}).items.length,0);
+  // v0.5: full-workspace totals must include customers beyond a single page.
+  await pool.query(`INSERT INTO customers(workspace_id,id)
+    SELECT $1,'bulk-'||lpad(n::text,4,'0') FROM generate_series(1,125) AS n
+    ON CONFLICT DO NOTHING`,[workspace]);
+  await pool.query(`INSERT INTO revenue_records(workspace_id,id,customer_id,occurred_at,amount_micros)
+    SELECT $1,'bulk-rev-'||n::text,'bulk-'||lpad(n::text,4,'0'),
+      '2026-10-10T00:00:00Z'::timestamptz,1000000
+    FROM generate_series(1,125) AS n`,[workspace]);
+  const first=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20);
+  assert.equal(first.customers.length,20);
+  assert.equal(first.summary.customerCount,'126');
+  assert.equal(first.summary.totalRevenueMicros,'154000000');
+  assert.equal(first.summary.unknownCustomerCount,'0');
+  assert.equal(first.summary.completeContributionMicros,
+    (BigInt(first.summary.totalRevenueMicros)-BigInt(first.summary.totalKnownAiCostMicros)).toString());
+  assert.ok(first.nextCursor,'More customers must be accessible');
+  const second=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',
+    Buffer.from(first.nextCursor,'base64url').toString('utf8'),20);
+  assert.equal(second.customers.length,20);
+  assert.equal(second.summary.totalRevenueMicros,first.summary.totalRevenueMicros);
+  assert.equal(new Set([...first.customers,...second.customers].map(c=>c.customerId)).size,40);
+  const pageA=await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&limit=20&workspaceId='+other,
+    {headers:{authorization:'Bearer '+key}});
+  assert.equal(pageA.status,200);
+  const pageResult=await pageA.json() as {summary:{customerCount:string};nextCursor:string};
+  assert.equal(pageResult.summary.customerCount,'126','Query workspaceId must not change scope');
+  const pageB=await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&limit=20',
+    {headers:{authorization:'Bearer '+otherKey}});
+  assert.equal((await pageB.json() as {summary:{customerCount:string}}).summary.customerCount,'1',
+    'Other tenant must not inherit aggregate totals');
+  assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&limit=0',
+    {headers:{authorization:'Bearer '+key}})).status,400);
+  assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&cursor=!',
+    {headers:{authorization:'Bearer '+key}})).status,400);
+  assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z')).status,401);
   process.stdout.write('Standalone PostgreSQL concurrency: PASSED (usage/revenue idempotency, reversed batch order, tenant isolation).\n');
 } finally {
   await store?.pool.end();
