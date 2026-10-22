@@ -54,6 +54,12 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
             timeout=20_000,
         )
         assert page.locator("#rows tr").count() == customer_count
+        assert page.locator(".uiIcon").count() >= 6, "Product navigation should use the outlined icon system"
+        assert page.locator(".barUnverified").count() == unknown_count, "Unknown cost must be explicit in chart"
+        assert page.locator(".costIncomplete").count() == unknown_count, "Unknown cost must not read as verified $0"
+        if width == 390:
+            excess = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+            assert excess <= 1, f"Mobile layout overflows viewport by {excess}px"
         assert page.locator("#revenue").inner_text() == ("$97.00" if customer_count == 3 else "$126.00")
         assert page.locator("#cost").inner_text() == "$35.00"
         assert page.locator("#unknown").inner_text() == str(unknown_count)
@@ -64,6 +70,10 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         assert str(unknown_count) in page.locator("#missing-rows").inner_text()
         assert page.locator("#rows img, #missing-rows svg").count() == 0
         assert page.evaluate("localStorage.length + sessionStorage.length") == 0
+        page.get_by_role("button", name="Unknown", exact=True).click()
+        assert page.locator("#rows tr").count() == unknown_count, "Arc status filter did not narrow results"
+        page.get_by_role("button", name="All", exact=True).click()
+        assert page.locator("#rows tr").count() == customer_count
         assert not errors, f"Browser script errors: {errors}"
         if customer_count == 4:
             # Demo-only screenshot. Clear the masked key from the DOM without

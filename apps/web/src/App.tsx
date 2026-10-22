@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type CSSProperties } from 'react';
+import { useState, type FormEvent, type CSSProperties, type ReactNode } from 'react';
 import { Button } from './components/arc/button/button';
 import { Input } from './components/arc/input/input';
 import { Badge } from './components/arc/badge/badge';
@@ -62,6 +62,23 @@ async function fetchJson<T>(path:string,key:string,init:RequestInit={}):Promise<
   return response.json() as Promise<T>;
 }
 const blankPrice={model:'',from:utcDate(),to:'',input:'',output:'',cached:'',source:''};
+
+type IconName = 'arrow'|'overview'|'pricing'|'docs'|'issue'|'revenue'|'cost'|'contribution'|'unknown';
+function UIIcon({name}: {name:IconName}){
+  const common={fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
+  const shape:Record<IconName,ReactNode>={
+    arrow:<><path d="M7 17 17 7M8 7h9v9"/></>,
+    overview:<><rect x="3" y="3" width="7" height="7" rx="1.3"/><rect x="14" y="3" width="7" height="7" rx="1.3"/><rect x="3" y="14" width="7" height="7" rx="1.3"/><rect x="14" y="14" width="7" height="7" rx="1.3"/></>,
+    pricing:<><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 15h4"/></>,
+    docs:<><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9l-6-6H8Z"/><path d="M14 3v7h7M8 14h8M8 18h7"/></>,
+    issue:<><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.8 2.8 0 0 1 5.2 1.5c0 1.8-2.7 2.3-2.7 4"/><path d="M12 17h.01"/></>,
+    revenue:<><path d="m3 17 6-6 4 4 8-8M15 7h6v6"/></>,
+    cost:<><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M7 9h.01M17 15h.01"/></>,
+    contribution:<><path d="M4 17h4l3-10 4 10 2-6h3"/></>,
+    unknown:<><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 17h.01"/></>,
+  };
+  return <svg className="uiIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" {...common}>{shape[name]}</svg>;
+}
 
 export function App(){
   const [view,setView]=useState<View>('overview');
@@ -149,18 +166,18 @@ export function App(){
   const percent=(amount:string)=>maxAmount===0n?'0%':Number(BigInt(amount)*100n/maxAmount)+'%';
   return <div className="shell">
     <aside className="rail" aria-label="Primary navigation">
-      <a href="/dashboard" className="brand" aria-label="AgentMargin home"><span className="brandMark">↗</span><span>AgentMargin</span></a>
+      <a href="/dashboard" className="brand" aria-label="AgentMargin home"><span className="brandMark"><UIIcon name="arrow"/></span><span>AgentMargin</span></a>
       <div className="railSection">
         <div className="railLabel">WORKSPACE</div>
         <nav className="navList" aria-label="Sections">
-          <button type="button" className={view==='overview'?'navItem active':'navItem'} aria-current={view==='overview'?'page':undefined} onClick={()=>switchTab('overview')}><span className="navIcon" aria-hidden="true">▦</span> Overview</button>
-          <button type="button" className={view==='pricing'?'navItem active':'navItem'} aria-current={view==='pricing'?'page':undefined} onClick={()=>switchTab('pricing')}><span className="navIcon" aria-hidden="true">◫</span> Model pricing</button>
+          <button type="button" className={view==='overview'?'navItem active':'navItem'} aria-current={view==='overview'?'page':undefined} onClick={()=>switchTab('overview')}><span className="navIcon" aria-hidden="true"><UIIcon name="overview"/></span> Overview</button>
+          <button type="button" className={view==='pricing'?'navItem active':'navItem'} aria-current={view==='pricing'?'page':undefined} onClick={()=>switchTab('pricing')}><span className="navIcon" aria-hidden="true"><UIIcon name="pricing"/></span> Model pricing</button>
         </nav>
       </div>
       <div className="railSection railSupport">
         <div className="railLabel">RESOURCES</div>
-        <a className="railLink" href="https://github.com/rzkarsyad/agentmargin/blob/main/README.md" target="_blank" rel="noreferrer"><span aria-hidden="true">▤</span> Documentation <span aria-hidden="true" className="external">↗</span></a>
-        <a className="railLink" href="https://github.com/rzkarsyad/agentmargin/issues" target="_blank" rel="noreferrer"><span aria-hidden="true">◎</span> Report issue <span aria-hidden="true" className="external">↗</span></a>
+        <a className="railLink" href="https://github.com/rzkarsyad/agentmargin/blob/main/README.md" target="_blank" rel="noreferrer"><span aria-hidden="true"><UIIcon name="docs"/></span> Documentation <span aria-hidden="true" className="external">↗</span></a>
+        <a className="railLink" href="https://github.com/rzkarsyad/agentmargin/issues" target="_blank" rel="noreferrer"><span aria-hidden="true"><UIIcon name="issue"/></span> Report issue <span aria-hidden="true" className="external">↗</span></a>
       </div>
       <div className="railBottom">
         <div className="instance"><span className="instanceDot"/> Local instance</div>
@@ -196,10 +213,10 @@ export function App(){
 
       {view==='overview'?<>
         <section className="metrics" aria-label="Customer economics summary">
-          <div className="metric"><div className="metricTop"><span>Customer revenue</span><span aria-hidden="true" className="metricIcon">↗</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>Selected customers</small></div>
-          <div className="metric"><div className="metricTop"><span>Known AI cost</span><span aria-hidden="true" className="metricIcon">◇</span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
-          <div className="metric"><div className="metricTop"><span>Verified contribution</span><span aria-hidden="true" className="metricIcon">⌁</span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
-          <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span><span aria-hidden="true" className="metricIcon">◎</span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
+          <div className="metric"><div className="metricTop"><span>Customer revenue</span><span aria-hidden="true" className="metricIcon"><UIIcon name="revenue"/></span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>Selected customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Known AI cost</span><span aria-hidden="true" className="metricIcon"><UIIcon name="cost"/></span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
+          <div className="metric"><div className="metricTop"><span>Verified contribution</span><span aria-hidden="true" className="metricIcon"><UIIcon name="contribution"/></span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span><span aria-hidden="true" className="metricIcon"><UIIcon name="unknown"/></span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
         </section>
 
         <div className="analysisGrid">
@@ -213,7 +230,8 @@ export function App(){
                 <span className="barLabel" title={c.customerId}>{c.customerId}</span>
                 <div className="barTrackGroup">
                   <div className="barTrack"><div className="barFill revenueFill" style={{width:percent(c.revenueMicros)}}/></div>
-                  <div className="barTrack"><div className="barFill costFill" style={{width:percent(c.knownAiCostMicros)}}/></div>
+                  <div className={c.unknownEvents>0?"barTrack barCostUnknown":"barTrack"}><div className="barFill costFill" style={{width:percent(c.knownAiCostMicros)}}/></div>
+                  {c.unknownEvents>0&&<span className="barUnverified">Cost unverified</span>}
                 </div>
                 <span className="barValue">{money(c.revenueMicros)}</span>
               </div>):<div className="panelEmpty">Load your analysis to see the customer-level comparison.</div>}
@@ -240,7 +258,7 @@ export function App(){
           <div className="tableScroll"><table><thead><tr><th>Customer</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Coverage</th></tr></thead><tbody id="rows">
             {visibleCustomers.map(c=><tr key={c.customerId}>
               <td className="customerId"><span className="customerAvatar">{c.customerId.slice(0,1).toUpperCase()}</span><span>{c.customerId}</span></td>
-              <td>{money(c.revenueMicros)}</td><td>{money(c.knownAiCostMicros)}</td>
+              <td>{money(c.revenueMicros)}</td><td title={c.unknownEvents>0?"Partial known cost: remaining inference usage is unverified":"All usage costs are verified"} className={c.unknownEvents>0?"costIncomplete":undefined}>{c.unknownEvents>0&&BigInt(c.knownAiCostMicros)===0n?"Unverified":money(c.knownAiCostMicros)}{c.unknownEvents>0&&BigInt(c.knownAiCostMicros)>0n?" + unknown":""}</td>
               <td className={c.contributionMicros===null?'warningText':BigInt(c.contributionMicros)<0n?'lossText':'gainText'}>{c.contributionMicros===null?'Unknown':money(c.contributionMicros)}</td>
               <td>{c.marginBasisPoints===null?'—':(Number(c.marginBasisPoints)/100).toFixed(2)+'%'}</td>
               <td><Badge tone={c.unknownEvents?'warning':'success'} size="sm">{c.unknownEvents?'Incomplete':'Complete'}</Badge></td>

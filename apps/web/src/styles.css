@@ -176,4 +176,14 @@ footer a{color:#b9bac0;text-decoration:underline;text-underline-offset:3px}
 @media (max-width:950px){.analysisGrid{grid-template-columns:1fr}.coveragePanel{min-height:auto}.coverageList{padding-bottom:0}}
 @media (max-width:750px){.shell{grid-template-columns:1fr}.rail{position:relative;height:auto;min-height:auto;padding:13px 15px 11px}.brand{font-size:15px}.railSection{margin-top:13px}.railSection .railLabel,.railSupport,.railBottom{display:none}.navList{display:flex;gap:7px}.navItem{width:auto;min-height:35px;padding:7px 12px}.main{padding:0 15px 24px}.topline{height:54px}.hero{padding:23px 0 18px}.heroContext,.topMetaLabel{display:none}.queryBar{padding:14px}.metrics{gap:9px}.metric{min-height:120px;padding:13px}.barRow{grid-template-columns:minmax(70px,115px) minmax(0,1fr) 55px}.fieldRow{grid-template-columns:1fr}}
 @media (max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric strong{font-size:23px}.metricTop>span:first-child{font-size:10px}.metric small{font-size:9px}.queryHeader>span{display:none}.authButton{width:100%}.authButton>button{width:100%}.legend{gap:8px}.panelHeading{padding:16px}.barChart{padding:6px 15px 20px}.barRow{grid-template-columns:91px minmax(0,1fr) 50px;gap:9px}.customerSearch{width:100%}.tableToolbar{padding:0 14px 12px}.coverageCount strong{font-size:30px}footer{flex-direction:column;align-items:start}}
+
+/* Restrained outlined SVG icons instead of decorative Unicode symbols. */
+.uiIcon{display:block;width:16px;height:16px;flex:none}
+.brandMark .uiIcon{width:19px;height:19px}
+.navIcon .uiIcon,.railLink .uiIcon{width:15px;height:15px}
+.metricIcon .uiIcon{width:14px;height:14px}
+.costIncomplete{color:#d8b477;font-size:11px}
+.barCostUnknown{background:repeating-linear-gradient(135deg,#30302e,#30302e 5px,#39352e 5px,#39352e 7px);outline:1px dashed #74614a;outline-offset:-1px}
+.barUnverified{color:#d4ad71;font-size:9px;font-weight:600;letter-spacing:.005em;line-height:1.1;margin-top:1px}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
