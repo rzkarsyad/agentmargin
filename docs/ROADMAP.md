@@ -24,12 +24,12 @@ This is a direction of work, not a delivery promise. We prioritize problems supp
 - [x] CI coverage for live Docker PostgreSQL + local API + SDK + desktop/mobile Chromium
 - [x] Source-first Node/OpenAI example and a Next.js App Router integration recipe (not a packaged starter app)
 
-## v0.3 candidate — pricing integrity and Arc UI migration
+## v0.3.0-alpha — pricing integrity and compact dark dashboard
 
-- [ ] Append-only workspace price versions with audited source notes and effective dates (implemented on draft PR #3; gated by CI and review)
-- [ ] Frontend migration from inline HTML to React 19/Vite with official Arc UI free components (draft PR #3)
-- [ ] Verify pricing creation/list, workspace isolation, immutable stored costs and real Chromium form behavior
-- [ ] Complete independent Mac/OrbStack validation before merge or release
+- [x] Append-only workspace price versions with audited source notes, effective dates, and authenticated workspace scoping
+- [x] Frontend migration from inline HTML to React 19/Vite with free MIT Arc UI primitives and a compact dark dashboard
+- [x] Verify pricing creation/list, workspace isolation, immutable stored costs and real Chromium form behavior in CI
+- [ ] Independent Mac/OrbStack acceptance of the **final v0.3 build** (GitHub Actions local Docker E2E passed; Mac run not yet confirmed for this final build)
 
 ## Later: make it useful for real teams
 

@@ -1,7 +1,11 @@
 {
   "name": "@agentmargin/core",
-  "version": "0.1.0",
+  "version": "0.3.0-alpha",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "engines": { "node": ">=22.18" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
 }

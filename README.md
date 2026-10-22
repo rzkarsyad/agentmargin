@@ -2,11 +2,11 @@
 
 **Know your margin. Not just your tokens.**
 
-**Current source release: v0.2.0-alpha.** This preview is intentionally localhost-only and should be tested with synthetic data.
+**Current source release: v0.3.0-alpha.** This preview is intentionally localhost-only and should be tested with synthetic data.
 
 [![CI](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml/badge.svg)](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.2.0-alpha.md)
+[![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.3.0-alpha.md)
 
 AgentMargin is an **open-source, self-hosted TypeScript toolkit** for understanding AI inference costs and *customer-level contribution margins*. Attribute usage and revenue to the same customer, distinguish known from unknown costs, and investigate customers whose AI usage outweighs what they pay.
 
@@ -30,13 +30,13 @@ AgentMargin brings these records together:
 - **Cost engine:** versioned model prices, input/output/cached token rates, integer microdollar calculations.
 - **Trustworthy coverage:** distinguish provider-reported, estimated and **unknown** cost. Incomplete data means no final margin—not a misleading zero.
 - **Customer attribution:** workspace-scoped, idempotent usage and revenue records with PostgreSQL.
-- **Local API + TypeScript SDK:** authenticated `/v1/events`, `/v1/revenue`, and `/v1/analytics`.
+- **Local API + TypeScript SDK:** authenticated `/v1/events`, `/v1/revenue`, `/v1/analytics`, and workspace model-pricing endpoints.
 - **OpenAI helpers:** manually map completed Responses or Chat Completions usage to AgentMargin events.
-- **Local dashboard:** customer contribution, usage and coverage; explicitly warns when result sets are truncated.
+- **Local React dashboard:** compact dark customer economics, real-data cost comparison, coverage and unknown-cost diagnostics, with a dedicated pricing editor. Results warn when truncated.
 
 **Not yet available:** automatic instrumentation, an official provider price catalog, Stripe synchronization, publicly hosted service, or production-hardening. The SDK is **source-first** and is not published to npm.
 
-## One-command local demo (v0.2 alpha)
+## One-command local demo (v0.3 alpha)
 
 With **OrbStack/Docker Compose**, Node.js 22.18+ and npm:
 
@@ -48,7 +48,7 @@ Starts a localhost-only PostgreSQL database, applies migrations and seeds **fict
 
 See [Local demo instructions](docs/DEMO.md) for stopping and intentionally resetting data. **This remains experimental software: do not expose the local API to the public internet.**
 
-## Track a completed OpenAI request (v0.2 alpha)
+## Track a completed OpenAI request (v0.3 alpha)
 
 The source-first SDK now accepts a completed OpenAI Responses or Chat Completions result in one call:
 
@@ -64,15 +64,17 @@ The helpers send **usage metadata only**—no prompts or generated text—and re
 - [Synthetic end-to-end example](examples/track-synthetic-openai.ts) (no OpenAI API key or OpenAI request)
 - [Tracking semantics and safety notes](docs/OPENAI_INTEGRATION.md)
 
-## v0.3 in development: workspace pricing + Arc UI
+## New in v0.3: workspace pricing and compact dark dashboard
 
-The [draft v0.3 PR](https://github.com/rzkarsyad/agentmargin/pull/3) introduces authenticated, append-only pricing versions with explicit effective dates and a **React 19 dashboard using real Arc UI free MIT components**. The previous inline HTML interface remains in the repo as a legacy testing fixture; the local dashboard route now serves the built React/Vite UI when available.
+[PR #3](https://github.com/rzkarsyad/agentmargin/pull/3) introduces authenticated **workspace-specific, append-only price versions** with UTC effective dates, source notes and an audit trail. The local dashboard uses React 19/Vite with the **free MIT-licensed Arc UI source primitives**, in a compact neutral-dark layout. The previous inline HTML implementation remains as a fallback fixture when no frontend build is present.
 
 - [Pricing API, immutable rate history and verification notes](docs/PRICING.md)
 - [Arc source-first frontend and license](apps/web/README.md)
 - [Official Arc UI](https://uiarc.dev/) (free source: [arc-library](https://github.com/kuratlielia/arc-library))
+- [Effective-dated pricing and provenance semantics](docs/PRICING.md)
+- [Reference-led UI acceptance rules](docs/UX_REFERENCE.md)
 
-**This work is unreleased and must not be deployed as an internet-facing service.** The current public stable source release remains `v0.2.0-alpha`.
+**This is an experimental alpha, not production-ready.** There is no hosted AgentMargin SaaS or stable npm SDK distribution. Do not expose the demo to the public internet.
 
 ## Try the cost engine
 
@@ -113,13 +115,13 @@ The OpenAI adapter is a **post-call helper**, not automatic capture. Never send 
 
 ## When AI cost is unknown
 
-A missing model price is **not** a $0 expense. The v0.2 analytics preview shows which model names have unknown-cost events, counts them per workspace and time period, and warns when more than 20 distinct models are affected.
+A missing model price is **not** a $0 expense. The analytics dashboard shows which model names have unknown-cost events, counts them per workspace and time period, and warns when more than 20 distinct models are affected.
 
 [Understand unknown costs and safe pricing remediation](docs/UNKNOWN_COSTS.md).
 
-## Live-stack release check (v0.2 alpha)
+## Live-stack release check (v0.3 alpha)
 
-The development branch includes a GitHub Actions end-to-end check against **real, disposable PostgreSQL**, a localhost API and real Chromium. It verifies seeded customer economics and posts synthetic usage/revenue through the TypeScript SDK without contacting any AI provider.
+CI includes a GitHub Actions end-to-end check against **real, disposable PostgreSQL**, a localhost API and real Chromium. It verifies seeded customer economics and posts synthetic usage/revenue through the TypeScript SDK without contacting any AI provider.
 
 The test runs only in GitHub Actions CI and cleans up its demo containers. See [Local demo and verification](docs/DEMO.md). **Passing this test does not establish production security.**
 
@@ -132,7 +134,7 @@ The test runs only in GitHub Actions CI and cleans up its demo containers. See [
 - The dashboard is for **localhost**; the API binds to `127.0.0.1` by default.
 - No PostgreSQL row-level security, TLS proxy, distributed abuse controls, or operational recovery process is shipped.
 
-See [security policy](SECURITY.md), [limitations and setup](docs/QUICKSTART.md), and [release notes](docs/releases/v0.2.0-alpha.md). **Do not expose this alpha as a public production service.**
+See [security policy](SECURITY.md), [limitations and setup](docs/QUICKSTART.md), and [release notes](docs/releases/v0.3.0-alpha.md). **Do not expose this alpha as a public production service.**
 
 ## Contribute and follow progress
 

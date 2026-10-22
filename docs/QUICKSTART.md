@@ -42,6 +42,7 @@ Apply migrations in order. You need a working `psql` client (install PostgreSQL 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/001_initial.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/002_ingestion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/003_revenue_ingestion.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/004_workspace_pricing.sql
 ```
 
 ## 3. Create a workspace and local API key
@@ -59,6 +60,7 @@ Copy the generated **AgentMargin** API key into your password manager. It is dis
 ## 4. Start the local API and dashboard
 
 ```bash
+npm run build:web
 npm run start -w @agentmargin/api
 ```
 
@@ -85,7 +87,7 @@ await client.trackRevenue([{
 }]);
 ```
 
-**Important:** the usage event's cost will be marked `unknown` unless you supply a provider-reported cost or configure a trusted matching row in `price_versions`. This is intentional; missing pricing is not free usage. The SDK is not published to npm yet, and its server-side code must not ship with keys in browser bundles.
+**Important:** the usage event's cost will be marked `unknown` unless you supply a provider-reported cost or configure a trusted matching workspace price through the [Model pricing API/UI](PRICING.md). This is intentional; missing pricing is not free usage. The SDK is not published to npm yet, and its server-side code must not ship with keys in browser bundles.
 
 To try the OpenAI post-call helper, see [packages/sdk/src/openai.ts](../packages/sdk/src/openai.ts). It does **not** instrument requests automatically.
 
