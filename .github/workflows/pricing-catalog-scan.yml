@@ -27,12 +27,12 @@ jobs:
             import fs from "node:fs";
             const r=JSON.parse(fs.readFileSync("pricing-candidates.json","utf8"));
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-              "### Unapproved provider pricing candidates\\n" +
-              "- Source SHA-256: `"+r.sourceSha256+"`\\n" +
-              "- Models scanned: "+r.scanned+"\\n" +
-              "- Candidates: "+r.candidates.length+"\\n" +
-              "- Excluded or unsupported: "+r.skipped+"\\n" +
-              "- **No customer prices were updated. Verify official provider rates before applying.**\\n");
+              "### Unapproved provider pricing candidates\n" +
+              "- Source SHA-256: `"+r.sourceSha256+"`\n" +
+              "- Models scanned: "+r.scanned+"\n" +
+              "- Candidates: "+r.candidates.length+"\n" +
+              "- Excluded or unsupported: "+r.skipped+"\n" +
+              "- **No customer prices were updated. Verify official provider rates before applying.**\n");
           '
       - name: Upload candidate catalog (not approved pricing)
         uses: actions/upload-artifact@v4
