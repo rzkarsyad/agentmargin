@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
@@ -102,10 +102,12 @@ function parsePriceInput(x:unknown):PriceInput {
 
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter()) {
   const app = new Hono();
-  const dashboard=readFileSync(new URL('./dashboard.html',import.meta.url),'utf8');
-  const inlineScript=dashboard.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-  if(!inlineScript)throw new Error('Dashboard script missing');
-  const scriptHash=createHash('sha256').update(inlineScript).digest('base64');
+  const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
+  const hasReactBuild=existsSync(builtDashboard);
+  const dashboard=readFileSync(hasReactBuild?builtDashboard:new URL('./dashboard.html',import.meta.url),'utf8');
+  const inlineScript=hasReactBuild?null:dashboard.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if(!hasReactBuild&&!inlineScript)throw new Error('Legacy dashboard script missing');
+  const scriptHash=inlineScript?createHash('sha256').update(inlineScript).digest('base64'):null;
   app.use('*',async(c,next)=>{
     await next();
     c.header('Cache-Control','no-store');
@@ -115,9 +117,23 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter())
   });
   app.use('/dashboard',async(c,next)=>{
     await next();
-    c.header('Content-Security-Policy',`default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+    c.header('Content-Security-Policy',hasReactBuild
+      ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      : `default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   });
   app.get('/dashboard',c=>c.html(dashboard));
+  // Serve only the build's hashed JS/CSS assets from localhost; no arbitrary paths.
+  app.get('/dashboard/assets/:file',c=>{
+    if(!hasReactBuild)return c.notFound();
+    const file=c.req.param('file');
+    if(!/^[A-Za-z0-9_.-]+\.(?:js|css)$/.test(file))return c.notFound();
+    const resource=new URL('../../web/dist/assets/'+file,import.meta.url);
+    if(!existsSync(resource))return c.notFound();
+    return new Response(new Uint8Array(readFileSync(resource)),{
+      status:200,headers:{'Content-Type':file.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8',
+        'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}
+    });
+  });
   app.get('/health', c => c.json({ status:'ok', phase:3 }));
   app.use('/v1/*', bodyLimit({maxSize:256_000,onError:c=>c.json({error:'Payload too large'},413)}));
   app.get('/v1/prices',async c=>{
