@@ -68,3 +68,11 @@ jobs:
           .browser-venv/bin/python scripts/browser-smoke.py
       - name: Live demo E2E (Docker PostgreSQL, authenticated API, SDK, Chromium)
         run: .browser-venv/bin/python scripts/live-demo-smoke.py
+      - name: Upload Arc UI review screenshots (synthetic data only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentmargin-arc-v03-review
+          path: ci-artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 7
