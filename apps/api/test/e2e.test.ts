@@ -81,7 +81,7 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
     await assert.rejects(db.query('DELETE FROM workspace_price_versions WHERE id=$1',[row.id]),/append-only/i);
     const shifted=await postPrice({...newPricing,effectiveFrom:'2026-11-01T00:00:00Z',inputMicrosPerMillion:'3000000'});
     assert.equal(shifted.status,201);
-    assert.equal((await db.query('SELECT calculated_cost_micros FROM usage_events WHERE event_id=$1',['priced-1'])).rows[0]?.calculated_cost_micros,'1000000',
+    assert.equal((await db.query<{calculated_cost_micros:string}>('SELECT calculated_cost_micros FROM usage_events WHERE event_id=$1',['priced-1'])).rows[0]?.calculated_cost_micros,'1000000',
       'New price cannot silently rewrite stored costs');
     await db.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1',[workspace]);
     assert.equal((await app.request('/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z',{headers:{authorization:'Bearer '+key}})).status,401);
