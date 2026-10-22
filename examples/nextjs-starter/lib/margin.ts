@@ -1,4 +1,4 @@
-import {AgentMarginClient} from '@agentmargin/sdk';
+import {AgentMarginClient} from '@makinohq/agentmargin';
 export const DEMO_CUSTOMER_ID='nextjs-demo-customer';
 
 /** Server-only. This is not a production auth solution. */

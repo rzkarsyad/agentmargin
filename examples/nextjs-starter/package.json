@@ -9,7 +9,7 @@
     "start": "next start --hostname 127.0.0.1"
   },
   "dependencies": {
-    "@agentmargin/sdk": "file:../../packages/sdk",
+    "@makinohq/agentmargin": "file:../../packages/sdk",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

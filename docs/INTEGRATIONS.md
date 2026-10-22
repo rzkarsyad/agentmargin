@@ -5,7 +5,7 @@
 ## Anthropic Messages usage
 
 ```ts
-import {AgentMarginClient} from '@agentmargin/sdk';
+import {AgentMarginClient} from '@makinohq/agentmargin';
 const margin=new AgentMarginClient({endpoint:'http://127.0.0.1:8787',apiKey:process.env.AGENTMARGIN_API_KEY!});
 const message=await anthropic.messages.create(/* your authenticated server-side call */);
 await margin.trackAnthropicMessage(message,trustedCustomerId,new Date().toISOString());

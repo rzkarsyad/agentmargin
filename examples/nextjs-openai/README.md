@@ -1,6 +1,6 @@
 # Next.js + OpenAI Responses integration recipe
 
-**This is an integration recipe, not a standalone Next.js app and not a production deployment.** It assumes an existing Next.js App Router application, user authentication, the official `openai` server SDK, and a checked-out AgentMargin workspace. The AgentMargin SDK is currently *source-first*, not on npm. Replace `@agentmargin/sdk` with the import/link strategy for your project until it is published.
+**This is an integration recipe, not a standalone Next.js app and not a production deployment.** It assumes an existing Next.js App Router application, user authentication, the official `openai` server SDK, and a checked-out AgentMargin workspace. The AgentMargin SDK is currently *source-first*, not on npm. Link the local `@makinohq/agentmargin` workspace package until its registry release is verified.
 
 ## Application requirements
 
@@ -15,7 +15,7 @@ Next.js defines server-side handlers in `app/api/.../route.ts`. The following il
 
 ```ts
 import OpenAI from 'openai';
-import { AgentMarginClient } from '@agentmargin/sdk'; // use your linked local SDK workspace
+import { AgentMarginClient } from '@makinohq/agentmargin'; // use your linked local SDK workspace
 import { requireAuthenticatedCustomerId } from '@/lib/auth'; // implement in your app!
 
 const openai = new OpenAI({apiKey: process.env.OPENAI_API_KEY!});

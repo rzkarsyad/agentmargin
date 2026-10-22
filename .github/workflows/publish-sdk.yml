@@ -38,7 +38,7 @@ jobs:
         run: npm install -g 'npm@^11.5.1'
       - run: npm ci
       - run: npm run check
-      - run: npm run build -w @agentmargin/sdk
+      - run: npm run build -w @makinohq/agentmargin
       - run: node scripts/sdk-package-smoke.mjs
       - name: Ensure tag and package match
         env:
@@ -51,4 +51,4 @@ jobs:
           console.log("Verified SDK version "+v);
           '
       - name: Publish prerelease to npm with provenance
-        run: npm publish --workspace @agentmargin/sdk --access public --provenance --tag alpha
+        run: npm publish --workspace @makinohq/agentmargin --access public --provenance --tag alpha
