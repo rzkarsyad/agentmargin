@@ -284,7 +284,7 @@ export function App(){
           {prices?.truncated&&<p className="notice">This listing contains only the newest 100 records.</p>}
         </section>
       </>}
-      <footer><span>AGENTMARGIN / LOCAL ALPHA</span><span>No credentials stored on this device · <a href="https://github.com/rzkarsyad/agentmargin" target="_blank" rel="noreferrer">Source code ↗</a></span></footer>
+      <footer><span>AGENTMARGIN / LOCAL ALPHA</span><span>API key held in browser memory only · <a href="https://github.com/rzkarsyad/agentmargin" target="_blank" rel="noreferrer">Source code ↗</a></span></footer>
     </main>
   </div>;
 }
