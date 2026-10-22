@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { calculateEventCost, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
+import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
 import { WorkspaceRateLimiter } from './rate-limit.ts';
 
 export interface IncomingEvent {
@@ -10,11 +10,20 @@ export interface IncomingEvent {
   inputTokens: number; outputTokens: number; cachedInputTokens?: number;
   reportedCostMicros?: string | null;
 }
-export interface StoredEvent { event: UsageEvent; payloadDigest: string; costMicros: bigint | null; source: string; priceId: string | null }
+export interface StoredEvent { event: UsageEvent; payloadDigest: string; costMicros: bigint | null; source: string; priceId: string | null; workspacePriceId?: string | null }
 export interface StoredRevenue { id:string; customerId:string; occurredAt:string; amountMicros:string; payloadDigest:string }
+export type ScopedPriceVersion = PriceVersion & { scope?: 'workspace' | 'legacy' };
+export interface PriceInput {
+  id:string; model:string; effectiveFrom:string; effectiveTo:string|null;
+  inputMicrosPerMillion:string; outputMicrosPerMillion:string;
+  cachedInputMicrosPerMillion:string|null; sourceNote:string;
+}
+export interface WorkspacePrice extends PriceInput {createdAt:string}
 export interface EventStore {
   authenticate(keyDigest: string): Promise<string | null>;
-  prices(model: string, timestamp: string): Promise<PriceVersion[]>;
+  prices(workspaceId: string, model: string, timestamp: string): Promise<ScopedPriceVersion[]>;
+  createPriceVersion?(workspaceId:string, creatorDigest:string, input:PriceInput):Promise<WorkspacePrice>;
+  listPriceVersions?(workspaceId:string):Promise<{items:WorkspacePrice[]; truncated:boolean}>;
   ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{ inserted: number; duplicate: number }>;
   ingestRevenue?(workspaceId:string, records: readonly StoredRevenue[]): Promise<{inserted:number;duplicate:number}>;
   analytics?(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>;
@@ -69,6 +78,28 @@ function parseRevenue(x:unknown):StoredRevenue{
   return {...canonical,payloadDigest:digest(JSON.stringify(canonical))};
 }
 
+function parsePriceInput(x:unknown):PriceInput {
+  if(!x||typeof x!=='object'||Array.isArray(x))throw new Error('Invalid price payload');
+  const raw=x as Record<string,unknown>;
+  const allowed=new Set(['model','effectiveFrom','effectiveTo','inputMicrosPerMillion','outputMicrosPerMillion','cachedInputMicrosPerMillion','sourceNote']);
+  if(Object.keys(raw).some(k=>!allowed.has(k)))throw new Error('Unexpected pricing field');
+  if(!validId(raw.model)||!validTime(raw.effectiveFrom))throw new Error('Invalid pricing model or effectiveFrom');
+  if(raw.effectiveTo!=null&&(!validTime(raw.effectiveTo)||Date.parse(raw.effectiveTo)<=Date.parse(raw.effectiveFrom)))
+    throw new Error('Invalid effectiveTo');
+  const rate=(v:unknown,nullable=false):string|null=>{
+    if(nullable&&v==null)return null;
+    if(typeof v!=='string'||!/^(?:0|[1-9]\d{0,18})$/.test(v)||BigInt(v)>MAX_DATABASE_MICROS)
+      throw new Error('Rates must be nonnegative integer USD-micro strings');
+    return BigInt(v).toString();
+  };
+  if(typeof raw.sourceNote!=='string'||raw.sourceNote.trim().length<3||raw.sourceNote.trim().length>500)
+    throw new Error('A sourceNote of 3-500 characters is required');
+  return {id:randomUUID(),model:raw.model,effectiveFrom:new Date(raw.effectiveFrom).toISOString(),
+    effectiveTo:raw.effectiveTo==null?null:new Date(raw.effectiveTo).toISOString(),
+    inputMicrosPerMillion:rate(raw.inputMicrosPerMillion)!,outputMicrosPerMillion:rate(raw.outputMicrosPerMillion)!,
+    cachedInputMicrosPerMillion:rate(raw.cachedInputMicrosPerMillion,true),sourceNote:raw.sourceNote.trim()};
+}
+
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter()) {
   const app = new Hono();
   const dashboard=readFileSync(new URL('./dashboard.html',import.meta.url),'utf8');
@@ -87,8 +118,36 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter())
     c.header('Content-Security-Policy',`default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   });
   app.get('/dashboard',c=>c.html(dashboard));
-  app.get('/health', c => c.json({ status:'ok', phase:2 }));
+  app.get('/health', c => c.json({ status:'ok', phase:3 }));
   app.use('/v1/*', bodyLimit({maxSize:256_000,onError:c=>c.json({error:'Payload too large'},413)}));
+  app.get('/v1/prices',async c=>{
+    const auth=c.req.header('authorization')??'';
+    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
+    const workspaceId=await store.authenticate(digest(auth.slice(7)));
+    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    if(!store.listPriceVersions)return c.json({error:'Pricing unavailable'},503);
+    return c.json(await store.listPriceVersions(workspaceId));
+  });
+  app.post('/v1/prices',async c=>{
+    const auth=c.req.header('authorization')??'';
+    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
+    const creatorDigest=digest(auth.slice(7));
+    const workspaceId=await store.authenticate(creatorDigest);
+    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    if(!store.createPriceVersion)return c.json({error:'Pricing unavailable'},503);
+    let payload:unknown;
+    try{payload=await c.req.json();}catch{return c.json({error:'Invalid JSON'},400);}
+    try {
+      const row=parsePriceInput(payload);
+      return c.json(await store.createPriceVersion(workspaceId,creatorDigest,row),201);
+    } catch(err){
+      if(err instanceof Error && err.message==='Pricing version exists')return c.json({error:err.message},409);
+      if(err instanceof Error && /^(Invalid |Unexpected pricing|Rates must|A sourceNote)/.test(err.message))return c.json({error:err.message},400);
+      throw err;
+    }
+  });
   app.get('/v1/analytics', async c=>{
     const auth=c.req.header('authorization')??'';
     if (!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth)) return c.json({error:'Unauthorized'},401);
@@ -143,8 +202,12 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter())
       if (new Set(entries.map(e=>e.event.id)).size !== entries.length) return c.json({error:'Duplicate ID in request'},400);
       const stored: StoredEvent[] = [];
       for (const entry of entries) {
-        const cost = calculateEventCost(entry.event,await store.prices(entry.event.model,entry.event.occurredAt));
-        stored.push({event:entry.event,payloadDigest:entry.payloadDigest,costMicros:cost.amountMicros,source:cost.source,priceId:cost.priceVersionId});
+        const available=await store.prices(workspaceId,entry.event.model,entry.event.occurredAt);
+        const cost=calculateEventCost(entry.event,available);
+        const chosen=available.find(p=>p.id===cost.priceVersionId);
+        stored.push({event:entry.event,payloadDigest:entry.payloadDigest,costMicros:cost.amountMicros,source:cost.source,
+          priceId:chosen?.scope==='workspace'?null:cost.priceVersionId,
+          workspacePriceId:chosen?.scope==='workspace'?chosen.id:null});
       }
       const result=await store.ingest(workspaceId,stored);
       return c.json({ ...result, received:entries.length },202);

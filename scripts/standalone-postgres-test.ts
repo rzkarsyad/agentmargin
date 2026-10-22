@@ -20,6 +20,7 @@ try {
   await pool.query(readFileSync(new URL('../db/001_initial.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/002_ingestion.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/003_revenue_ingestion.sql',import.meta.url),'utf8'));
+  await pool.query(readFileSync(new URL('../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
