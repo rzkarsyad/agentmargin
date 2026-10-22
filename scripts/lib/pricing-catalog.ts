@@ -67,3 +67,31 @@ export async function fetchCatalog(fetchImpl:typeof fetch=fetch):Promise<{catalo
  const catalog=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes)) as unknown;
  return {catalog,digest};
 }
+
+/** Deterministic review candidates only. No workspace rates are written.
+ * Unsupported tiers/precisions are excluded and counted, never rounded to zero.
+ */
+export function scanCatalogPrices(catalog:unknown,providers:readonly string[]=['openai','anthropic']):{
+ entries:CatalogPrice[]; skipped:number; scanned:number;
+}{
+ if(!catalog||typeof catalog!=='object'||Array.isArray(catalog))throw new Error('Invalid pricing catalog JSON');
+ const allowed=new Set(providers);
+ const entries:CatalogPrice[]=[];
+ let skipped=0,scanned=0;
+ for(const model of Object.keys(catalog).sort()){
+  const value=(catalog as Record<string,unknown>)[model];
+  if(!value||typeof value!=='object'||Array.isArray(value))continue;
+  const provider=(value as Record<string,unknown>).litellm_provider;
+  if(typeof provider!=='string'||!allowed.has(provider))continue;
+  scanned++;
+  try{
+   const price=chooseCatalogPrice(catalog,model,provider);
+   if(entries.length>=5000)throw new Error('Catalog scan exceeded candidate cap');
+   entries.push(price);
+  }catch(error){
+   if(error instanceof Error&&error.message==='Catalog scan exceeded candidate cap')throw error;
+   skipped++;
+  }
+ }
+ return {entries,skipped,scanned};
+}
