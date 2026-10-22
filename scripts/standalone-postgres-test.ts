@@ -101,19 +101,19 @@ try {
     SELECT $1,'bulk-rev-'||n::text,'bulk-'||lpad(n::text,4,'0'),
       '2026-10-10T00:00:00Z'::timestamptz,1000000
     FROM generate_series(1,125) AS n`,[workspace]);
-  const first=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20);
-  assert.equal(first.customers.length,20);
-  assert.equal(first.summary.customerCount,'126');
-  assert.equal(first.summary.totalRevenueMicros,'154000000');
-  assert.equal(first.summary.unknownCustomerCount,'0');
-  assert.equal(first.summary.completeContributionMicros,
-    (BigInt(first.summary.totalRevenueMicros)-BigInt(first.summary.totalKnownAiCostMicros)).toString());
-  assert.ok(first.nextCursor,'More customers must be accessible');
-  const second=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',
-    Buffer.from(first.nextCursor,'base64url').toString('utf8'),20);
-  assert.equal(second.customers.length,20);
-  assert.equal(second.summary.totalRevenueMicros,first.summary.totalRevenueMicros);
-  assert.equal(new Set([...first.customers,...second.customers].map(c=>c.customerId)).size,40);
+  const pageFirst=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20);
+  assert.equal(pageFirst.customers.length,20);
+  assert.equal(pageFirst.summary.customerCount,'126');
+  assert.equal(pageFirst.summary.totalRevenueMicros,'154000000');
+  assert.equal(pageFirst.summary.unknownCustomerCount,'0');
+  assert.equal(pageFirst.summary.completeContributionMicros,
+    (BigInt(pageFirst.summary.totalRevenueMicros)-BigInt(pageFirst.summary.totalKnownAiCostMicros)).toString());
+  assert.ok(pageFirst.nextCursor,'More customers must be accessible');
+  const pageSecond=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',
+    Buffer.from(pageFirst.nextCursor,'base64url').toString('utf8'),20);
+  assert.equal(pageSecond.customers.length,20);
+  assert.equal(pageSecond.summary.totalRevenueMicros,pageFirst.summary.totalRevenueMicros);
+  assert.equal(new Set([...pageFirst.customers,...pageSecond.customers].map(c=>c.customerId)).size,40);
   const pageA=await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&limit=20&workspaceId='+other,
     {headers:{authorization:'Bearer '+key}});
   assert.equal(pageA.status,200);
