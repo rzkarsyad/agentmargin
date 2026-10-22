@@ -36,16 +36,15 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         response = page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
         assert response and response.status == 200, "Dashboard HTTP response was not 200"
         assert "script-src 'self'" in response.headers.get("content-security-policy", "")
-        page.wait_for_selector(".hero h1", timeout=15_000)
+        page.wait_for_selector(".topline", timeout=15_000)
         assert page.evaluate("document.documentElement.dataset.theme") == "dark", "App is not in permanent dark mode"
         bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert bg == "rgb(16, 17, 19)", f"Expected neutral graphite background, got {bg}"
-        assert not page.locator(".heroArtwork").count(), "Decorative marketing artwork must be absent"
-        header_size = page.locator(".hero h1").evaluate("(node) => parseFloat(getComputedStyle(node).fontSize)")
-        assert header_size <= 32, f"Workspace header is too large: {header_size}px"
+        assert not page.locator(".hero, .heroArtwork").count(), "Marketing hero must not be rendered"
         assert page.locator(".distributionPanel").count() == 1, "Customer data chart missing"
-        heading_font = page.evaluate("getComputedStyle(document.querySelector('h1')).fontFamily")
-        assert "Inter" in heading_font and "serif" not in heading_font.split(",")[0].lower(), heading_font
+        assert page.locator(".metrics .metric").count() == 4, "Expected four compact KPIs"
+        font = page.evaluate("getComputedStyle(document.querySelector('.topline')).fontFamily")
+        assert "Inter" in font and "serif" not in font.split(",")[0].lower(), font
         page.locator("#key").fill(key)
         page.locator("#load").click()
         page.wait_for_function(
@@ -56,6 +55,8 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         assert page.locator("#rows tr").count() == customer_count
         assert page.locator(".uiIcon").count() >= 6, "Product navigation should use the outlined icon system"
         assert page.locator(".barUnverified").count() == unknown_count, "Unknown cost must be explicit in chart"
+        assert page.locator(".chartCustomer").count() == customer_count, "Only real customer categories allowed"
+        assert page.locator(".unverifiedBar").count() == unknown_count, "Unverified cost bars must be explicit"
         assert page.locator(".costIncomplete").count() == unknown_count, "Unknown cost must not read as verified $0"
         if width == 390:
             excess = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")

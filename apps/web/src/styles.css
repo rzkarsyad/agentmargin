@@ -186,4 +186,120 @@ footer a{color:#b9bac0;text-decoration:underline;text-underline-offset:3px}
 .barCostUnknown{background:repeating-linear-gradient(135deg,#30302e,#30302e 5px,#39352e 5px,#39352e 7px);outline:1px dashed #74614a;outline-offset:-1px}
 .barUnverified{color:#d4ad71;font-size:9px;font-weight:600;letter-spacing:.005em;line-height:1.1;margin-top:1px}
 
+
+
+/* v0.3 reference correction: ForgeUI-style dense neutral application dashboard.
+   This is original AgentMargin CSS using existing MIT Arc primitives.
+   No proprietary ForgeUI components or source are redistributed. */
+:root[data-theme="dark"],:root[data-theme="dark"][data-accent="neutral"]{
+  --background:#101113;--surface:#19191b;--surface-raised:#222225;
+  --surface-muted:#222326;--border:#2c2c30;--border-subtle:#252528;--border-strong:#404045;
+  --accent:#e2e2e4;--accent-strong:#fff;--accent-subtle:#29292d;
+  --success:#40b989;--warning:#dc9151;--danger:#e67b78;
+  --radius-control:6px;--radius-panel:7px;--radius-surface:8px;
+  --shadow-resting:none;--shadow-raised:none;
+}
+body{font-size:12px;color:#e9e9ea}
+.shell{grid-template-columns:193px minmax(0,1fr);background:#101113}
+.rail{padding:12px 10px 14px;background:#0d0e10;border-right-color:#29292c}
+.brand{font-size:14px;font-weight:650;margin:0 4px;gap:8px;letter-spacing:-.045em}
+.brandMark{width:25px;height:25px;border:0;border-radius:50%;background:none;color:#eaeaec}
+.brandMark .uiIcon{width:21px;height:21px}
+.railSection{margin-top:17px}.railLabel{font-size:9px;font-weight:600;letter-spacing:.065em;padding:0 9px 7px;color:#77777c}
+.navList{gap:2px}.navItem{font-size:11px;font-weight:480;padding:7px 9px;min-height:31px;gap:10px;border-radius:5px}
+.navItem.active{font-weight:590;border-color:#333337;background:#252528;box-shadow:none}
+.navItem:hover,.railLink:hover{background:#1d1d20}
+.navIcon{width:17px}.navIcon .uiIcon,.railLink .uiIcon{width:14px;height:14px}
+.railAnalytics{margin-top:26px}
+.railSupport{padding-top:15px;margin-top:17px;border-top-color:#252528}
+.railLink{font-size:11px;gap:9px;padding:8px 9px}
+.railBottom{padding:12px 7px;border-top-color:#262629}
+.instance{font-size:10px}.buildInfo{font-size:9px;margin:6px 0 0 15px;line-height:1.6}
+.instanceDot{background:#34b887;width:6px;height:6px}
+.main{padding:0 13px 23px;max-width:1700px}
+.topline{height:46px;border-bottom:0;margin-bottom:9px}
+.breadcrumbs{font-size:11px;gap:8px;color:#aaaab0}
+.topMetaLabel{display:none}.localBadge{border-radius:6px;background:#191a1c;border-color:#303033;padding:5px 8px;color:#a9a9ae}
+.hero{display:none}
+.queryBar{border-radius:7px;padding:0;margin-bottom:10px;border-color:#2e2e32;background:#18191b}
+.queryHeader{margin:0;padding:8px 11px;min-height:33px}
+.queryHeader>div{display:flex;align-items:center;gap:7px;color:#c7c7cb;font-size:10px}
+.queryHeader span{color:inherit}.queryHeader .instanceDot{width:6px;height:6px}
+.emptyDot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#777}
+.connectionToggle{font-size:10px;color:#a5a5aa;background:transparent;border:0;padding:3px;cursor:pointer}
+.connectionToggle:hover{color:#f2f2f2}
+.authBar{padding:9px 11px 11px;border-top:1px solid #303034;gap:9px}
+.authBar.accessHidden{display:none}
+.authField{flex:1.4 1 230px}.dateField{gap:5px;min-width:127px;flex:.55 1 132px}
+.dateField label{font-size:10px;color:#a5a5ab}.dateField input{height:34px;border-radius:5px;background:#111214;border-color:#35353a}
+.authButton>button{height:34px;min-height:34px;border-radius:5px;font-size:11px;font-weight:630;background:#e2e2e4;color:#161618;border-color:#e2e2e4}
+.alert{font-size:10px;border-radius:5px;padding:8px 11px;margin:8px 0}
+.metrics{gap:0;background:#19191b;border:1px solid #2c2c30;border-radius:8px;overflow:hidden;margin:0 0 11px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.metric{border:0;border-radius:0;min-height:96px;padding:12px 14px;gap:4px;border-right:1px solid #303034;background:transparent}
+.metric:last-child{border-right:0}
+.metricTop>span:first-child{font-size:11px;font-weight:530;color:#acacb1}
+.metric strong{font-size:clamp(19px,1.85vw,25px);line-height:1.22;font-weight:620;letter-spacing:-.055em}
+.metric small{font-size:10px;color:#89898e}
+.analysisGrid{grid-template-columns:minmax(0,2fr) minmax(220px,.88fr);gap:11px;margin-bottom:11px}
+.surface{background:#19191b;border:1px solid #2c2c30;border-radius:8px}
+.panelHeading{padding:12px 13px 10px;gap:10px;align-items:flex-start}
+.panelHeading h2{font-size:12px;font-weight:610;margin:0 0 3px}
+.panelHeading p{font-size:10px;color:#84848a;line-height:1.45}
+.legend{font-size:10px;gap:10px}.legendRevenue{background:#d99253}.legendCost{background:#80848b}.unknownDot{background:#d99253}
+.legendGood{background:#27966d}.legendLoss{background:#b45d57}
+.legendGood,.legendLoss{display:inline-block;width:8px;height:8px;border-radius:2px}
+.distributionPanel{min-height:259px;position:relative;display:flex;flex-direction:column}
+.barChart{display:grid;grid-template-columns:30px minmax(0,1fr);gap:9px;padding:3px 13px 0 10px;flex:1;min-height:175px;align-content:stretch}
+.chartAxis{height:170px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;font-size:9px;color:#6d6d72}
+.chartStage{height:170px;position:relative;min-width:0}
+.chartGridlines{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.chartGridlines i{display:block;height:0;border-top:1px dashed #303035}
+.chartBars{position:absolute;inset:0;display:flex;align-items:stretch;justify-content:space-around;gap:7px;padding:0 7px}
+.chartCustomer{min-width:0;flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.chartPair{height:144px;min-width:0;width:100%;max-width:63px;display:flex;align-items:flex-end;justify-content:center;gap:4px}
+.chartPair>div{width:27%;max-width:19px;min-width:6px;border-radius:3px 3px 0 0}
+.chartRevenue{background:linear-gradient(180deg,#e1a067,#ac693e)}
+.chartCost{background:linear-gradient(180deg,#969a9f,#5b5d64)}
+.chartCost.unverifiedBar{outline:1px dashed #d39a65;outline-offset:2px}
+.chartLabel{max-width:100%;height:22px;line-height:22px;font-size:9px;color:#96969a;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barUnverified{font-size:8px;margin-top:-1px;display:none}
+.panelEmpty{min-height:0;position:absolute;inset:48px 30px 24px 55px;z-index:1;background:#19191b;display:grid;place-items:center;text-align:center;padding:12px;font-size:11px;color:#89898e}
+.distributionPanel .panelFoot{margin-top:auto}
+.panelFoot{font-size:9px;color:#87878c;padding:10px 13px;border-color:#2d2d30}
+.coveragePanel{min-height:259px}
+.coverageCount{display:flex;align-items:baseline;gap:8px;padding:9px 13px 12px}
+.coverageCount strong{font-size:28px;font-weight:620}
+.coverageCount>span{font-size:10px;color:#89898e}
+.coverageTrack{display:flex;gap:0;height:10px;background:#303034;border-radius:3px;margin:0 13px 13px;overflow:hidden}
+.coverageTrack>div{height:100%;flex:none;min-width:0}
+.coverageGood{background:#29976c}.coverageLoss{background:#ba6861}.coverageUnknown{background:#d18f52}
+.coverageList{display:grid;gap:0;margin:0 13px 9px}
+.coverageList>div{font-size:11px;padding:8px 0;border-bottom:1px solid #2b2b30}
+.coverageList>div:last-child{border:0}
+.tableSurface{margin-bottom:11px}
+.tableToolbar{padding:0 12px 9px;gap:9px}
+.customerSearch{flex:0 1 200px;min-height:30px;border-radius:5px;background:#141416;padding:0 9px}
+.customerSearch>span{font-size:15px}.customerSearch input{font-size:10px}
+.tableScroll{overflow:auto;max-width:100%}
+table{font-size:11px}
+th,td{padding:8px 12px;height:33px;border-color:#2d2d30}
+th{letter-spacing:.015em;text-transform:none;background:#1f1f22;font-size:10px;font-weight:540;color:#96969a}
+td{color:#d0d0d4}td:first-child,th:first-child{padding-left:13px}td:last-child,th:last-child{padding-right:13px}
+.customerId{font-weight:560}
+.customerId:has(.customerAvatar){display:table-cell}
+.countLabel{font-size:10px}
+.tableEmpty{padding:23px 10px;font-size:11px}
+.costIncomplete{font-size:11px;color:#dda66f}
+.gainText{color:#4fbd90}.lossText{color:#ed8380}.warningText{color:#dfa265}
+.pricingGrid{gap:11px;margin-bottom:11px}
+.priceForm{gap:12px;padding:14px}
+.fieldRow{gap:11px}.formFooter{padding-top:13px}
+.formFooter>button{background:#e2e2e4;color:#171718;border-color:#e2e2e4;border-radius:5px}
+.rule{padding:14px 13px;gap:10px}.rule p{font-size:10px}
+footer{padding:11px 0;font-size:9px}
+@media(max-width:1100px){.analysisGrid{grid-template-columns:minmax(0,1.5fr) minmax(205px,.82fr)}.metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.pricingGrid{grid-template-columns:1fr}}
+@media(max-width:880px){.analysisGrid{grid-template-columns:1fr}.coveragePanel{min-height:auto}.chartGridlines,.chartStage,.chartAxis{height:165px}.chartPair{height:139px}}
+@media(max-width:750px){.shell{grid-template-columns:1fr}.rail{padding:12px 13px 9px}.railAnalytics,.railSupport,.railBottom{display:none}.railSection{margin-top:10px}.navList{gap:5px}.navItem{min-height:31px;padding:6px 9px}.main{padding:0 11px 23px}.topline{height:45px;margin-bottom:8px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{min-height:88px;padding:10px 12px}.metric:nth-child(2){border-right:0}.metric:nth-child(-n+2){border-bottom:1px solid #303034}.analysisGrid{gap:10px}.barChart{padding-right:8px}.authButton{flex:1 1 100%}.authButton button{width:100%}}
+@media(max-width:480px){.metric strong{font-size:21px}.panelHeading{padding:11px}.chartAxis{font-size:8px}.chartBars{gap:4px}.chartPair{gap:3px}.chartLabel{font-size:8px}.tableToolbar{padding:0 10px 9px}.customerSearch{width:100%;flex:1 1 100%}.queryHeader{padding:7px 9px}.authBar{padding:9px}.coverageCount{padding:7px 11px}.coverageTrack{margin:0 11px 11px}.coverageList{margin:0 11px 8px}footer{padding-top:10px}}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}

@@ -91,6 +91,7 @@ export function App(){
   const [working,setWorking]=useState(false);
   const [segment,setSegment]=useState('all');
   const [customerSearch,setCustomerSearch]=useState('');
+  const [accessOpen,setAccessOpen]=useState(true);
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
   const change=(field:keyof typeof blankPrice,value:string)=>setDraft(old=>({...old,[field]:value}));
@@ -101,7 +102,7 @@ export function App(){
       const start=utcStart(from),endDate=new Date(utcStart(to));
       endDate.setUTCDate(endDate.getUTCDate()+1);
       const result=await fetchJson<Analytics>('/v1/analytics?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(endDate.toISOString()),key.trim());
-      setAnalytics(result);
+      setAnalytics(result);setAccessOpen(false);
       setMessage(result.truncated?'Partial results: customer list is truncated. Displayed sums are not workspace-wide.':'Analytics updated for your local workspace.');
     }catch(e){setError(e instanceof Error?e.message:'Analytics request failed');setMessage('');}
     finally{setWorking(false);}
@@ -111,7 +112,7 @@ export function App(){
     setWorking(true);setError('');setMessage('Loading price history…');
     try{
       const result=await fetchJson<Prices>('/v1/prices',key.trim());
-      setPrices(result);
+      setPrices(result);setAccessOpen(false);
       setMessage(result.truncated?'Only the newest 100 versions are shown.':'Price history updated.');
     }catch(e){setError(e instanceof Error?e.message:'Pricing request failed');setMessage('');}
     finally{setWorking(false);}
@@ -145,6 +146,8 @@ export function App(){
   }
   const customers=analytics?.customers??[];
   const knownCustomers=customers.filter(c=>c.unknownEvents===0);
+  const profitableCount=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)>0n).length;
+  const lossCount=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)<=0n).length;
   const profitable=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)>0n).length;
   const atRisk=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)<=0n).length;
   const coverage=customers.length?Math.round(100*knownCustomers.length/customers.length):null;
@@ -174,6 +177,13 @@ export function App(){
           <button type="button" className={view==='pricing'?'navItem active':'navItem'} aria-current={view==='pricing'?'page':undefined} onClick={()=>switchTab('pricing')}><span className="navIcon" aria-hidden="true"><UIIcon name="pricing"/></span> Model pricing</button>
         </nav>
       </div>
+      <div className="railSection railAnalytics">
+        <div className="railLabel">ANALYTICS</div>
+        <nav className="navList" aria-label="Analytics links">
+          <button type="button" className="navItem" onClick={()=>{switchTab('overview');requestAnimationFrame(()=>document.getElementById('economics-title')?.scrollIntoView({block:'start'}));}}><span className="navIcon"><UIIcon name="overview"/></span> Customer activity</button>
+          <button type="button" className="navItem" onClick={()=>{switchTab('overview');requestAnimationFrame(()=>document.getElementById('missing-panel')?.scrollIntoView({block:'start'}));}}><span className="navIcon"><UIIcon name="unknown"/></span> Pricing gaps</button>
+        </nav>
+      </div>
       <div className="railSection railSupport">
         <div className="railLabel">RESOURCES</div>
         <a className="railLink" href="https://github.com/rzkarsyad/agentmargin/blob/main/README.md" target="_blank" rel="noreferrer"><span aria-hidden="true"><UIIcon name="docs"/></span> Documentation <span aria-hidden="true" className="external">↗</span></a>
@@ -188,18 +198,11 @@ export function App(){
     <main className="main">
       <header className="topline">
         <div className="breadcrumbs"><span>Workspace</span><span className="crumbDivider">/</span><strong>{view==='overview'?'Overview':'Model pricing'}</strong></div>
-        <div className="topMeta"><span className="topMetaLabel">SELF-HOSTED</span><span className="localBadge"><span className="instanceDot"/> Local</span></div>
+        <div className="topMeta"><span className="localBadge"><span className="instanceDot"/> Local instance</span></div>
       </header>
-      <section className="hero">
-        <div><h1>{view==='overview'?'Overview':'Model pricing'}</h1>
-          <p className="lede">{view==='overview'?'Monitor customer-level AI costs, contribution and coverage.':'Manage workspace-specific model rates and their effective dates.'}</p>
-        </div>
-        <div className="heroContext"><span className="contextDot"/> {view==='overview'?'Customer economics':'Immutable rate history'}</div>
-      </section>
-
       <section className="queryBar" aria-label="Workspace controls">
-        <div className="queryHeader"><strong>Workspace access</strong><span>API key stays in this browser tab</span></div>
-        <div className="authBar">
+        <div className="queryHeader"><div><span className={analytics||prices?'instanceDot':'emptyDot'}/> {analytics||prices?'Workspace connected':'Connect your workspace'}</div><button type="button" className="connectionToggle" onClick={()=>setAccessOpen(v=>!v)} aria-expanded={accessOpen}>{accessOpen?'Hide controls':'Change connection'}</button></div>
+        <div className={accessOpen?'authBar':'authBar accessHidden'}>
           <div className="authField"><Input id="key" label="Workspace API key" type="password" value={key} onChange={e=>{setKey(e.target.value);setAnalytics(null);setPrices(null);}} autoComplete="off" placeholder="am_..." /></div>
           {view==='overview'&&<>
             <div className="dateField"><label htmlFor="period-from">From (UTC)</label><input id="period-from" type="date" value={from} onChange={e=>setFrom(e.target.value)}/></div>
@@ -213,54 +216,51 @@ export function App(){
 
       {view==='overview'?<>
         <section className="metrics" aria-label="Customer economics summary">
-          <div className="metric"><div className="metricTop"><span>Customer revenue</span><span aria-hidden="true" className="metricIcon"><UIIcon name="revenue"/></span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>Selected customers</small></div>
-          <div className="metric"><div className="metricTop"><span>Known AI cost</span><span aria-hidden="true" className="metricIcon"><UIIcon name="cost"/></span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
-          <div className="metric"><div className="metricTop"><span>Verified contribution</span><span aria-hidden="true" className="metricIcon"><UIIcon name="contribution"/></span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
-          <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span><span aria-hidden="true" className="metricIcon"><UIIcon name="unknown"/></span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
+          <div className="metric"><div className="metricTop"><span>Customer revenue</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>Selected customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Known AI cost</span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
+          <div className="metric"><div className="metricTop"><span>Verified contribution</span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
         </section>
 
         <div className="analysisGrid">
           <section className="surface distributionPanel" aria-labelledby="distribution-title">
-            <div className="panelHeading">
-              <div><h2 id="distribution-title">Revenue &amp; AI cost</h2><p>By customer · selected period</p></div>
-              <div className="legend"><span><i className="legendRevenue"/> Revenue</span><span><i className="legendCost"/> Known AI cost</span></div>
+            <div className="panelHeading"><div><h2 id="distribution-title">Customer economics</h2><p>Revenue and verified inference costs by customer</p></div><div className="legend"><span><i className="legendRevenue"/> Revenue</span><span><i className="legendCost"/> Known AI cost</span></div></div>
+            <div className="barChart" role="img" aria-label="Customer revenue and known inference cost comparison">
+              <div className="chartAxis" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+              <div className="chartStage"><div className="chartGridlines" aria-hidden="true"><i/><i/><i/><i/><i/></div>
+                <div className="chartBars">{customers.slice(0,8).map(c=><div className="chartCustomer" key={c.customerId} title={c.customerId+' · Revenue '+money(c.revenueMicros)+' · Known AI cost '+money(c.knownAiCostMicros)}>
+                  <div className="chartPair"><div className="chartRevenue" style={{height:percent(c.revenueMicros)}}/><div className={c.unknownEvents>0?'chartCost unverifiedBar':'chartCost'} style={{height:percent(c.knownAiCostMicros)}}/></div>
+                  <span className="chartLabel">{c.customerId}</span>{c.unknownEvents>0&&<span className="barUnverified" title="Cost unverified">Unverified</span>}
+                </div>)}</div>
+              </div>
             </div>
-            <div className="barChart">
-              {analytics&&customers.length>0?customers.slice(0,6).map(c=><div className="barRow" key={c.customerId}>
-                <span className="barLabel" title={c.customerId}>{c.customerId}</span>
-                <div className="barTrackGroup">
-                  <div className="barTrack"><div className="barFill revenueFill" style={{width:percent(c.revenueMicros)}}/></div>
-                  <div className={c.unknownEvents>0?"barTrack barCostUnknown":"barTrack"}><div className="barFill costFill" style={{width:percent(c.knownAiCostMicros)}}/></div>
-                  {c.unknownEvents>0&&<span className="barUnverified">Cost unverified</span>}
-                </div>
-                <span className="barValue">{money(c.revenueMicros)}</span>
-              </div>):<div className="panelEmpty">Load your analysis to see the customer-level comparison.</div>}
-            </div>
-            <div className="panelFoot">Known inference cost only · up to 6 displayed customers · no historical trend implied</div>
+            {(!analytics||customers.length===0)&&<div className="panelEmpty">{analytics?'No customers in this period.':'Load analysis to show a real customer cost comparison.'}</div>}
+            <div className="panelFoot">Customer categories, not a historical trend · Up to 8 customers · Unknown is never $0</div>
           </section>
           <section className="surface coveragePanel" aria-labelledby="coverage-title">
-            <div className="panelHeading"><div><h2 id="coverage-title">Cost coverage</h2><p>Verified AI cost per customer</p></div></div>
-            <div className="coverageCount"><strong>{coverage===null?'—':coverage+'%'}</strong><span>Customers with complete cost data</span></div>
-            <div className="coverageTrack" aria-label={coverage===null?'Cost coverage not loaded':coverage+' percent of customers have complete costs'}>
-              <div className="coverageFill" style={{width:(coverage??0)+'%'}} />
+            <div className="panelHeading"><div><h2 id="coverage-title">Cost coverage</h2><p>Share of customers with known costs</p></div><span className="countLabel">{coverage===null?'—':coverage+'%'}</span></div>
+            <div className="coverageCount"><strong>{analytics?knownCustomers.length:'—'}</strong><span>of {analytics?customers.length:'—'} customers verified</span></div>
+            <div className="coverageTrack" aria-label={coverage===null?'No cost coverage loaded':'Verified coverage '+coverage+' percent'}>
+              {customers.length>0&&<><div className="coverageGood" style={{width:(profitableCount/customers.length*100)+'%'}}/><div className="coverageLoss" style={{width:(lossCount/customers.length*100)+'%'}}/><div className="coverageUnknown" style={{width:(unknown/customers.length*100)+'%'}}/></>}
             </div>
-            <div className="coverageList"><div><span><i className="legendRevenue"/> Complete</span><strong>{analytics?knownCustomers.length:'—'}</strong></div><div><span><i className="unknownDot"/> Unknown</span><strong>{analytics?unknown:'—'}</strong></div></div>
-            <div className="panelFoot">{analytics?.truncated?'Based only on displayed customers; results truncated.':'Customer-based coverage, not a percentage of total spend.'}</div>
+            <div className="coverageList"><div><span><i className="legendGood"/> Profitable</span><strong>{analytics?profitableCount:'—'}</strong></div><div><span><i className="legendLoss"/> Loss-making</span><strong>{analytics?lossCount:'—'}</strong></div><div><span><i className="unknownDot"/> Unverified</span><strong>{analytics?unknown:'—'}</strong></div></div>
+            <div className="panelFoot">{analytics?.truncated?'Customer results truncated.':'Customer-based coverage, not a share of total AI spend.'}</div>
           </section>
         </div>
 
         <section className="surface tableSurface" aria-labelledby="economics-title">
-          <div className="panelHeading"><div><h2 id="economics-title">Customer economics</h2><p>Revenue, known inference costs and customer contribution</p></div><span id="count" className="countLabel">{analytics?(customers.length+(analytics.truncated?'+':'')):'0'} customers</span></div>
+          <div className="panelHeading"><div><h2 id="economics-title">Customer activity</h2><p>Customer-level revenue, AI cost and contribution</p></div><span id="count" className="countLabel">{analytics?(customers.length+(analytics.truncated?'+':'')):'0'} customers</span></div>
           <div className="tableToolbar">
             <div className="customerSearch"><span aria-hidden="true">⌕</span><input aria-label="Search customers" placeholder="Search customers" value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)}/></div>
             <SegmentedControl label="Customer status filter" value={segment} onValueChange={setSegment} options={[{value:'all',label:'All'},{value:'profitable',label:'Profitable'},{value:'at-risk',label:'At risk'},{value:'unknown',label:'Unknown'}]}/>
           </div>
-          <div className="tableScroll"><table><thead><tr><th>Customer</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Coverage</th></tr></thead><tbody id="rows">
+          <div className="tableScroll"><table><thead><tr><th>Customer</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Usage</th><th>Coverage</th></tr></thead><tbody id="rows">
             {visibleCustomers.map(c=><tr key={c.customerId}>
-              <td className="customerId"><span className="customerAvatar">{c.customerId.slice(0,1).toUpperCase()}</span><span>{c.customerId}</span></td>
+              <td className="customerId"><span>{c.customerId}</span></td>
               <td>{money(c.revenueMicros)}</td><td title={c.unknownEvents>0?"Partial known cost: remaining inference usage is unverified":"All usage costs are verified"} className={c.unknownEvents>0?"costIncomplete":undefined}>{c.unknownEvents>0&&BigInt(c.knownAiCostMicros)===0n?"Unverified":money(c.knownAiCostMicros)}{c.unknownEvents>0&&BigInt(c.knownAiCostMicros)>0n?" + unknown":""}</td>
               <td className={c.contributionMicros===null?'warningText':BigInt(c.contributionMicros)<0n?'lossText':'gainText'}>{c.contributionMicros===null?'Unknown':money(c.contributionMicros)}</td>
               <td>{c.marginBasisPoints===null?'—':(Number(c.marginBasisPoints)/100).toFixed(2)+'%'}</td>
+              <td>{c.usageEvents}</td>
               <td><Badge tone={c.unknownEvents?'warning':'success'} size="sm">{c.unknownEvents?'Incomplete':'Complete'}</Badge></td>
             </tr>)}
           </tbody></table></div>
