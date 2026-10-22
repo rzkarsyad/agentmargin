@@ -12,10 +12,12 @@ The build runs in CI and produces `apps/web/dist`, which the local Hono API serv
 
 See `apps/web/ARC_LICENSE.txt` for the upstream free-source MIT license.
 
-## Dark-first design (v0.3 draft)
+## Reference-led product interface (v0.3 draft)
 
-The complete application uses **permanent dark mode**, not just Arc components with dark props. `apps/web/index.html` selects `data-theme="dark"` and `apps/web/src/styles.css` maps Arc tokens to the AgentMargin palette: near-black canvas, graphite surfaces, muted borders, lime accents, warm warning states. System sans-serif typography is explicitly set on the root/body to prevent default serif fallback.
+The v0.3 dashboard is an intentionally **neutral charcoal/graphite SaaS workspace**, not a marketing landing page. It uses the genuine free, MIT-licensed Arc UI Button, Input, Badge and Segmented Control sources while retaining the financial/API contract.
 
-The restructured dashboard includes a filterable customer table, real customer-based cost coverage, financial signals, unknown-cost model diagnostics, and a fully dark pricing editor. No analytics numbers are fabricated. A truncated customer table is marked as partial. Component keyboard controls and reduced-motion handling remain enabled.
+The app avoids decorative hero graphics, neon accent blocks, made-up growth metrics, and invented time-series charts. Instead it shows compact KPI cards, a real **per-customer revenue versus known AI cost** bar comparison, a customer-based cost-coverage summary, filtering/search and an auditable pricing table. Colors are used sparingly for contribution, negative performance, and unknown-data warnings.
 
-**Visual validation:** CI's live Chromium E2E asserts permanent dark theme and sans-serif typography, verifies financial totals and the pricing form, and uploads synthetic desktop/mobile screenshots as run artifacts. View them in the PR's latest GitHub Actions run.
+Dark mode is permanent (`data-theme="dark"`) and the page uses native system sans-serif typography. Live Chromium CI asserts a compact header, charcoal background, accessible API flow and the absence of promotional hero artwork.
+
+The layout direction was rewritten after explicit maintainer rejection of the earlier lime-and-marketing presentation. Visual sign-off is still required before merge.

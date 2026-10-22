@@ -39,7 +39,11 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         page.wait_for_selector(".hero h1", timeout=15_000)
         assert page.evaluate("document.documentElement.dataset.theme") == "dark", "App is not in permanent dark mode"
         bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
-        assert bg == "rgb(11, 14, 18)", f"Expected the dark dashboard background, got {bg}"
+        assert bg == "rgb(16, 17, 19)", f"Expected neutral graphite background, got {bg}"
+        assert not page.locator(".heroArtwork").count(), "Decorative marketing artwork must be absent"
+        header_size = page.locator(".hero h1").evaluate("(node) => parseFloat(getComputedStyle(node).fontSize)")
+        assert header_size <= 32, f"Workspace header is too large: {header_size}px"
+        assert page.locator(".distributionPanel").count() == 1, "Customer data chart missing"
         heading_font = page.evaluate("getComputedStyle(document.querySelector('h1')).fontFamily")
         assert "Inter" in heading_font and "serif" not in heading_font.split(",")[0].lower(), heading_font
         page.locator("#key").fill(key)
