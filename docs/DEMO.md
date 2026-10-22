@@ -1,4 +1,4 @@
-# One-command local demo — v0.2 candidate
+# One-command local demo — v0.2.0-alpha
 
 This workflow is an **experimental, localhost-only, synthetic-data preview**. It is not an internet-facing deployment and should not be given real customer data.
 
@@ -54,7 +54,7 @@ For a different loopback PostgreSQL port, set `AGENTMARGIN_DEMO_DB_PORT=55433` o
 ## Verification
 
 - `npm run check` — unit, core, API and demo seeding tests, plus TypeScript typecheck
-- GitHub CI — also verifies PostgreSQL concurrency, source secrets, dependencies, and a mocked-API Chromium smoke test
+- GitHub CI — also verifies PostgreSQL concurrency, source secrets, dependencies, a mocked-API Chromium smoke test, and a full live-stack Docker/PostgreSQL/API/SDK/Chromium test
 - `bash -n scripts/demo-local.sh` — shell syntax check
 
 - `scripts/live-demo-smoke.py` — CI-only live end-to-end smoke test: launches `npm run demo` on an isolated GitHub runner, checks real HTTP authentication and seeded financial totals in Chromium (desktop + mobile), submits a synthetic event with the OpenAI SDK helper, verifies the updated dashboard, and stops the demo. The generated key is held in memory and redacted from diagnostics. This is not a production deployment or penetration test.
