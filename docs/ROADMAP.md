@@ -1,53 +1,66 @@
-# Roadmap — AgentMargin
+# AgentMargin — Roadmap and release gates
 
-**Vision:** Help developers answer “Which AI customers are profitable?” with attributable, auditable usage and revenue—not just a token-spend total.
+**Vision:** give builders trustworthy, attributable customer-level AI inference and revenue economics—not just a total token bill.
 
-This is a direction of work, not a delivery promise. We prioritize problems supported by real user feedback.
+**Latest tagged release:** [v0.3.0-alpha](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.3.0-alpha).
+**Current main branch:** contains later experimental source commits (v0.4–v0.6 foundations) that are **not** tagged as npm/production/stable releases.
 
-## v0.1.0-alpha — foundational core (released)
+## Delivered and released
 
-- [x] Deterministic inference cost and customer-level contribution calculation
-- [x] Workspace-scoped, idempotent PostgreSQL usage/revenue ingestion
-- [x] OpenAI post-call usage helpers and local analytics
-- [x] Standalone PostgreSQL concurrency, source scanning, dependency audit, mocked-browser CI
-- [ ] Verify first-time contributor completes the quickstart without help
-- [ ] Collect 5 detailed developer interviews or written workflows
-- [ ] Get 3 developers to independently run a local demo and report where setup breaks
-- [ ] Publish clear security limitations and triage reported issues
+| Version | What shipped | Evidence |
+| --- | --- | --- |
+| v0.1 alpha | Exact cost engine, tenant-scoped ingestion, idempotent usage/revenue records, baseline PostgreSQL tests | [Release](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.1.0-alpha) |
+| v0.2 alpha | One-command local demo, OpenAI usage helpers, unknown-cost diagnostics, live local E2E | [Release](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.2.0-alpha) |
+| v0.3 alpha | Workspace pricing with effective dates/immutable history, React+Arc compact dark dashboard, local integration testing | [Release](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.3.0-alpha) |
 
-## v0.2.0-alpha — make setup genuinely effortless
+## Implemented on main — not yet tagged/published
 
-- [x] Single-command local demo with seeded synthetic data, verified on OrbStack and GitHub Actions
-- [x] Synthetic OpenAI Responses tracking fixture that does not send prompts/outputs
-- [x] Tenant-scoped unknown-cost model diagnostics with bounded results and safe HTML rendering
-- [ ] Provider pricing import workflow with auditable effective dates and version pinning
-- [x] CI coverage for live Docker PostgreSQL + local API + SDK + desktop/mobile Chromium
-- [x] Source-first Node/OpenAI example and a Next.js App Router integration recipe (not a packaged starter app)
+### v0.4 — developer adoption foundation (PR #5 merged)
 
-## v0.3.0-alpha — pricing integrity and compact dark dashboard
+- [x] Build compiled SDK ESM + TypeScript declarations and verify npm tarball contents.
+- [x] Build a runnable Next.js App Router demo that can send synthetic usage/revenue; optional server-side OpenAI request.
+- [x] Document security and onboarding, verify Next.js production build and dependency audit in CI.
+- [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
+- [ ] **Publish SDK to npm:** requires `@agentmargin` scope ownership and npm OIDC trusted publisher. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
+- [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 
-- [x] Append-only workspace price versions with audited source notes, effective dates, and authenticated workspace scoping
-- [x] Frontend migration from inline HTML to React 19/Vite with free MIT Arc UI primitives and a compact dark dashboard
-- [x] Verify pricing creation/list, workspace isolation, immutable stored costs and real Chromium form behavior in CI
-- [ ] Independent Mac/OrbStack acceptance of the **final v0.3 build** (GitHub Actions local Docker E2E passed; Mac run not yet confirmed for this final build)
+**Important:** catalog import is not an unattended official provider feed. An operator must review and explicitly apply the rates. Official invoice reconciliation is not shipped.
 
-## Later: make it useful for real teams
+### v0.5 — analytics accuracy foundation (PR #6 merged)
 
-- [ ] Safer tenant isolation and least-privilege production database roles (assess RLS)
-- [ ] Production ingress/TLS, distributed unauthenticated rate limiting, observability
-- [ ] Backup and restore drills, retention/export/delete policies, incident response
-- [ ] Billing system integrations such as Stripe (only after attribution semantics are clear)
-- [ ] Multi-model/provider coverage and reconciliation with provider invoices
-- [ ] Paginated analytics and server-computed workspace totals
+- [x] Server-computed, whole-workspace exact financial totals with clear unknown-cost semantics.
+- [x] Tenant-scoped customer **keyset pagination**, 1–100 results per page, with a consistent snapshot within each API call.
+- [x] Update dashboard to use whole-workspace KPIs instead of summing a truncated table.
+- [x] Test more than 125 customer records, cursor boundaries and cross-workspace totals in PostgreSQL.
+- [ ] Audit live provider invoice variances/tiered usage and verify real business accounting semantics.
+- [ ] Decide pricing-catalog update approval policy before allowing unattended provider imports.
 
-## Not now
+### v0.6 — integrations foundation (PR #7 merged)
 
-Hosted SaaS billing, predictive AI recommendations, multi-user RBAC, a no-code instrumentation promise, and speculative dashboards. Avoid adding surface area before real users complete the core tracking loop.
+- [x] Post-call Anthropic Messages adapter; safely rejects unsupported cache-creation billing tiers.
+- [x] Signed Stripe USD `invoice.paid` conversion to idempotent AgentMargin revenue records (local test receiver), with signature/timestamp and boundary tests.
+- [ ] **Live Stripe sandbox, refund/credit/currency reconciliation**, durable retries and multi-account mapping. [Gate #9](https://github.com/rzkarsyad/agentmargin/issues/9).
+- [ ] Expand provider coverage based on real integrations requested, not speculative adapters.
 
-## Give input
+## Next: v0.7–v0.9 — production hardening (NOT DONE)
 
-Share a use case in [GitHub Issues](https://github.com/rzkarsyad/agentmargin/issues/new?template=feedback.yml). Helpful reports say:
-- What type of AI application are you building (without customer information)?
-- How do you identify a customer for accounting?
-- Where do you get revenue and model usage today?
-- What did you try, and where did you get stuck?
+The following work is **mandatory before** any production internet deployment. Track detailed evidence and acceptance checks in [Security & reliability gate #10](https://github.com/rzkarsyad/agentmargin/issues/10).
+
+- **v0.7:** independent tenant threat model; PostgreSQL least-privilege role/RLS assessment; authenticated gateway, TLS, unauthenticated and distributed abuse controls.
+- **v0.8:** monitored, encrypted backups and **restore drills**; privacy lifecycle, export/deletion policy, structured redacted logging, alerts, incident handling.
+- **v0.9:** pricing/provider bill reconciliation, refunds and revenue adjustments, data migrations with rollback tests, resilience/load and recovery scenarios.
+
+## v1.0 — stable release (NOT DONE)
+
+Only tag v1.0 when all of these **external and technical** gates have independent evidence:
+1. Real developers have installed and exercised the core integration loop without maintainer help.
+2. Public SDK registry artifact is verified, released with provenance, and API contracts/version compatibility documented.
+3. Tenant security, authentication, data governance and platform abuse controls independently reviewed.
+4. Backup restore, migration recovery, telemetry, privacy/export/delete and incident response procedures proven by drills.
+5. Provider-billed costs and received/reconciled revenue match documented accounting rules.
+
+**Not now:** hosted SaaS promises, AI-based margin predictions, role-based enterprise dashboards, unsupported provider tiers, or production claims from synthetic CI data alone.
+
+## Getting involved
+
+Try the [local demo](DEMO.md), review [pricing import](PRICING_IMPORT.md), [analytics API](ANALYTICS_PAGINATION.md) and [integrations](INTEGRATIONS.md). Report what broke in [issue #1](https://github.com/rzkarsyad/agentmargin/issues/1). Real developer friction determines priority.
