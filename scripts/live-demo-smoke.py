@@ -35,7 +35,16 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
     try:
         response = page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
         assert response and response.status == 200, "Dashboard HTTP response was not 200"
-        assert "script-src 'sha256-" in response.headers.get("content-security-policy", "")
+        assert "script-src 'self'" in response.headers.get("content-security-policy", "")
+        page.wait_for_selector(".topline", timeout=15_000)
+        assert page.evaluate("document.documentElement.dataset.theme") == "dark", "App is not in permanent dark mode"
+        bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert bg == "rgb(16, 17, 19)", f"Expected neutral graphite background, got {bg}"
+        assert not page.locator(".hero, .heroArtwork").count(), "Marketing hero must not be rendered"
+        assert page.locator(".distributionPanel").count() == 1, "Customer data chart missing"
+        assert page.locator(".metrics .metric").count() == 4, "Expected four compact KPIs"
+        font = page.evaluate("getComputedStyle(document.querySelector('.topline')).fontFamily")
+        assert "Inter" in font and "serif" not in font.split(",")[0].lower(), font
         page.locator("#key").fill(key)
         page.locator("#load").click()
         page.wait_for_function(
@@ -44,6 +53,19 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
             timeout=20_000,
         )
         assert page.locator("#rows tr").count() == customer_count
+        assert page.locator(".queryBar").is_hidden(), "Connection controls should collapse after loading"
+        page.get_by_role("button", name="Change workspace connection").click()
+        assert page.locator("#key").is_visible(), "Topbar must reopen connection controls"
+        page.get_by_role("button", name="Change workspace connection").click()
+        assert page.locator(".queryBar").is_hidden(), "Topbar must collapse connection controls"
+        assert page.locator(".uiIcon").count() >= 6, "Product navigation should use the outlined icon system"
+        assert page.locator(".barUnverified").count() == unknown_count, "Unknown cost must be explicit in chart"
+        assert page.locator(".chartCustomer").count() == customer_count, "Only real customer categories allowed"
+        assert page.locator(".unverifiedBar").count() == unknown_count, "Unverified cost bars must be explicit"
+        assert page.locator(".costIncomplete").count() == unknown_count, "Unknown cost must not read as verified $0"
+        if width == 390:
+            excess = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+            assert excess <= 1, f"Mobile layout overflows viewport by {excess}px"
         assert page.locator("#revenue").inner_text() == ("$97.00" if customer_count == 3 else "$126.00")
         assert page.locator("#cost").inner_text() == "$35.00"
         assert page.locator("#unknown").inner_text() == str(unknown_count)
@@ -54,8 +76,68 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         assert str(unknown_count) in page.locator("#missing-rows").inner_text()
         assert page.locator("#rows img, #missing-rows svg").count() == 0
         assert page.evaluate("localStorage.length + sessionStorage.length") == 0
+        page.get_by_role("button", name="Unknown", exact=True).click()
+        assert page.locator("#rows tr").count() == unknown_count, "Arc status filter did not narrow results"
+        page.get_by_role("button", name="All", exact=True).click()
+        assert page.locator("#rows tr").count() == customer_count
         assert not errors, f"Browser script errors: {errors}"
+        if customer_count == 4:
+            # Demo-only screenshot. Clear the masked key from the DOM without
+            # firing React onChange, so no credential appears in the PNG.
+            page.locator("#key").evaluate("(el) => { el.value = ''; }")
+            # Clicking the filter scrolls the browser to the table. Reset before
+            # a full-page screenshot or Chromium relocates the sticky sidebar.
+            page.evaluate("window.scrollTo({ top: 0, left: 0, behavior: 'instant' })")
+            page.wait_for_function("window.scrollY === 0")
+            out = ROOT / "ci-artifacts"
+            out.mkdir(exist_ok=True)
+            page.screenshot(path=str(out / f"arc-overview-{width}px.png"), full_page=True)
         print(f"PASS: live Chromium {width}px, {customer_count} customers, {unknown_count} unknown-cost customers")
+    finally:
+        page.close()
+
+
+def live_pricing_browser(browser, key: str):
+    """Exercise genuine Arc Input/Button price form against the real authenticated API."""
+    page = browser.new_page(viewport={"width": 1280, "height": 850})
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    try:
+        page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
+        page.get_by_role("navigation", name="Sections").get_by_role("button", name="Model pricing", exact=True).click()
+        page.locator("#key").fill(key)
+        page.get_by_role("button", name="Refresh prices").click()
+        page.get_by_text("No workspace price versions yet. Add one above.").wait_for(timeout=15_000)
+
+        page.get_by_label("Provider model identifier").fill("arc-smoke-model")
+        page.get_by_label("Input $ / 1M tokens").fill("1.25")
+        page.get_by_label("Output $ / 1M tokens").fill("4")
+        page.get_by_label("Source / verification note").fill("Synthetic pricing UI smoke check")
+        page.get_by_role("button", name="Add immutable price").click()
+
+        page.get_by_role("status").get_by_text("Price version added", exact=False).wait_for(timeout=15_000)
+        assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
+        assert "$1.25" in page.locator("table").inner_text()
+        assert "$4" in page.locator("table").inner_text()
+        page.locator("#key").evaluate("(el) => { el.value = ''; }")
+        out = ROOT / "ci-artifacts"
+        out.mkdir(exist_ok=True)
+        page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=str(out / "arc-pricing-desktop.png"), full_page=True)
+        page.set_viewport_size({"width": 390, "height": 850})
+        page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=str(out / "arc-pricing-mobile.png"), full_page=True)
+
+        # A negative rate is rejected client-side; the old row remains immutable.
+        page.get_by_label("Provider model identifier").fill("arc-invalid-price")
+        page.get_by_label("Input $ / 1M tokens").fill("-1")
+        page.get_by_label("Output $ / 1M tokens").fill("4")
+        page.get_by_label("Source / verification note").fill("Synthetic invalid rate test")
+        page.get_by_role("button", name="Add immutable price").click()
+        page.get_by_role("alert").get_by_text("Enter a USD amount", exact=False).wait_for(timeout=10_000)
+        assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
+        assert not errors, errors
+        print("PASS: live Arc UI pricing form, authenticated persistence, history, validation")
     finally:
         page.close()
 
@@ -134,6 +216,7 @@ def main():
                 assert "1 inserted" in sdk.stdout, "Synthetic SDK example did not insert usage/revenue"
                 for width in (1280, 390):
                     live_browser(browser, key, width, 4, 2)
+                live_pricing_browser(browser, key)
             finally:
                 browser.close()
         print("PASS: full live demo E2E — Docker PostgreSQL, API auth, SDK metering, and Chromium")

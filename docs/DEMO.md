@@ -2,6 +2,8 @@
 
 This workflow is an **experimental, localhost-only, synthetic-data preview**. It is not an internet-facing deployment and should not be given real customer data.
 
+> **v0.3 draft branch note:** `npm run demo` also builds the new React 19 dashboard using original MIT-licensed Arc UI components. The demo API serves the bundled UI at the same localhost `/dashboard` address. Pricing creation is a new tab in that UI; see [docs/PRICING.md](PRICING.md). These changes have not shipped in v0.2.
+
 ## Requirements
 
 - OrbStack or Docker with `docker compose` available in your terminal

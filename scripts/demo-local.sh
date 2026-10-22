@@ -36,6 +36,8 @@ if [[ ! -d node_modules/pg || ! -d node_modules/hono ]]; then
   echo '[demo 1/4] Installing locked Node dependencies'
   npm ci
 fi
+echo '[demo 1/4] Building React/Arc dashboard locally'
+npm run build:web
 echo '[demo 2/4] Starting local-only PostgreSQL using OrbStack/Docker'
 "${COMPOSE[@]}" up -d --wait postgres
 CONNECTION="postgresql://agentmargin_demo:local-development-only@127.0.0.1:${PORT}/agentmargin_demo"

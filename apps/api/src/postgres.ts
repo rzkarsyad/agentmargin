@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
-import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot } from './app.ts';
+import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, PriceInput, WorkspacePrice, ScopedPriceVersion } from './app.ts';
 
 const { Pool } = pg;
 export const ANALYTICS_SQL = `WITH revenue AS (
@@ -36,15 +36,62 @@ export class PostgresEventStore implements EventStore {
       'SELECT workspace_id FROM workspace_api_keys WHERE key_digest=$1 AND revoked_at IS NULL',[keyDigest]);
     return q.rows[0]?.workspace_id ?? null;
   }
-  async prices(model: string, timestamp: string): Promise<PriceVersion[]> {
-    const q=await this.pool.query<{
+  async prices(workspaceId:string,model:string,timestamp:string):Promise<ScopedPriceVersion[]> {
+    const scoped=await this.pool.query<{
+      id:string;model:string;effective_from:Date;effective_to:Date|null;
+      input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
+    }>(`SELECT * FROM workspace_price_versions WHERE workspace_id=$1 AND model=$2
+         AND effective_from <= $3::timestamptz ORDER BY effective_from DESC LIMIT 1`,
+      [workspaceId,model,timestamp]);
+    const row=scoped.rows[0];
+    if(row) {
+      if(row.effective_to&&row.effective_to.getTime()<=Date.parse(timestamp))return [];
+      return [{id:row.id,model:row.model,effectiveFrom:row.effective_from.toISOString(),
+        effectiveTo:row.effective_to?.toISOString()??null,
+        inputMicrosPerMillion:BigInt(row.input_micros_per_million),
+        outputMicrosPerMillion:BigInt(row.output_micros_per_million),
+        cachedInputMicrosPerMillion:row.cached_input_micros_per_million==null?null:BigInt(row.cached_input_micros_per_million),
+        scope:'workspace'}];
+    }
+    // Legacy prices remain read-only fallback only before workspace-specific versions exist.
+    const old=await this.pool.query<{
       id:string;model:string;effective_from:Date;effective_to:Date|null;
       input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
     }>('SELECT * FROM price_versions WHERE model=$1 AND effective_from <= $2::timestamptz AND (effective_to IS NULL OR effective_to > $2::timestamptz)',[model,timestamp]);
-    return q.rows.map(r=>({id:r.id,model:r.model,effectiveFrom:r.effective_from.toISOString(),
+    return old.rows.map(r=>({id:r.id,model:r.model,effectiveFrom:r.effective_from.toISOString(),
       effectiveTo:r.effective_to?.toISOString()??null,inputMicrosPerMillion:BigInt(r.input_micros_per_million),
       outputMicrosPerMillion:BigInt(r.output_micros_per_million),
-      cachedInputMicrosPerMillion:r.cached_input_micros_per_million == null ? null : BigInt(r.cached_input_micros_per_million)}));
+      cachedInputMicrosPerMillion:r.cached_input_micros_per_million==null?null:BigInt(r.cached_input_micros_per_million),
+      scope:'legacy'}));
+  }
+  async createPriceVersion(workspaceId:string,actor:string,input:PriceInput):Promise<WorkspacePrice> {
+    const q=await this.pool.query<{created_at:Date}>(`INSERT INTO workspace_price_versions
+      (id,workspace_id,model,effective_from,effective_to,input_micros_per_million,
+       output_micros_per_million,cached_input_micros_per_million,source_note,created_by_key_digest)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (workspace_id,model,effective_from)
+      DO NOTHING RETURNING created_at`,
+      [input.id,workspaceId,input.model,input.effectiveFrom,input.effectiveTo,
+        input.inputMicrosPerMillion,input.outputMicrosPerMillion,input.cachedInputMicrosPerMillion,
+        input.sourceNote,actor]);
+    if(!q.rows.length)throw new Error('Pricing version exists');
+    return {...input,createdAt:q.rows[0]!.created_at.toISOString()};
+  }
+  async listPriceVersions(workspaceId:string):Promise<{items:WorkspacePrice[];truncated:boolean}> {
+    const q=await this.pool.query<{
+      id:string;model:string;effective_from:Date;effective_to:Date|null;
+      input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
+      source_note:string;created_at:Date;
+    }>(`SELECT id,model,effective_from,effective_to,input_micros_per_million,
+       output_micros_per_million,cached_input_micros_per_million,source_note,created_at
+       FROM workspace_price_versions WHERE workspace_id=$1
+       ORDER BY created_at DESC,id DESC LIMIT 101`,[workspaceId]);
+    return {items:q.rows.slice(0,100).map(r=>({
+      id:r.id,model:r.model,effectiveFrom:r.effective_from.toISOString(),
+      effectiveTo:r.effective_to?.toISOString()??null,
+      inputMicrosPerMillion:r.input_micros_per_million,outputMicrosPerMillion:r.output_micros_per_million,
+      cachedInputMicrosPerMillion:r.cached_input_micros_per_million,sourceNote:r.source_note,
+      createdAt:r.created_at.toISOString()
+    })),truncated:q.rows.length>100};
   }
   async ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{inserted:number;duplicate:number}> {
     const client = await this.pool.connect();
@@ -53,7 +100,7 @@ export class PostgresEventStore implements EventStore {
       await client.query('BEGIN');
       // Acquire advisory locks in deterministic order across batches. Opposing
       // event order (A,B vs B,A) would otherwise risk a PostgreSQL deadlock.
-      for (const {event:e,payloadDigest,costMicros,source,priceId} of [...events].sort((a,b)=>
+      for (const {event:e,payloadDigest,costMicros,source,priceId,workspacePriceId} of [...events].sort((a,b)=>
         a.event.id < b.event.id ? -1 : a.event.id > b.event.id ? 1 : 0)) {
         // Serialize identical event IDs even when the customer row has not been created yet.
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[`${workspaceId}:${e.id}`]);
@@ -66,10 +113,10 @@ export class PostgresEventStore implements EventStore {
         await client.query('INSERT INTO customers(workspace_id,id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[workspaceId,e.customerId]);
         await client.query(`INSERT INTO usage_events
           (workspace_id,event_id,customer_id,model,occurred_at,input_tokens,output_tokens,cached_input_tokens,
-           reported_cost_micros,calculated_cost_micros,cost_source,price_version_id,payload_digest)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[
+           reported_cost_micros,calculated_cost_micros,cost_source,price_version_id,payload_digest,workspace_price_version_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,[
           workspaceId,e.id,e.customerId,e.model,e.occurredAt,e.inputTokens,e.outputTokens,e.cachedInputTokens??0,
-          e.reportedCostMicros?.toString()??null,costMicros?.toString()??null,source,priceId,payloadDigest]);
+          e.reportedCostMicros?.toString()??null,costMicros?.toString()??null,source,priceId,payloadDigest,workspacePriceId??null]);
         inserted++;
       }
       await client.query('COMMIT');
