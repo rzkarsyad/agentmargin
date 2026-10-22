@@ -2,9 +2,11 @@
 
 **Know your margin. Not just your tokens.**
 
+**Current source release: v0.2.0-alpha.** This preview is intentionally localhost-only and should be tested with synthetic data.
+
 [![CI](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml/badge.svg)](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.1.0-alpha.md)
+[![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.2.0-alpha.md)
 
 AgentMargin is an **open-source, self-hosted TypeScript toolkit** for understanding AI inference costs and *customer-level contribution margins*. Attribute usage and revenue to the same customer, distinguish known from unknown costs, and investigate customers whose AI usage outweighs what they pay.
 
@@ -33,6 +35,34 @@ AgentMargin brings these records together:
 - **Local dashboard:** customer contribution, usage and coverage; explicitly warns when result sets are truncated.
 
 **Not yet available:** automatic instrumentation, an official provider price catalog, Stripe synchronization, publicly hosted service, or production-hardening. The SDK is **source-first** and is not published to npm.
+
+## One-command local demo (v0.2 alpha)
+
+With **OrbStack/Docker Compose**, Node.js 22.18+ and npm:
+
+```bash
+npm run demo
+```
+
+Starts a localhost-only PostgreSQL database, applies migrations and seeds **fictional** revenue and model usage for three example customers. Copy the freshly generated AgentMargin API key from the terminal and open `http://127.0.0.1:8787/dashboard`. No OpenAI account or real customer data is required.
+
+See [Local demo instructions](docs/DEMO.md) for stopping and intentionally resetting data. **This remains experimental software: do not expose the local API to the public internet.**
+
+## Track a completed OpenAI request (v0.2 alpha)
+
+The source-first SDK now accepts a completed OpenAI Responses or Chat Completions result in one call:
+
+```ts
+await margin.trackOpenAIResponse(response, trustedCustomerId);
+// or
+await margin.trackOpenAIChatCompletion(completion, trustedCustomerId);
+```
+
+The helpers send **usage metadata only**—no prompts or generated text—and refuse responses without usage. Use a trusted customer ID from server-side authentication; do not expose keys in a browser bundle.
+
+- [Next.js App Router integration recipe](examples/nextjs-openai/README.md) (requires your own authentication and OpenAI SDK)
+- [Synthetic end-to-end example](examples/track-synthetic-openai.ts) (no OpenAI API key or OpenAI request)
+- [Tracking semantics and safety notes](docs/OPENAI_INTEGRATION.md)
 
 ## Try the cost engine
 
@@ -71,6 +101,18 @@ Record customer revenue through SDK/API
 
 The OpenAI adapter is a **post-call helper**, not automatic capture. Never send model prompts, responses, provider API keys or real customer information to an unreviewed deployment.
 
+## When AI cost is unknown
+
+A missing model price is **not** a $0 expense. The v0.2 analytics preview shows which model names have unknown-cost events, counts them per workspace and time period, and warns when more than 20 distinct models are affected.
+
+[Understand unknown costs and safe pricing remediation](docs/UNKNOWN_COSTS.md).
+
+## Live-stack release check (v0.2 alpha)
+
+The development branch includes a GitHub Actions end-to-end check against **real, disposable PostgreSQL**, a localhost API and real Chromium. It verifies seeded customer economics and posts synthetic usage/revenue through the TypeScript SDK without contacting any AI provider.
+
+The test runs only in GitHub Actions CI and cleans up its demo containers. See [Local demo and verification](docs/DEMO.md). **Passing this test does not establish production security.**
+
 ## Accuracy and security
 
 - Revenue and costs are stored in **USD microdollars** (`1 USD = 1,000,000 micros`).
@@ -80,14 +122,14 @@ The OpenAI adapter is a **post-call helper**, not automatic capture. Never send 
 - The dashboard is for **localhost**; the API binds to `127.0.0.1` by default.
 - No PostgreSQL row-level security, TLS proxy, distributed abuse controls, or operational recovery process is shipped.
 
-See [security policy](SECURITY.md), [limitations and setup](docs/QUICKSTART.md), and [release notes](docs/releases/v0.1.0-alpha.md). **Do not expose this alpha as a public production service.**
+See [security policy](SECURITY.md), [limitations and setup](docs/QUICKSTART.md), and [release notes](docs/releases/v0.2.0-alpha.md). **Do not expose this alpha as a public production service.**
 
 ## Contribute and follow progress
 
 - [Roadmap](docs/ROADMAP.md): what we're building next and what is intentionally out of scope.
 - [Contributing guide](CONTRIBUTING.md): local tests, issue etiquette, and PR guidance.
 - [Report a bug](https://github.com/rzkarsyad/agentmargin/issues/new?template=bug_report.yml) or [share a use case](https://github.com/rzkarsyad/agentmargin/issues/new?template=feedback.yml).
-- [CI results](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml): TypeScript, unit tests, standalone PostgreSQL concurrency, secret scan, dependency audit, and mocked-API Chromium smoke tests.
+- [CI results](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml): TypeScript, unit tests, standalone PostgreSQL concurrency, secret scan, dependency audit, mocked-API Chromium smoke tests, and a live local Docker/PostgreSQL/API/SDK/Chromium integration test.
 
 If you're building an AI-powered app and struggle to understand per-customer margins, **tell us what data you have, what you wish you knew, and what prevented you from trying this**. Practical feedback matters more than stars.
 

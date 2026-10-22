@@ -4,7 +4,7 @@
 
 This is a direction of work, not a delivery promise. We prioritize problems supported by real user feedback.
 
-## Now: v0.1.0-alpha — validate the core loop
+## v0.1.0-alpha — foundational core (released)
 
 - [x] Deterministic inference cost and customer-level contribution calculation
 - [x] Workspace-scoped, idempotent PostgreSQL usage/revenue ingestion
@@ -15,14 +15,14 @@ This is a direction of work, not a delivery promise. We prioritize problems supp
 - [ ] Get 3 developers to independently run a local demo and report where setup breaks
 - [ ] Publish clear security limitations and triage reported issues
 
-## Next: make setup genuinely effortless
+## v0.2.0-alpha — make setup genuinely effortless
 
-- [ ] Single-command self-hosted local demo with disposable seed data
-- [ ] Automated integration fixture for the Responses API (no user prompts captured)
-- [ ] Better visibility into unknown-price events and completeness
+- [x] Single-command local demo with seeded synthetic data, verified on OrbStack and GitHub Actions
+- [x] Synthetic OpenAI Responses tracking fixture that does not send prompts/outputs
+- [x] Tenant-scoped unknown-cost model diagnostics with bounded results and safe HTML rendering
 - [ ] Provider pricing import workflow with auditable effective dates and version pinning
-- [ ] CI coverage for real API + database + browser flow
-- [ ] Create starter examples for common Node/Next.js server applications
+- [x] CI coverage for live Docker PostgreSQL + local API + SDK + desktop/mobile Chromium
+- [x] Source-first Node/OpenAI example and a Next.js App Router integration recipe (not a packaged starter app)
 
 ## Later: make it useful for real teams
 

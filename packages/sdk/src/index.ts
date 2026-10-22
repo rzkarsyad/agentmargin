@@ -1,3 +1,4 @@
+import { fromOpenAIResponse, fromOpenAIChatCompletion, type ResponsesUsage, type ChatCompletionsUsage } from './openai.ts';
 export interface UsageInput {
   id:string; customerId:string; model:string; occurredAt:string;
   inputTokens:number; outputTokens:number; cachedInputTokens?:number;
@@ -35,6 +36,21 @@ export class AgentMarginClient {
       throw new Error(`AgentMargin HTTP ${response.status}: ${body.slice(0,300)}`);
     }
     return await response.json() as {inserted:number;duplicate:number;received:number};
+  }
+  /** Send only usage metadata, never the OpenAI prompt or generated output.
+   * Retries are idempotent because the OpenAI response ID becomes the event ID.
+   * Missing usage rejects before any AgentMargin network request.
+   */
+  async trackOpenAIResponse(
+    response: ResponsesUsage, customerId: string, signal?: AbortSignal,
+  ): Promise<{ inserted: number; duplicate: number; received: number }> {
+    return this.track([fromOpenAIResponse(response, customerId)], signal);
+  }
+  /** Chat Completions equivalent of trackOpenAIResponse. */
+  async trackOpenAIChatCompletion(
+    completion: ChatCompletionsUsage, customerId: string, signal?: AbortSignal,
+  ): Promise<{ inserted: number; duplicate: number; received: number }> {
+    return this.track([fromOpenAIChatCompletion(completion, customerId)], signal);
   }
   async trackRevenue(records:RevenueInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 records');

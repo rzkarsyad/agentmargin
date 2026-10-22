@@ -1,16 +1,36 @@
 {
   "name": "agentmargin",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test packages/core/test/*.test.ts apps/api/test/*.test.ts packages/sdk/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
-    "test:postgres": "node --experimental-strip-types scripts/standalone-postgres-test.ts"
+    "test:postgres": "node --experimental-strip-types scripts/standalone-postgres-test.ts",
+    "demo": "bash scripts/demo-local.sh start",
+    "demo:stop": "bash scripts/demo-local.sh stop",
+    "demo:reset": "bash scripts/demo-local.sh reset"
   },
-  "engines": { "node": ">=22.18" },
-  "dependencies": { "hono": "^4.10.0", "@hono/node-server": "^1.19.0", "pg": "^8.16.0" },
-  "devDependencies": { "typescript": "^5.9.3", "@types/node": "^24.0.0", "@types/pg": "^8.15.0", "@types/jsdom": "^27.0.0", "jsdom": "^27.0.0", "@electric-sql/pglite": "0.3.16", "@electric-sql/pglite-socket": "0.0.22" }
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "hono": "^4.10.0",
+    "@hono/node-server": "^1.19.0",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "@types/jsdom": "^27.0.0",
+    "jsdom": "^27.0.0",
+    "@electric-sql/pglite": "0.3.16",
+    "@electric-sql/pglite-socket": "0.0.22"
+  }
 }

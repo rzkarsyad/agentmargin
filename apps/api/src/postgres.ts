@@ -18,6 +18,13 @@ export const ANALYTICS_SQL = `WITH revenue AS (
        COALESCE(u.events,'0') AS usage_events,COALESCE(u.unknown,'0') AS unknown_events
      FROM revenue r FULL OUTER JOIN usage u ON r.customer_id=u.customer_id
      ORDER BY customer_id LIMIT 2001`;
+/** At most 20 models, with one extra row to signal truncation. No customer IDs are exposed. */
+export const UNKNOWN_MODELS_SQL = `SELECT model, COUNT(*)::text AS event_count
+  FROM usage_events
+  WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz
+    AND occurred_at < $3::timestamptz AND cost_source='unknown'
+  GROUP BY model ORDER BY COUNT(*) DESC, model ASC LIMIT 21`;
+
 export class PostgresEventStore implements EventStore {
   readonly pool: pg.Pool;
   constructor(connectionString: string) {
@@ -98,9 +105,22 @@ export class PostgresEventStore implements EventStore {
   }
   async analytics(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>{
     // Independent aggregates prevent revenue * usage-event join multiplication.
-    const q=await this.pool.query<{
+    // Read both aggregates from one consistent snapshot. Running queries concurrently
+    // breaks PGlite's pg-wire test adapter and can return mismatched financial views.
+    const client=await this.pool.connect();
+    let q:pg.QueryResult<{
       customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string;
-    }>(ANALYTICS_SQL,[workspaceId,start,end]);
+    }>;
+    let missing:pg.QueryResult<{model:string;event_count:string}>;
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      q=await client.query(ANALYTICS_SQL,[workspaceId,start,end]);
+      missing=await client.query(UNKNOWN_MODELS_SQL,[workspaceId,start,end]);
+      await client.query('COMMIT');
+    } catch(err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {client.release();}
     const truncated=q.rows.length>2000;
     const customers=q.rows.slice(0,2000).map(r=>{
       const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=Number(r.unknown_events);
@@ -111,6 +131,8 @@ export class PostgresEventStore implements EventStore {
         contributionMicros:contribution?.toString()??null,marginBasisPoints:margin?.toString()??null,
         usageEvents:Number(r.usage_events),unknownEvents:unknown};
     });
-    return {periodStart:start,periodEnd:end,customers,truncated};
+    return {periodStart:start,periodEnd:end,customers,truncated,
+      unknownModels:missing.rows.slice(0,20).map(r=>({model:r.model,eventCount:Number(r.event_count)})),
+      unknownModelsTruncated:missing.rows.length>20};
   }
 }

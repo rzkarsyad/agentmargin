@@ -4,7 +4,7 @@
 
 ## Reporting vulnerabilities
 
-Do not publish vulnerability details in public issues. Once this project is on GitHub, configure **private vulnerability reporting** under Settings → Security → Private vulnerability reporting and report issues using the repository's Security tab. Before that channel is available, report privately to the maintainer using an existing trusted contact method.
+Do not publish vulnerability details in public issues. For private vulnerability reports, use GitHub's **private vulnerability reporting** in the repository Security tab when enabled. Maintainers should ensure it is configured under Settings → Security. If that channel is not available, contact the maintainer privately through a trusted channel, not a public issue.
 
 ## Implemented controls
 
@@ -24,7 +24,7 @@ Do not publish vulnerability details in public issues. Once this project is on G
 3. **Local limiter is in-memory only.** Multiple API instances do not share quotas, and unauthenticated invalid-key attempts are not throttled here.
 4. **No operational assurance.** Set up encrypted backups, restore drills, log redaction, structured monitoring, alerts, secret rotation policy, upgrades, and incident response.
 5. **Data governance unimplemented.** No tenant self-service deletion/export policy, retention controls, or compliance review. Customer identifiers may be personal data; avoid production usage.
-6. **Dashboard browser checks use mocked API analytics.** They are not a substitute for a real reverse-proxy/auth/database browser E2E test.
+6. **Localhost E2E is not a public deployment security review.** v0.2 includes both mocked dashboard checks and an end-to-end test using a live local PostgreSQL/API/SDK/Chromium stack. It does not exercise internet ingress, public authentication abuse, TLS termination, or an independently reviewed deployment.
 7. **Credential scanning is heuristic.** A clean scan or `npm audit` result does not prove absence of secrets or exploitable vulnerabilities. Verify the entire Git history before publishing it, or create a fresh history from clean source.
 8. **Price catalog is trusted operator input.** Do not assume estimated prices reflect provider billing; pricing history/integrity need financial review.
 
@@ -34,7 +34,8 @@ Do not publish vulnerability details in public issues. Once this project is on G
 - `npm run test:postgres`: PostgreSQL 16 real-server concurrency and isolation tests on a disposable empty `agentmargin_ci` database.
 - `python3 scripts/check-release-files.py`: source-file scan.
 - `python3 scripts/browser-smoke.py`: Chromium UI smoke check using mocked API, requires Playwright and Chromium.
+- `scripts/live-demo-smoke.py`: GitHub Actions-only live disposable demo, validating localhost API authentication, synthetic usage/revenue via SDK, PostgreSQL, and Chromium. It is not a penetration test.
 - `npm audit --audit-level=low`: known dependency advisories.
 - `.github/workflows/ci.yml`: mirrors checks with PostgreSQL service and browser runner; only a successful Actions run verifies the workflow itself.
 
-**GO for publication of experimental source** requires clean staged files, adequate license and warnings, local checks passing, and successful CI on a private repository before switching to public. **NO-GO for production internet service** until blockers 1–6 are resolved and separately evaluated.
+**GO for an experimental open-source alpha release** requires clean source, license and warnings, passing CI, and a successful local demo. **NO-GO for a production internet service** until the blockers above are separately resolved and independently evaluated.

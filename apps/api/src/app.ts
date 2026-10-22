@@ -26,6 +26,9 @@ export interface AnalyticsCustomer {
 }
 export interface AnalyticsSnapshot {
   periodStart:string; periodEnd:string; customers:AnalyticsCustomer[]; truncated:boolean;
+  /** Unknown-cost counts across the authenticated workspace's selected period (not only the first 2,000 customers). */
+  unknownModels?: {model:string; eventCount:number}[];
+  unknownModelsTruncated?: boolean;
 }
 const hex64 = /^[a-f0-9]{64}$/;
 const validId = (s: unknown): s is string => typeof s === 'string' && s.length >= 1 && s.length <= 200;
