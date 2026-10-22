@@ -55,6 +55,13 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
         assert page.locator("#rows img, #missing-rows svg").count() == 0
         assert page.evaluate("localStorage.length + sessionStorage.length") == 0
         assert not errors, f"Browser script errors: {errors}"
+        if customer_count == 4:
+            # Demo-only screenshot. Clear the masked key from the DOM without
+            # firing React onChange, so no credential appears in the PNG.
+            page.locator("#key").evaluate("(el) => { el.value = ''; }")
+            out = ROOT / "ci-artifacts"
+            out.mkdir(exist_ok=True)
+            page.screenshot(path=str(out / f"arc-overview-{width}px.png"), full_page=True)
         print(f"PASS: live Chromium {width}px, {customer_count} customers, {unknown_count} unknown-cost customers")
     finally:
         page.close()
@@ -82,6 +89,10 @@ def live_pricing_browser(browser, key: str):
         assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
         assert "$1.25" in page.locator("table").inner_text()
         assert "$4" in page.locator("table").inner_text()
+        page.locator("#key").evaluate("(el) => { el.value = ''; }")
+        out = ROOT / "ci-artifacts"
+        out.mkdir(exist_ok=True)
+        page.screenshot(path=str(out / "arc-pricing-desktop.png"), full_page=True)
 
         # A negative rate is rejected client-side; the old row remains immutable.
         page.get_by_label("Provider model identifier").fill("arc-invalid-price")
