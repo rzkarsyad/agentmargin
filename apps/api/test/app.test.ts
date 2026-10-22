@@ -9,7 +9,8 @@ const price:PriceVersion={id:'p1',model:'m',effectiveFrom:'2026-01-01T00:00:00Z'
 const entry={id:'e1',customerId:'c1',model:'m',occurredAt:'2026-10-01T00:00:00Z',inputTokens:100,outputTokens:50};
 class MemoryStore implements EventStore {
   rows=new Map<string,StoredEvent>();
-  async authenticate(keyDigest:string){return keyDigest===digest(apiKey)?'w1':null;}
+  authenticationQueries=0;
+  async authenticate(keyDigest:string){this.authenticationQueries++;return keyDigest===digest(apiKey)?'w1':null;}
   async prices(){return [price];}
   async analytics(_workspace:string,start:string,end:string){return {periodStart:start,periodEnd:end,truncated:false,customers:[{customerId:'c1',revenueMicros:'1000000',knownAiCostMicros:'200',contributionMicros:'999800',marginBasisPoints:'9998',usageEvents:1,unknownEvents:0}]};}
   async ingest(_workspace:string,events:readonly StoredEvent[]){
@@ -89,4 +90,22 @@ test('unauthenticated abuse guard counts malformed and unknown keys, not valid w
   assert.equal((await app.request(url,{headers:valid})).status,200);
   now+=61_000;
   assert.equal((await app.request(url,{headers:{authorization:'invalid'}})).status,401);
+});
+
+// Pre-auth middleware must be the only credential lookup; route handlers consume its trusted context.
+test('each API request authenticates exactly once before route handling',async()=>{
+  const store=new MemoryStore(),app=createApp(store);
+  assert.equal((await send(app,{events:[entry]})).status,202);
+  assert.equal(store.authenticationQueries,1);
+  const headers={authorization:'Bearer '+apiKey};
+  const url='/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z';
+  assert.equal((await app.request(url,{headers})).status,200);
+  assert.equal(store.authenticationQueries,2);
+  // Unimplemented optional endpoints still require auth, but never authenticate twice.
+  assert.equal((await app.request('/v1/prices',{headers})).status,503);
+  assert.equal(store.authenticationQueries,3);
+  assert.equal((await send(app,{events:[entry]},'bad')).status,401);
+  assert.equal(store.authenticationQueries,3);
+  assert.equal((await send(app,{events:[entry]},'am_'+'q'.repeat(40))).status,401);
+  assert.equal(store.authenticationQueries,4);
 });

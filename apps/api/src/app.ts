@@ -65,7 +65,6 @@ export interface AnalyticsPage{
   unknownModelsTruncated?:boolean;
 }
 
-const hex64 = /^[a-f0-9]{64}$/;
 const validId = (s: unknown): s is string => typeof s === 'string' && s.length >= 1 && s.length <= 200;
 const validCount = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
 // Require explicit timezone and complete timestamp; ambiguous local dates are unsafe for billing windows.
@@ -127,7 +126,7 @@ function parsePriceInput(x:unknown):PriceInput {
 }
 
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter()) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
   const dashboard=readFileSync(hasReactBuild?builtDashboard:new URL('./dashboard.html',import.meta.url),'utf8');
@@ -171,29 +170,26 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
       if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
       return c.json({error:'Unauthorized'},401);
     }
-    const workspace=await store.authenticate(digest(auth.slice(7)));
+    const keyDigest=digest(auth.slice(7));
+    const workspace=await store.authenticate(keyDigest);
     if(!workspace){
       if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
       return c.json({error:'Unauthorized'},401);
     }
+    c.set('workspaceId',workspace);
+    c.set('keyDigest',keyDigest);
     await next();
   });
   app.use('/v1/*', bodyLimit({maxSize:256_000,onError:c=>c.json({error:'Payload too large'},413)}));
   app.get('/v1/prices',async c=>{
-    const auth=c.req.header('authorization')??'';
-    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
-    const workspaceId=await store.authenticate(digest(auth.slice(7)));
-    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     if(!store.listPriceVersions)return c.json({error:'Pricing unavailable'},503);
     return c.json(await store.listPriceVersions(workspaceId));
   });
   app.post('/v1/prices',async c=>{
-    const auth=c.req.header('authorization')??'';
-    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
-    const creatorDigest=digest(auth.slice(7));
-    const workspaceId=await store.authenticate(creatorDigest);
-    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    const creatorDigest=c.get('keyDigest');
+    const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     if(!store.createPriceVersion)return c.json({error:'Pricing unavailable'},503);
     let payload:unknown;
@@ -208,10 +204,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }
   });
   app.get('/v1/analytics', async c=>{
-    const auth=c.req.header('authorization')??'';
-    if (!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth)) return c.json({error:'Unauthorized'},401);
-    const workspaceId=await store.authenticate(digest(auth.slice(7)));
-    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const start=c.req.query('start'),end=c.req.query('end');
     if(!validTime(start)||!validTime(end)||Date.parse(start)>=Date.parse(end)) return c.json({error:'Invalid period'},400);
@@ -222,10 +215,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   // Paginated, full-workspace analytics. The summary is calculated on the server,
   // never inferred from a partial table page.
   app.get('/v1/analytics/page',async c=>{
-    const auth=c.req.header('authorization')??'';
-    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
-    const workspaceId=await store.authenticate(digest(auth.slice(7)));
-    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const start=c.req.query('start'),end=c.req.query('end');
     if(!validTime(start)||!validTime(end)||Date.parse(start)>=Date.parse(end)||
@@ -247,10 +237,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   });
 
   app.post('/v1/revenue',async c=>{
-    const auth=c.req.header('authorization')??'';
-    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
-    const workspaceId=await store.authenticate(digest(auth.slice(7)));
-    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     if(!store.ingestRevenue)return c.json({error:'Revenue ingestion unavailable'},503);
     let payload:unknown;
@@ -269,12 +256,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }
   });
   app.post('/v1/events', async c => {
-    const auth = c.req.header('authorization') ?? '';
-    if (!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth)) return c.json({ error:'Unauthorized' },401);
-    const keyDigest = digest(auth.slice(7));
-    if (!hex64.test(keyDigest)) return c.json({error:'Unauthorized'},401);
-    const workspaceId = await store.authenticate(keyDigest);
-    if (!workspaceId) return c.json({ error:'Unauthorized' },401);
+    const workspaceId = c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const contentLength = Number(c.req.header('content-length') ?? 0);
     if (contentLength > 256_000) return c.json({error:'Payload too large'},413);
