@@ -44,7 +44,21 @@ jobs:
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
       - run: python3 scripts/check-release-files.py
-      - run: npm audit --audit-level=low
+      # npm's advisory endpoint can transiently return HTTP 503. Retry briefly,
+      # but NEVER treat an unsuccessful audit as a pass.
+      - name: Audit dependencies (fail closed, bounded retries)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm_config_fetch_retries=0 npm_config_fetch_timeout=20000 npm audit --audit-level=low; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Dependency audit did not pass after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
       # Browser uses a mocked analytics response; this is not a deployed-service E2E.
       - name: Browser smoke test (Chromium desktop + mobile)
         run: |
