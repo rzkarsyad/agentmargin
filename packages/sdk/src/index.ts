@@ -61,3 +61,4 @@ export class AgentMarginClient {
     return await response.json() as {inserted:number;duplicate:number;received:number};
   }
 }
+export type { ResponsesUsage, ChatCompletionsUsage } from './openai.ts';

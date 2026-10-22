@@ -1,0 +1,54 @@
+name: Publish SDK (manual, OIDC)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing, tested git tag pointing at the SDK package version'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  npm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm-publish
+    steps:
+      - name: Validate release tag format
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^sdk-v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
+            echo "::error::Expected sdk-vX.Y.Z(-alpha.N) tag"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Install npm CLI compatible with trusted publishing
+        run: npm install -g 'npm@^11.5.1'
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build -w @agentmargin/sdk
+      - run: node scripts/sdk-package-smoke.mjs
+      - name: Ensure tag and package match
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          node --input-type=module -e '
+          import fs from "node:fs";
+          const v=JSON.parse(fs.readFileSync("packages/sdk/package.json")).version;
+          if(process.env.RELEASE_TAG!==`sdk-v${v}`) process.exit(1);
+          console.log("Verified SDK version "+v);
+          '
+      - name: Publish prerelease to npm with provenance
+        run: npm publish --workspace @agentmargin/sdk --access public --provenance --tag alpha
