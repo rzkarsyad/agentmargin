@@ -80,7 +80,7 @@ def live_pricing_browser(browser, key: str):
     page.on("pageerror", lambda error: errors.append(str(error)))
     try:
         page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
-        page.get_by_role("button", name="Model pricing").click()
+        page.get_by_role("navigation", name="Sections").get_by_role("button", name="Model pricing", exact=True).click()
         page.locator("#key").fill(key)
         page.get_by_role("button", name="Refresh prices").click()
         page.get_by_text("No workspace price versions yet. Create one above.").wait_for(timeout=15_000)
