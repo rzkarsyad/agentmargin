@@ -33,3 +33,16 @@ jobs:
         run: |
           npm --prefix examples/nextjs-starter install --no-audit --no-fund
           npm --prefix examples/nextjs-starter run build
+      - name: Audit Next.js starter dependencies (fail closed)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm_config_fetch_retries=0 npm_config_fetch_timeout=20000 npm --prefix examples/nextjs-starter audit --audit-level=high; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Next.js dependency audit did not pass"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
