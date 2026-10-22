@@ -6,6 +6,7 @@
 import {CATALOG_URL,fetchCatalog,scanCatalogPrices} from './lib/pricing-catalog.ts';
 const {catalog,digest}=await fetchCatalog();
 const scan=scanCatalogPrices(catalog);
+if(scan.entries.length===0)throw new Error('Catalog scan produced no usable pricing candidates; investigate upstream schema');
 const report={
  schemaVersion:1,
  kind:'unapproved-pricing-candidates',
