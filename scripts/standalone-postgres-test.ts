@@ -68,6 +68,31 @@ try {
   const responseB=await visibleB.json() as {customers:{customerId:string}[]};
   assert.ok(!responseA.customers.some(c=>c.customerId==='other-customer'),'Cross-tenant data leaked into workspace A');
   assert.deepEqual(responseB.customers.map(c=>c.customerId),['other-customer']);
+  // v0.3: workspace A prices must never bleed into B, even for identical models.
+  const sourceNote='CI synthetic source for isolated pricing';
+  const firstPrice={id:randomUUID(),model:'workspace-only-model',
+    effectiveFrom:'2026-01-01T00:00:00.000Z',effectiveTo:null,
+    inputMicrosPerMillion:'1000000',outputMicrosPerMillion:'2000000',
+    cachedInputMicrosPerMillion:null,sourceNote};
+  const createdPrice=await store.createPriceVersion(workspace,createHash('sha256').update(key).digest('hex'),firstPrice);
+  assert.equal(createdPrice.model,'workspace-only-model');
+  assert.equal((await store.listPriceVersions(other)).items.length,0,'Other workspace must not list pricing data');
+  assert.equal((await store.prices(other,'workspace-only-model','2026-10-01T00:00:00Z')).length,0,
+    'Other workspace must not reuse workspace A pricing');
+  assert.equal((await store.prices(workspace,'workspace-only-model','2026-10-01T00:00:00Z'))[0]?.id,createdPrice.id);
+  const later={...firstPrice,id:randomUUID(),effectiveFrom:'2026-11-01T00:00:00.000Z',inputMicrosPerMillion:'3000000'};
+  await store.createPriceVersion(workspace,createHash('sha256').update(key).digest('hex'),later);
+  assert.equal((await store.prices(workspace,'workspace-only-model','2026-10-01T00:00:00Z'))[0]?.id,createdPrice.id);
+  assert.equal((await store.prices(workspace,'workspace-only-model','2026-11-02T00:00:00Z'))[0]?.id,later.id);
+  await assert.rejects(pool.query('UPDATE workspace_price_versions SET input_micros_per_million=0 WHERE id=$1',[createdPrice.id]),
+    /append-only/);
+  await assert.rejects(pool.query('DELETE FROM workspace_price_versions WHERE id=$1',[createdPrice.id]),/append-only/);
+  // API must scope price listings from auth, not client-supplied workspaceId.
+  const priceListA=await api.request('/v1/prices?workspaceId='+other,{headers:{authorization:'Bearer '+key}});
+  const priceListB=await api.request('/v1/prices?workspaceId='+workspace,{headers:{authorization:'Bearer '+otherKey}});
+  assert.equal(priceListA.status,200);assert.equal(priceListB.status,200);
+  assert.equal((await priceListA.json() as {items:{id:string}[]}).items.length,2);
+  assert.equal((await priceListB.json() as {items:{id:string}[]}).items.length,0);
   process.stdout.write('Standalone PostgreSQL concurrency: PASSED (usage/revenue idempotency, reversed batch order, tenant isolation).\n');
 } finally {
   await store?.pool.end();
