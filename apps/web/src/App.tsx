@@ -11,7 +11,11 @@ type Customer = {
   unknownEvents:number; usageEvents:number;
 };
 type Analytics = {
-  customers:Customer[]; truncated:boolean;
+  customers:Customer[];nextCursor:string|null;pageSize:number;
+  summary:{customerCount:string;verifiedCustomerCount:string;profitableCustomerCount:string;
+    lossMakingCustomerCount:string;unknownCustomerCount:string;usageEventCount:string;
+    unknownUsageEventCount:string;totalRevenueMicros:string;totalKnownAiCostMicros:string;
+    verifiedCustomerContributionMicros:string;completeContributionMicros:string|null};
   unknownModels?:{model:string;eventCount:number}[];
   unknownModelsTruncated?:boolean;
 };
@@ -86,6 +90,8 @@ export function App(){
   const [from,setFrom]=useState(utcDate(-29));
   const [to,setTo]=useState(utcDate());
   const [analytics,setAnalytics]=useState<Analytics|null>(null);
+  const [pageStarts,setPageStarts]=useState<(string|null)[]>([null]);
+  const [pageIndex,setPageIndex]=useState(0);
   const [prices,setPrices]=useState<Prices|null>(null);
   const [draft,setDraft]=useState(blankPrice);
   const [working,setWorking]=useState(false);
@@ -95,17 +101,34 @@ export function App(){
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
   const change=(field:keyof typeof blankPrice,value:string)=>setDraft(old=>({...old,[field]:value}));
-  async function loadOverview(){
+  async function loadCustomerPage(cursor:string|null,index:number){
     if(!key.trim()){setError('Enter your local workspace API key.');return;}
     setWorking(true);setError('');setMessage('Loading customer economics…');
     try{
       const start=utcStart(from),endDate=new Date(utcStart(to));
       endDate.setUTCDate(endDate.getUTCDate()+1);
-      const result=await fetchJson<Analytics>('/v1/analytics?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(endDate.toISOString()),key.trim());
-      setAnalytics(result);setAccessOpen(false);
-      setMessage(result.truncated?'Partial results: customer list is truncated. Displayed sums are not workspace-wide.':'');
+      const query='/v1/analytics/page?start='+encodeURIComponent(start)+
+        '&end='+encodeURIComponent(endDate.toISOString())+'&limit=50'+
+        (cursor?'&cursor='+encodeURIComponent(cursor):'');
+      const result=await fetchJson<Analytics>(query,key.trim());
+      setAnalytics(result);setAccessOpen(false);setPageIndex(index);
+      setMessage(result.nextCursor?'Viewing one customer page. KPI totals cover the entire workspace.':'');
     }catch(e){setError(e instanceof Error?e.message:'Analytics request failed');setMessage('');}
     finally{setWorking(false);}
+  }
+  async function loadOverview(){
+    setPageStarts([null]);
+    await loadCustomerPage(null,0);
+  }
+  async function nextCustomerPage(){
+    if(!analytics?.nextCursor)return;
+    const next=analytics.nextCursor;
+    setPageStarts(prev=>[...prev.slice(0,pageIndex+1),next]);
+    await loadCustomerPage(next,pageIndex+1);
+  }
+  async function previousCustomerPage(){
+    if(pageIndex===0)return;
+    await loadCustomerPage(pageStarts[pageIndex-1]??null,pageIndex-1);
   }
   async function loadPricing(){
     if(!key.trim()){setError('Enter your local workspace API key.');return;}
@@ -139,18 +162,21 @@ export function App(){
     }catch(e){setError(e instanceof Error?e.message:'Could not create pricing version');}
     finally{setWorking(false);}
   }
-  let revenue=0n,cost=0n,partial=0n,unknown=0;
-  for(const c of analytics?.customers??[]){
-    revenue+=BigInt(c.revenueMicros);cost+=BigInt(c.knownAiCostMicros);
-    if(c.unknownEvents)unknown++;else partial+=BigInt(c.contributionMicros??'0');
-  }
+  const totals=analytics?.summary;
+  const revenue=BigInt(totals?.totalRevenueMicros??'0');
+  const cost=BigInt(totals?.totalKnownAiCostMicros??'0');
+  const partial=BigInt(totals?.verifiedCustomerContributionMicros??'0');
+  const unknown=Number(totals?.unknownCustomerCount??'0');
+  const totalCustomers=Number(totals?.customerCount??'0');
+  const knownCount=Number(totals?.verifiedCustomerCount??'0');
+  const profitableCount=Number(totals?.profitableCustomerCount??'0');
+  const lossCount=Number(totals?.lossMakingCustomerCount??'0');
+  const coverage=totalCustomers?Math.round(100*knownCount/totalCustomers):null;
   const customers=analytics?.customers??[];
-  const knownCustomers=customers.filter(c=>c.unknownEvents===0);
-  const profitableCount=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)>0n).length;
-  const lossCount=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)<=0n).length;
-  const profitable=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)>0n).length;
-  const atRisk=knownCustomers.filter(c=>c.contributionMicros!==null&&BigInt(c.contributionMicros)<=0n).length;
-  const coverage=customers.length?Math.round(100*knownCustomers.length/customers.length):null;
+  const countLabel=analytics
+    ? (pageIndex===0&&!analytics.nextCursor?customers.length+' customers'
+      : customers.length+' shown · '+totals?.customerCount+' total')
+    : '0 customers';
   const visibleCustomers=customers.filter(c=>{
     const matching=!customerSearch||c.customerId.toLowerCase().includes(customerSearch.trim().toLowerCase());
     if(!matching)return false;
@@ -216,7 +242,7 @@ export function App(){
 
       {view==='overview'?<>
         <section className="metrics" aria-label="Customer economics summary">
-          <div className="metric"><div className="metricTop"><span>Customer revenue</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>Selected customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Customer revenue</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>All workspace customers</small></div>
           <div className="metric"><div className="metricTop"><span>Known AI cost</span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
           <div className="metric"><div className="metricTop"><span>Verified contribution</span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
           <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
@@ -235,21 +261,21 @@ export function App(){
               </div>
             </div>
             {(!analytics||customers.length===0)&&<div className="panelEmpty">{analytics?'No customers in this period.':'Load analysis to show a real customer cost comparison.'}</div>}
-            <div className="panelFoot">Customer categories, not a historical trend · Up to 8 customers · Unknown is never $0</div>
+            <div className="panelFoot">Current page preview · Up to 8 customers · Unknown is never $0</div>
           </section>
           <section className="surface coveragePanel" aria-labelledby="coverage-title">
             <div className="panelHeading"><div><h2 id="coverage-title">Cost coverage</h2><p>Share of customers with known costs</p></div><span className="countLabel">{coverage===null?'—':coverage+'%'}</span></div>
-            <div className="coverageCount"><strong>{analytics?knownCustomers.length:'—'}</strong><span>of {analytics?customers.length:'—'} customers verified</span></div>
+            <div className="coverageCount"><strong>{analytics?knownCount:'—'}</strong><span>of {analytics?totalCustomers:'—'} customers verified</span></div>
             <div className="coverageTrack" aria-label={coverage===null?'No cost coverage loaded':'Verified coverage '+coverage+' percent'}>
-              {customers.length>0&&<><div className="coverageGood" style={{width:(profitableCount/customers.length*100)+'%'}}/><div className="coverageLoss" style={{width:(lossCount/customers.length*100)+'%'}}/><div className="coverageUnknown" style={{width:(unknown/customers.length*100)+'%'}}/></>}
+              {totalCustomers>0&&<><div className="coverageGood" style={{width:(profitableCount/totalCustomers*100)+'%'}}/><div className="coverageLoss" style={{width:(lossCount/totalCustomers*100)+'%'}}/><div className="coverageUnknown" style={{width:(unknown/totalCustomers*100)+'%'}}/></>}
             </div>
             <div className="coverageList"><div><span><i className="legendGood"/> Profitable</span><strong>{analytics?profitableCount:'—'}</strong></div><div><span><i className="legendLoss"/> Loss-making</span><strong>{analytics?lossCount:'—'}</strong></div><div><span><i className="unknownDot"/> Unverified</span><strong>{analytics?unknown:'—'}</strong></div></div>
-            <div className="panelFoot">{analytics?.truncated?'Customer results truncated.':'Customer-based coverage, not a share of total AI spend.'}</div>
+            <div className="panelFoot">{'Full-workspace customer coverage; not a share of AI spend.'}</div>
           </section>
         </div>
 
         <section className="surface tableSurface" aria-labelledby="economics-title">
-          <div className="panelHeading"><div><h2 id="economics-title">Customer activity</h2><p>Customer-level revenue, AI cost and contribution</p></div><span id="count" className="countLabel">{analytics?(customers.length+(analytics.truncated?'+':'')):'0'} customers</span></div>
+          <div className="panelHeading"><div><h2 id="economics-title">Customer activity</h2><p>Customer-level revenue, AI cost and contribution</p></div><span id="count" className="countLabel">{countLabel}</span></div>
           <div className="tableToolbar">
             <div className="customerSearch"><span aria-hidden="true">⌕</span><input aria-label="Search customers" placeholder="Search customers" value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)}/></div>
             <SegmentedControl label="Customer status filter" value={segment} onValueChange={setSegment} options={[{value:'all',label:'All'},{value:'profitable',label:'Profitable'},{value:'at-risk',label:'At risk'},{value:'unknown',label:'Unknown'}]}/>
@@ -266,6 +292,11 @@ export function App(){
           </tbody></table></div>
           {!analytics&&<div className="tableEmpty">Enter your local API key and load a period to view customer economics.</div>}
           {analytics&&visibleCustomers.length===0&&<div className="tableEmpty">No customers match your search or filter.</div>}
+          <div className="pagingControls" aria-label="Customer pagination">
+            <button type="button" disabled={working||pageIndex===0} onClick={previousCustomerPage}>← Previous</button>
+            <span>Page {analytics?pageIndex+1:'—'} · {totals?.customerCount??'0'} workspace customers</span>
+            <button type="button" disabled={working||!analytics?.nextCursor} onClick={nextCustomerPage}>Next →</button>
+          </div>
           <div className="panelFoot">Contribution excludes hosting, support and non-inference costs. Unknown is never treated as zero.</div>
         </section>
 

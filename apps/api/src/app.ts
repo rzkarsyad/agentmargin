@@ -27,6 +27,7 @@ export interface EventStore {
   ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{ inserted: number; duplicate: number }>;
   ingestRevenue?(workspaceId:string, records: readonly StoredRevenue[]): Promise<{inserted:number;duplicate:number}>;
   analytics?(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>;
+  analyticsPage?(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>;
 }
 export interface AnalyticsCustomer {
   customerId:string; revenueMicros:string; knownAiCostMicros:string;
@@ -39,6 +40,31 @@ export interface AnalyticsSnapshot {
   unknownModels?: {model:string; eventCount:number}[];
   unknownModelsTruncated?: boolean;
 }
+export interface WorkspaceAnalyticsSummary{
+  customerCount:string;
+  verifiedCustomerCount:string;
+  profitableCustomerCount:string;
+  lossMakingCustomerCount:string;
+  unknownCustomerCount:string;
+  usageEventCount:string;
+  unknownUsageEventCount:string;
+  totalRevenueMicros:string;
+  totalKnownAiCostMicros:string;
+  /** Sum of contribution for customers whose inference cost is fully known. This is NOT an entire-workspace margin when unknown customers exist. */
+  verifiedCustomerContributionMicros:string;
+  /** Null until every customer in the selected period has a verified inference cost. */
+  completeContributionMicros:string|null;
+}
+export interface AnalyticsPage{
+  periodStart:string;periodEnd:string;
+  customers:AnalyticsCustomer[];
+  summary:WorkspaceAnalyticsSummary;
+  nextCursor:string|null;
+  pageSize:number;
+  unknownModels?:{model:string;eventCount:number}[];
+  unknownModelsTruncated?:boolean;
+}
+
 const hex64 = /^[a-f0-9]{64}$/;
 const validId = (s: unknown): s is string => typeof s === 'string' && s.length >= 1 && s.length <= 200;
 const validCount = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
@@ -176,6 +202,33 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter())
     if(!store.analytics)return c.json({error:'Analytics unavailable'},503);
     return c.json(await store.analytics(workspaceId,start,end));
   });
+  // Paginated, full-workspace analytics. The summary is calculated on the server,
+  // never inferred from a partial table page.
+  app.get('/v1/analytics/page',async c=>{
+    const auth=c.req.header('authorization')??'';
+    if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
+    const workspaceId=await store.authenticate(digest(auth.slice(7)));
+    if(!workspaceId)return c.json({error:'Unauthorized'},401);
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    const start=c.req.query('start'),end=c.req.query('end');
+    if(!validTime(start)||!validTime(end)||Date.parse(start)>=Date.parse(end)||
+      Date.parse(end)-Date.parse(start)>366*86400000)return c.json({error:'Invalid period'},400);
+    const rawLimit=c.req.query('limit')??'50';
+    if(!/^(?:[1-9]|[1-9][0-9]|100)$/.test(rawLimit))return c.json({error:'limit must be an integer from 1 to 100'},400);
+    const rawCursor=c.req.query('cursor');
+    let after:string|null=null;
+    if(rawCursor!==undefined){
+      if(!/^[A-Za-z0-9_-]{1,400}$/.test(rawCursor))
+        return c.json({error:'Invalid pagination cursor'},400);
+      const decoded=Buffer.from(rawCursor,'base64url');
+      after=decoded.toString('utf8');
+      if(decoded.toString('base64url')!==rawCursor||!validId(after))
+        return c.json({error:'Invalid pagination cursor'},400);
+    }
+    if(!store.analyticsPage)return c.json({error:'Paginated analytics unavailable'},503);
+    return c.json(await store.analyticsPage(workspaceId,start,end,after,Number(rawLimit)));
+  });
+
   app.post('/v1/revenue',async c=>{
     const auth=c.req.header('authorization')??'';
     if(!/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth))return c.json({error:'Unauthorized'},401);
