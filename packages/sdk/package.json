@@ -1,8 +1,39 @@
 {
   "name": "@agentmargin/sdk",
-  "version": "0.3.0-alpha",
+  "version": "0.4.0-alpha.0",
+  "description": "Source-first usage and revenue attribution SDK for AgentMargin",
   "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/rzkarsyad/agentmargin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rzkarsyad/agentmargin.git",
+    "directory": "packages/sdk"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "pack:check": "node ../../scripts/sdk-package-smoke.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

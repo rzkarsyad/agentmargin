@@ -1,0 +1,35 @@
+name: Next.js starter validation
+
+on:
+  push:
+    branches: [feat/v0.4-developer-adoption]
+  pull_request:
+    paths:
+      - 'examples/nextjs-starter/**'
+      - 'packages/sdk/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/starter.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  starter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install monorepo dependencies
+        run: npm ci
+      - name: Verify publishable TypeScript SDK
+        run: |
+          npm run build:sdk
+          npm run sdk:packcheck
+      - name: Install starter dependencies and build
+        run: |
+          npm --prefix examples/nextjs-starter install --no-audit --no-fund
+          npm --prefix examples/nextjs-starter run build
