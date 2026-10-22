@@ -1,4 +1,5 @@
 import { fromOpenAIResponse, fromOpenAIChatCompletion, type ResponsesUsage, type ChatCompletionsUsage } from './openai.ts';
+import {fromAnthropicMessage,type AnthropicMessageUsage} from './anthropic.ts';
 export interface UsageInput {
   id:string; customerId:string; model:string; occurredAt:string;
   inputTokens:number; outputTokens:number; cachedInputTokens?:number;
@@ -52,6 +53,11 @@ export class AgentMarginClient {
   ): Promise<{ inserted: number; duplicate: number; received: number }> {
     return this.track([fromOpenAIChatCompletion(completion, customerId)], signal);
   }
+  /** Track a completed Anthropic Messages result. Cache writes are rejected until their distinct pricing tier is modeled. */
+  async trackAnthropicMessage(message:AnthropicMessageUsage,customerId:string,occurredAt:string,
+    signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
+    return this.track([fromAnthropicMessage(message,customerId,occurredAt)],signal);
+  }
   async trackRevenue(records:RevenueInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 records');
     const response=await this.fetchImpl(new URL('/v1/revenue',this.endpoint),{method:'POST',headers:{
@@ -62,3 +68,7 @@ export class AgentMarginClient {
   }
 }
 export type { ResponsesUsage, ChatCompletionsUsage } from './openai.ts';
+
+export {fromAnthropicMessage} from './anthropic.ts';
+export type {AnthropicMessageUsage} from './anthropic.ts';
+export {stripeInvoicePaidToRevenue} from './stripe.ts';
