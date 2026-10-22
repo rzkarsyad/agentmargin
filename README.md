@@ -64,6 +64,16 @@ The helpers send **usage metadata only**—no prompts or generated text—and re
 - [Synthetic end-to-end example](examples/track-synthetic-openai.ts) (no OpenAI API key or OpenAI request)
 - [Tracking semantics and safety notes](docs/OPENAI_INTEGRATION.md)
 
+## v0.3 in development: workspace pricing + Arc UI
+
+The [draft v0.3 PR](https://github.com/rzkarsyad/agentmargin/pull/3) introduces authenticated, append-only pricing versions with explicit effective dates and a **React 19 dashboard using real Arc UI free MIT components**. The previous inline HTML interface remains in the repo as a legacy testing fixture; the local dashboard route now serves the built React/Vite UI when available.
+
+- [Pricing API, immutable rate history and verification notes](docs/PRICING.md)
+- [Arc source-first frontend and license](apps/web/README.md)
+- [Official Arc UI](https://uiarc.dev/) (free source: [arc-library](https://github.com/kuratlielia/arc-library))
+
+**This work is unreleased and must not be deployed as an internet-facing service.** The current public stable source release remains `v0.2.0-alpha`.
+
 ## Try the cost engine
 
 Requires **Node.js 22.18+** (Node 24 recommended) and npm. No API key or database is necessary for this demo.

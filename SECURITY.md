@@ -17,6 +17,13 @@ Do not publish vulnerability details in public issues. For private vulnerability
 - Per-process per-workspace request limiter; revocation queries live database state.
 - Basic source credential scan and dependency audit are included in CI.
 
+## v0.3 draft security notes
+
+- Workspace model prices are append-only with composite workspace foreign keys and SQL filters. Authenticated workspace keys currently have equal pricing write capability; **no user RBAC** is shipped.
+- The Arc UI React/Vite build is a local static asset bundle served under `/dashboard`, with self-only script loading, same-origin API requests, and no local/session storage of the bearer key.
+- Arc's free MIT components are checked in as source. The app must be rebuilt after source or dependency changes. Source licensing does not replace a dependency/security review.
+- Prior usage event costs remain stored; adding or superseding price versions does **not** retroactively reprice events.
+
 ## Known limitations — production deployment blockers
 
 1. **No complete internet-facing authorization review or penetration test.** Database row-level security (RLS) is not configured. A compromised API database credential can access all tenants; use a dedicated least-privilege role and isolate deployments.
