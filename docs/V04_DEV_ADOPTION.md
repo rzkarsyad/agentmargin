@@ -14,7 +14,7 @@ Work on this branch is a **candidate, not a released or npm-published SDK**.
 
 - [ ] Main CI plus new Next.js starter workflow pass.
 - [ ] Three developers install without assistance.
-- [ ] npm `@agentmargin` namespace owner enables trusted publisher; GitHub Actions manual workflow publishes an `alpha` tagged package and npm registry returns verifiable version.
+- [ ] npm `@makinohq` organization owner publishes the first `@makinohq/agentmargin` prerelease manually; then enables the GitHub Actions trusted publisher for future versions. The registry must return a verifiable version.
 - [ ] Review community catalog estimates against official provider invoices before enabling any unattended import.
 - [ ] One user confirms the full Next.js → AgentMargin → PostgreSQL → analytics loop with their own non-sensitive development workload.
 

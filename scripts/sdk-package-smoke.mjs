@@ -18,7 +18,7 @@ assert.equal(typeof exported.stripeInvoicePaidToRevenue,'function');
 assert.equal(typeof exported.fromAnthropicMessage,'function');
 const client=new exported.AgentMarginClient({endpoint:'http://127.0.0.1:8787',apiKey:'am_'+'a'.repeat(40)});
 assert.ok(client);
-const json=JSON.parse(execFileSync('npm',['pack','--workspace','@agentmargin/sdk','--dry-run','--json'],{
+const json=JSON.parse(execFileSync('npm',['pack','--workspace','@makinohq/agentmargin','--dry-run','--json'],{
   cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:40_000,
 }));
 const packaged=new Set(json[0].files.map(f=>f.path));

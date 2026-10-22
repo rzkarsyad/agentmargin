@@ -22,7 +22,7 @@
 - [x] Document security and onboarding, verify Next.js production build and dependency audit in CI.
 - [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
 - [x] Add a **weekly, read-only provider pricing candidate scan** and review artifact; not automatic price application or invoice reconciliation.
-- [ ] **Publish SDK to npm:** requires `@agentmargin` scope ownership and npm OIDC trusted publisher. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
+- [ ] **Publish SDK to npm:** initial release of `@makinohq/agentmargin` requires npm `@makinohq` organization publish access; configure npm OIDC trusted publisher after the first release. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
 - [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 
 **Important:** catalog import is not an unattended official provider feed. An operator must review and explicitly apply the rates. Official invoice reconciliation is not shipped.

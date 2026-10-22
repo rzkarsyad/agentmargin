@@ -8,7 +8,7 @@ From repository root with Node 22.18+ and OrbStack/Docker:
 
 ```bash
 npm ci
-npm run build -w @agentmargin/sdk
+npm run build -w @makinohq/agentmargin
 npm run demo
 ```
 
@@ -24,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:3000. Click **Track synthetic request** to submit actual metadata and $0.29 illustrative revenue through compiled `@agentmargin/sdk` to the local API/PostgreSQL. It requires **no OpenAI key**; the model price is intentionally unknown until you add a matching price in AgentMargin. This demonstrates that `unknown != 0`.
+Open http://127.0.0.1:3000. Click **Track synthetic request** to submit actual metadata and $0.29 illustrative revenue through compiled `@makinohq/agentmargin` to the local API/PostgreSQL. It requires **no OpenAI key**; the model price is intentionally unknown until you add a matching price in AgentMargin. This demonstrates that `unknown != 0`.
 
 Optional: set `OPENAI_API_KEY` in **server-only** `.env.local`, then click **Optional real OpenAI request**. The server sends a fixed, non-sensitive prompt, reads the completed Responses API usage, and tracks metadata only; it does not return prompts or outputs to AgentMargin. A provider call may incur a small charge.
 

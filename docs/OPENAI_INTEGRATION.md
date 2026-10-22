@@ -3,7 +3,7 @@
 AgentMargin provides **post-call**, server-side usage tracking helpers. It does *not* auto-instrument OpenAI calls, capture prompts, or include an OpenAI pricing catalog.
 
 ```ts
-import { AgentMarginClient } from '@agentmargin/sdk';
+import { AgentMarginClient } from '@makinohq/agentmargin';
 
 const meter = new AgentMarginClient({
   endpoint: 'http://127.0.0.1:8787',

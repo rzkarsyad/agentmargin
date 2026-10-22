@@ -1,6 +1,6 @@
 import {NextResponse} from 'next/server';
 import {margin,DEMO_CUSTOMER_ID} from '../../../lib/margin';
-import type {ResponsesUsage} from '@agentmargin/sdk';
+import type {ResponsesUsage} from '@makinohq/agentmargin';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function POST(){
