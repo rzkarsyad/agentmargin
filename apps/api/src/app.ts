@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
-import { WorkspaceRateLimiter } from './rate-limit.ts';
+import { WorkspaceRateLimiter, InvalidCredentialLimiter } from './rate-limit.ts';
 
 export interface IncomingEvent {
   id: string; customerId: string; model: string; occurredAt: string;
@@ -126,7 +126,7 @@ function parsePriceInput(x:unknown):PriceInput {
     cachedInputMicrosPerMillion:rate(raw.cachedInputMicrosPerMillion,true),sourceNote:raw.sourceNote.trim()};
 }
 
-export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter()) {
+export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter()) {
   const app = new Hono();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
@@ -161,6 +161,23 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter())
     });
   });
   app.get('/health', c => c.json({ status:'ok', phase:3 }));
+  // Limit all invalid/missing workspace credential attempts BEFORE parsing any body.
+  // This process-local global bucket is intentionally not client-IP-based: arbitrary
+  // forwarded headers are untrusted and trivial to spoof on an unconfigured proxy.
+  app.use('/v1/*',async(c,next)=>{
+    const auth=c.req.header('authorization')??'';
+    const validFormat=/^Bearer am_[A-Za-z0-9_-]{32,}$/.test(auth);
+    if(!validFormat){
+      if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
+      return c.json({error:'Unauthorized'},401);
+    }
+    const workspace=await store.authenticate(digest(auth.slice(7)));
+    if(!workspace){
+      if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
+      return c.json({error:'Unauthorized'},401);
+    }
+    await next();
+  });
   app.use('/v1/*', bodyLimit({maxSize:256_000,onError:c=>c.json({error:'Payload too large'},413)}));
   app.get('/v1/prices',async c=>{
     const auth=c.req.header('authorization')??'';
