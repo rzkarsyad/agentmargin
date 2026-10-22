@@ -147,25 +147,25 @@ export function App(){
         <div className="heroGraphic" aria-hidden="true"><span>↗</span><small>AGENT / MARGIN</small></div>
       </section>
       <section className="authBar" aria-label="Local workspace credentials">
-        <div className="authField"><Input label="Workspace API key" type="password" value={key} onChange={e=>{setKey(e.target.value);setAnalytics(null);setPrices(null);}} autoComplete="off" placeholder="am_…" /></div>
+        <div className="authField"><Input id="key" label="Workspace API key" type="password" value={key} onChange={e=>{setKey(e.target.value);setAnalytics(null);setPrices(null);}} autoComplete="off" placeholder="am_…" /></div>
         {view==='overview'&&<>
           <div className="dateField"><label htmlFor="period-from">From (UTC)</label><input id="period-from" type="date" value={from} onChange={e=>setFrom(e.target.value)}/></div>
           <div className="dateField"><label htmlFor="period-to">To (inclusive, UTC)</label><input id="period-to" type="date" value={to} onChange={e=>setTo(e.target.value)}/></div>
         </>}
-        <div className="authButton"><Button type="button" loading={working} onClick={view==='overview'?loadOverview:loadPricing}>{view==='overview'?'Load analysis':'Refresh prices'} ↗</Button></div>
+        <div className="authButton"><Button id="load" type="button" loading={working} onClick={view==='overview'?loadOverview:loadPricing}>{view==='overview'?'Load analysis':'Refresh prices'} ↗</Button></div>
       </section>
       {error&&<div className="alert error" role="alert">{error}</div>}
       {message&&<div className="alert info" role="status" aria-live="polite">{message}</div>}
       {view==='overview'?<>
         <section className="metrics" aria-label="Customer economics summary">
-          <div className="metric"><span>Customer revenue</span><strong>{analytics?money(revenue.toString()):'—'}</strong><small>For selected customers</small></div>
-          <div className="metric"><span>Known AI cost</span><strong>{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
-          <div className="metric accentMetric"><span>AI contribution</span><strong>{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>{unknown?'Unknown-cost customers excluded':'Revenue minus tracked AI inference'}</small></div>
-          <div className="metric"><span>Unknown-cost customers</span><strong>{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
+          <div className="metric"><span>Customer revenue</span><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>For selected customers</small></div>
+          <div className="metric"><span>Known AI cost</span><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
+          <div className="metric accentMetric"><span>AI contribution</span><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>{unknown?'Unknown-cost customers excluded':'Revenue minus tracked AI inference'}</small></div>
+          <div className="metric"><span>Unknown-cost customers</span><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
         </section>
         <section className="surface tableSurface" aria-labelledby="economics-title">
-          <div className="surfaceTop"><div><h2 id="economics-title">Customer economics</h2><p>Contribution excludes hosting, support and all non-inference spending.</p></div><div className="countLabel">{analytics?(analytics.customers.length+(analytics.truncated?'+':'')):'0'} customers</div></div>
-          <div className="tableScroll"><table><thead><tr><th>Customer</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Coverage</th></tr></thead><tbody>
+          <div className="surfaceTop"><div><h2 id="economics-title">Customer economics</h2><p>Contribution excludes hosting, support and all non-inference spending.</p></div><div className="countLabel" id="count">{analytics?(analytics.customers.length+(analytics.truncated?'+':'')):'0'} customers</div></div>
+          <div className="tableScroll"><table><thead><tr><th>Customer</th><th>Revenue</th><th>AI cost</th><th>Contribution</th><th>Margin</th><th>Coverage</th></tr></thead><tbody id="rows">
             {(analytics?.customers??[]).map(c=><tr key={c.customerId}>
               <td className="customerId">{c.customerId}</td><td>{money(c.revenueMicros)}</td><td>{money(c.knownAiCostMicros)}</td>
               <td className={c.contributionMicros===null?'warningText':BigInt(c.contributionMicros)<0n?'lossText':'gainText'}>{c.contributionMicros===null?'Unknown':money(c.contributionMicros)}</td>
@@ -175,9 +175,9 @@ export function App(){
           </tbody></table></div>
           {!analytics?.customers.length&&<div className="emptyState">Enter your local API key and load a period to inspect your customer economics.</div>}
         </section>
-        <section className="surface tableSurface" aria-labelledby="unknown-model-title">
+        <section id="missing-panel" className="surface tableSurface" aria-labelledby="unknown-model-title">
           <div className="surfaceTop"><div><h2 id="unknown-model-title">Unknown-cost models</h2><p>A missing trusted price is not a $0 expense. Historical events are immutable.</p></div><span className="countLabel">{analytics?.unknownModels?.length??0} models</span></div>
-          <div className="tableScroll"><table><thead><tr><th>Model</th><th>Events without verified cost</th></tr></thead><tbody>
+          <div className="tableScroll"><table><thead><tr><th>Model</th><th>Events without verified cost</th></tr></thead><tbody id="missing-rows">
             {(analytics?.unknownModels??[]).map(m=><tr key={m.model}><td className="customerId">{m.model}</td><td>{m.eventCount}</td></tr>)}
           </tbody></table></div>
           {!analytics?.unknownModels?.length&&<div className="emptyState">{analytics?'No unknown-cost models in the selected period.':'Load your analysis to see missing model prices.'}</div>}
