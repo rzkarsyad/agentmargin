@@ -79,6 +79,10 @@ def live_browser(browser, key: str, width: int, customer_count: int, unknown_cou
             # Demo-only screenshot. Clear the masked key from the DOM without
             # firing React onChange, so no credential appears in the PNG.
             page.locator("#key").evaluate("(el) => { el.value = ''; }")
+            # Clicking the filter scrolls the browser to the table. Reset before
+            # a full-page screenshot or Chromium relocates the sticky sidebar.
+            page.evaluate("window.scrollTo({ top: 0, left: 0, behavior: 'instant' })")
+            page.wait_for_function("window.scrollY === 0")
             out = ROOT / "ci-artifacts"
             out.mkdir(exist_ok=True)
             page.screenshot(path=str(out / f"arc-overview-{width}px.png"), full_page=True)
