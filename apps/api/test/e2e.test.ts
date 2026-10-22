@@ -29,6 +29,8 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
     await socket.start();started=true;
     store=new PostgresEventStore(`postgresql://postgres:postgres@127.0.0.1:${port}/postgres`);
     const app=createApp(store);
+    // Fail with the underlying database error rather than Hono's generic HTTP 500 during this test.
+    app.onError((error)=>{throw error;});
     const sdk=new AgentMarginClient({endpoint:'http://localhost:8787',apiKey:key,
       fetchImpl:async(url,init)=>app.request(new Request(url,init))});
     const event={id:'e2e-1',customerId:'customer-1',model:'sample',occurredAt:'2026-10-10T00:00:00Z',inputTokens:500_000,outputTokens:250_000};
