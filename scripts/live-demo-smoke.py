@@ -84,7 +84,10 @@ def live_pricing_browser(browser, key: str):
         assert "$4" in page.locator("table").inner_text()
 
         # A negative rate is rejected client-side; the old row remains immutable.
+        page.get_by_label("Provider model identifier").fill("arc-invalid-price")
         page.get_by_label("Input $ / 1M tokens").fill("-1")
+        page.get_by_label("Output $ / 1M tokens").fill("4")
+        page.get_by_label("Source / verification note").fill("Synthetic invalid rate test")
         page.get_by_role("button", name="Add immutable price").click()
         page.get_by_role("alert").get_by_text("Enter a USD amount", exact=False).wait_for(timeout=10_000)
         assert page.get_by_role("row", name="arc-smoke-model", exact=False).count() == 1
