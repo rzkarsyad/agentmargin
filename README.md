@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.3.0-alpha.md)
 
+> **Source vs release:** The tagged public prerelease is `v0.3.0-alpha`. The `main` branch also contains **unreleased experimental code** for SDK packaging/Next.js, opt-in model price import, whole-workspace paginated analytics and Anthropic/Stripe adapters (PRs #5–#7). The npm SDK has **not** been published, and no production deployment is certified. See the [live roadmap](docs/ROADMAP.md).
+
 AgentMargin is an **open-source, self-hosted TypeScript toolkit** for understanding AI inference costs and *customer-level contribution margins*. Attribute usage and revenue to the same customer, distinguish known from unknown costs, and investigate customers whose AI usage outweighs what they pay.
 
 > **Experimental software.** Built for local evaluation and contributors, **not** an internet-facing production deployment. Read [SECURITY.md](SECURITY.md) before using real data.
@@ -75,6 +77,16 @@ The helpers send **usage metadata only**—no prompts or generated text—and re
 - [Reference-led UI acceptance rules](docs/UX_REFERENCE.md)
 
 **This is an experimental alpha, not production-ready.** There is no hosted AgentMargin SaaS or stable npm SDK distribution. Do not expose the demo to the public internet.
+
+## Unreleased experimental source on `main` (v0.4–v0.6 foundations)
+
+- [Compiled distributable SDK package](packages/sdk/README.md) with npm trusted-publishing workflow; **not yet published** ([publisher gate](https://github.com/rzkarsyad/agentmargin/issues/8)).
+- [Runnable Next.js starter](examples/nextjs-starter/README.md) including synthetic usage/revenue and optional OpenAI call.
+- [Reviewed LiteLLM price importer](docs/PRICING_IMPORT.md): preview by default, `--apply` optional, not a provider-verified invoice feed.
+- [Paginated analytics & whole-workspace totals](docs/ANALYTICS_PAGINATION.md); customer charts show a page preview, not fabricated history.
+- [Anthropic and signed Stripe adapter documentation](docs/INTEGRATIONS.md): local-only developer adapters, not a full production Stripe integration ([sandbox/reconciliation gate](https://github.com/rzkarsyad/agentmargin/issues/9)).
+
+The untagged branch contains experimental work. Keep using synthetic data; review [production release gates](https://github.com/rzkarsyad/agentmargin/issues/10) before deploying to public infrastructure.
 
 ## Try the cost engine
 
