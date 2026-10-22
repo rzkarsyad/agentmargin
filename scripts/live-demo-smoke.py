@@ -98,7 +98,11 @@ def live_pricing_browser(browser, key: str):
         page.locator("#key").evaluate("(el) => { el.value = ''; }")
         out = ROOT / "ci-artifacts"
         out.mkdir(exist_ok=True)
+        page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=str(out / "arc-pricing-desktop.png"), full_page=True)
+        page.set_viewport_size({"width": 390, "height": 850})
+        page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=str(out / "arc-pricing-mobile.png"), full_page=True)
 
         # A negative rate is rejected client-side; the old row remains immutable.
         page.get_by_label("Provider model identifier").fill("arc-invalid-price")
