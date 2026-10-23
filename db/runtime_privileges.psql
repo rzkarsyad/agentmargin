@@ -27,6 +27,10 @@ GRANT SELECT, INSERT ON TABLE revenue_deliveries TO :"runtime_role";
 GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON revenue_deliveries TO :"runtime_role";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
 REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
+-- pg_restore --no-acl restores default PUBLIC EXECUTE on functions. Re-establish
+-- this boundary before granting runtime schema access.
+REVOKE ALL ON SCHEMA agentmargin_auth FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA agentmargin_auth FROM PUBLIC;
 GRANT USAGE ON SCHEMA agentmargin_auth TO :"runtime_role";
 GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text),
   agentmargin_auth.workspace(text), agentmargin_auth.event_digest(uuid,text,text) TO :"runtime_role";

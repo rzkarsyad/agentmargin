@@ -298,6 +298,7 @@ try {
     runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
       connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
     assert.equal(await runtimeStore.ready(),true);
+    assert.equal((await pool.query("SELECT has_function_privilege($1,'agentmargin_auth.validate_adjustment()','EXECUTE') AS allowed",[runtimeRole])).rows[0].allowed,false,'Runtime must not directly execute definer triggers');
     await pool.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
     try{assert.equal(await runtimeStore.ready(),false,'Disabled RLS must fail readiness');}
     finally{await pool.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');}
