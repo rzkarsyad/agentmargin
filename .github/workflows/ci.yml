@@ -43,6 +43,8 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: API key rotation and revocation drill (synthetic CI only)
+        run: AGENTMARGIN_KEY_ROTATION_DRILL=ci-only node --experimental-strip-types scripts/key-rotation-ci.ts
       - name: PostgreSQL backup/restore drill (synthetic CI database only)
         run: |
           docker run --rm --network host \
