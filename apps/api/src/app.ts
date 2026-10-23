@@ -2,7 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
+import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion, parseAdjustment, type StoredAdjustment } from '../../../packages/core/src/index.ts';
 import type {OperationalMetrics} from './metrics.ts';
 import { WorkspaceRateLimiter, InvalidCredentialLimiter } from './rate-limit.ts';
 
@@ -32,6 +32,7 @@ export interface EventStore {
   listPriceVersions?(workspaceId:string):Promise<{items:WorkspacePrice[]; truncated:boolean}>;
   ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{ inserted: number; duplicate: number }>;
   enqueueRevenueDelivery?(workspaceId:string,delivery:RevenueDelivery):Promise<{duplicate:boolean;state:string}>;
+  ingestAdjustments?(workspaceId:string,records:readonly StoredAdjustment[]):Promise<{inserted:number;duplicate:number}>;
   ingestRevenue?(workspaceId:string, records: readonly StoredRevenue[]): Promise<{inserted:number;duplicate:number}>;
   analytics?(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>;
   analyticsPage?(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>;
@@ -75,7 +76,7 @@ export interface AnalyticsPage{
 /** An allowlisted operational event. Raw paths, queries, headers, payloads and tenant identifiers are intentionally absent. */
 export interface SafeRequestLog {
   kind:'http_request'; requestId:string; timestamp:string;
-  route:'readiness'|'metrics'|'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'revenue_deliveries'|'prices'|'analytics'|'analytics_page'|'other';
+  route:'readiness'|'metrics'|'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'revenue_deliveries'|'adjustments'|'prices'|'analytics'|'analytics_page'|'other';
   method:'GET'|'POST'|'HEAD'|'OPTIONS'|'OTHER';
   status:number; durationMs:number;
   errorClass:'none'|'authentication'|'authorization'|'rate_limit'|'client'|'dependency'|'internal';
@@ -91,6 +92,7 @@ function safeRoute(path:string):SafeRequestLog['route']{
     case '/v1/events':return 'events';
     case '/v1/revenue':return 'revenue';
     case '/v1/revenue/deliveries':return 'revenue_deliveries';
+    case '/v1/revenue/adjustments':return 'adjustments';
     case '/v1/prices':return 'prices';
     case '/v1/analytics':return 'analytics';
     case '/v1/analytics/page':return 'analytics_page';
@@ -102,7 +104,7 @@ function safeMethod(value:string):SafeRequestLog['method']{
 }
 function requiredKeyRole(method:string,path:string):WorkspaceKeyRole{
   if(method==='GET'&&['/v1/prices','/v1/analytics','/v1/analytics/page'].includes(path))return 'read';
-  if(method==='POST'&&['/v1/events','/v1/revenue','/v1/revenue/deliveries'].includes(path))return 'ingest';
+  if(method==='POST'&&['/v1/events','/v1/revenue','/v1/revenue/deliveries','/v1/revenue/adjustments'].includes(path))return 'ingest';
   // Price changes, unknown future endpoints and other methods are admin-only by default.
   return 'admin';
 }
@@ -342,6 +344,27 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }catch(error){
       if(error instanceof Error&&error.message==='Idempotency conflict')return c.json({error:'Delivery ID reused with different payload'},409);
       if(error instanceof Error&&error.message==='Invalid revenue record')return c.json({error:error.message},400);
+      throw error;
+    }
+  });
+  app.post('/v1/revenue/adjustments',async c=>{
+    const store=c.get('store'),workspaceId=c.get('workspaceId');
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    if(!store.ingestAdjustments)return c.json({error:'Adjustments unavailable'},503);
+    let payload:unknown;
+    try{payload=await c.req.json();}catch{return c.json({error:'Invalid JSON'},400);}
+    const records=(payload as {records?:unknown[]}|null)?.records;
+    if(!Array.isArray(records)||records.length<1||records.length>100)return c.json({error:'records must contain 1-100 items'},400);
+    try{
+      const parsed=records.map(parseAdjustment);
+      if(new Set(parsed.map(r=>r.id)).size!==parsed.length)return c.json({error:'Duplicate adjustment in request'},400);
+      return c.json({...await store.ingestAdjustments(workspaceId,parsed),received:parsed.length},202);
+    }catch(error){
+      if(error instanceof Error&&error.message==='Invalid adjustment')return c.json({error:error.message},400);
+      if(error instanceof Error&&error.message==='Idempotency conflict')return c.json({error:'Adjustment source reused with different payload'},409);
+      const code=(error as {code?:string}).code;
+      if(code==='23503')return c.json({error:'Original payment not found; retain and retry after payment ingestion'},409);
+      if(code==='23514')return c.json({error:'Adjustment violates payment attribution or remaining amount'},409);
       throw error;
     }
   });

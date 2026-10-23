@@ -27,6 +27,7 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
     await db.exec(readFileSync(new URL('../../../db/007_credential_tenant_isolation.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/008_revenue_deliveries.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/009_credential_containment.sql',import.meta.url),'utf8'));
+    await db.exec(readFileSync(new URL('../../../db/010_revenue_adjustments.sql',import.meta.url),'utf8'));
     await db.query('INSERT INTO workspaces(id,name) VALUES($1,$2)',[workspace,'Integration']);
     await db.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES($1,$2,$3,$4)',
       ['22222222-2222-4222-8222-222222222222',workspace,digest(key),'e2e']);

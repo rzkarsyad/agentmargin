@@ -1,4 +1,5 @@
 import pg from 'pg';
+import type {StoredAdjustment} from '../../../packages/core/src/adjustments.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
 import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole, RevenueDelivery } from './app.ts';
 
@@ -100,10 +101,10 @@ export class PostgresEventStore implements EventStore {
       SELECT (
         (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname IN
-            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries')
+            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries','revenue_adjustments')
             AND c.relrowsecurity
             AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
-              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname='revenue_deliveries' THEN 3 ELSE 2 END)=5
+              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname='revenue_deliveries' THEN 3 ELSE 2 END)=6
         AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'),to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
@@ -265,6 +266,29 @@ export class PostgresEventStore implements EventStore {
       const result=await this.writeRevenue(client,workspaceId,records);
       await client.query('COMMIT');return result;
     }catch(error){await this.rollback(client);throw error;}
+    finally{client.release(this.brokenClients.has(client));}
+  }
+  private async writeAdjustments(client:pg.PoolClient,workspaceId:string,records:readonly StoredAdjustment[]):Promise<{inserted:number;duplicate:number}>{
+    let inserted=0,duplicate=0;
+    // Sort payment locks as well as IDs to avoid A/B versus B/A batch deadlocks.
+    for(const r of [...records].sort((a,b)=>a.originalPaymentId<b.originalPaymentId?-1:a.originalPaymentId>b.originalPaymentId?1:a.id<b.id?-1:a.id>b.id?1:0)){
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[workspaceId+':adjustment:'+r.id]);
+      const old=await client.query<{payload_digest:string}>(this.credential===undefined?
+        'SELECT payload_digest FROM revenue_adjustments WHERE workspace_id=$1 AND id=$2':
+        "SELECT * FROM agentmargin_auth.event_digest($1,'adjustment',$2)",[workspaceId,r.id]);
+      if(old.rowCount){if(old.rows[0]?.payload_digest!==r.payloadDigest)throw new Error('Idempotency conflict');duplicate++;continue;}
+      await client.query(`INSERT INTO revenue_adjustments(workspace_id,id,original_payment_id,customer_id,kind,amount_micros,
+        currency,occurred_at,provider,provider_account,source_object_id,evidence_ref,payload_digest)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[workspaceId,r.id,r.originalPaymentId,r.customerId,r.kind,
+          r.amountMicros,r.currency,r.occurredAt,r.provider,r.providerAccount,r.sourceObjectId,r.evidenceRef,r.payloadDigest]);
+      inserted++;
+    }
+    return {inserted,duplicate};
+  }
+  async ingestAdjustments(workspaceId:string,records:readonly StoredAdjustment[]):Promise<{inserted:number;duplicate:number}>{
+    const client=await this.begin();
+    try{const result=await this.writeAdjustments(client,workspaceId,records);await client.query('COMMIT');return result;}
+    catch(error){await this.rollback(client);throw error;}
     finally{client.release(this.brokenClients.has(client));}
   }
   async enqueueRevenueDelivery(workspaceId:string,delivery:RevenueDelivery):Promise<{duplicate:boolean;state:string}>{

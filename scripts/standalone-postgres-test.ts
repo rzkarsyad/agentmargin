@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
+import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
 import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot} from '../apps/api/src/app.ts';
 
@@ -78,6 +79,15 @@ try {
     assert.equal((await containmentUpgrade.query("SELECT to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)') AS name")).rows[0].name,null);
     await containmentUpgrade.query(containment);
   }finally{containmentUpgrade.release();}
+  const ledgerMigration=readFileSync(new URL('../db/010_revenue_adjustments.sql',import.meta.url),'utf8');
+  const ledgerUpgrade=await pool.connect();
+  try{
+    await assert.rejects(ledgerUpgrade.query(ledgerMigration.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await ledgerUpgrade.query('ROLLBACK');
+    assert.equal((await ledgerUpgrade.query("SELECT to_regclass('public.revenue_adjustments') AS name")).rows[0].name,null);
+    await ledgerUpgrade.query(ledgerMigration);
+    assert.equal((await ledgerUpgrade.query('SELECT amount_micros::text,currency FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].currency,'USD');
+  }finally{ledgerUpgrade.release();}
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
@@ -386,6 +396,52 @@ try {
       assert.ok(!tenantA.customers.some(c=>c.customerId==='other-customer'));
       assert.deepEqual(tenantB.customers.map(c=>c.customerId),['other-customer']);
     }
+    // Append-only reductions: economic source identity, payment linkage, bounded
+    // cumulative amounts and concurrent retries, enforced by PostgreSQL itself.
+    const adjustmentPayment={...runtimeRevenue,id:'adjustment-payment',amountMicros:'1000000'};
+    await runtimeStore.ingestRevenue(workspace,[adjustmentPayment]);
+    const adjustment=parseAdjustment({originalPaymentId:adjustmentPayment.id,customerId:adjustmentPayment.customerId,
+      kind:'refund',amountMicros:'100000',currency:'USD',occurredAt:'2026-10-11T00:00:00Z',
+      provider:'stripe',providerAccount:'acct_synthetic',sourceObjectId:'re_ledger_partial',evidenceRef:'stripe:refund:re_ledger_partial'});
+    const adjustmentStore=runtimeStore.forCredential(ingestKey);
+    const replayed=await Promise.all(Array.from({length:12},()=>adjustmentStore.ingestAdjustments(workspace,[adjustment])));
+    assert.equal(replayed.reduce((n,r)=>n+r.inserted,0),1);assert.equal(replayed.reduce((n,r)=>n+r.duplicate,0),11);
+    await assert.rejects(adjustmentStore.ingestAdjustments(workspace,[parseAdjustment({...adjustment,amountMicros:'99999'})]),/Idempotency conflict/);
+    await assert.rejects(adjustmentStore.ingestAdjustments(other,[adjustment]),(e:unknown)=>(e as {code?:string}).code==='42501');
+    await assert.rejects(runtimeStore.forCredential(readKey).ingestAdjustments(workspace,[adjustment]),(e:unknown)=>(e as {code?:string}).code==='42501');
+    for(const patch of [{customerId:'wrong-customer'},{originalPaymentId:'missing-payment'},
+      {occurredAt:'2026-01-01T00:00:00Z'},{amountMicros:'1000001'}]){
+      await assert.rejects(adjustmentStore.ingestAdjustments(workspace,[parseAdjustment({...adjustment,...patch,sourceObjectId:'re_invalid'})]),
+        (e:unknown)=>['23503','23514'].includes((e as {code?:string}).code??''));
+    }
+    const parallel=new PostgresEventStore(runtimeURL.toString()).forCredential(ingestKey);
+    try{
+      const results=await Promise.allSettled([
+        adjustmentStore.ingestAdjustments(workspace,[parseAdjustment({...adjustment,sourceObjectId:'re_race_a',amountMicros:'600000',kind:'credit'})]),
+        parallel.ingestAdjustments(workspace,[parseAdjustment({...adjustment,sourceObjectId:'re_race_b',amountMicros:'600000',kind:'payment_reversal'})]),
+      ]);
+      assert.equal(results.filter(r=>r.status==='fulfilled').length,1,'Concurrent reductions exceeded payment');
+      assert.equal(results.filter(r=>r.status==='rejected'&&(r.reason as {code?:string}).code==='23514').length,1);
+    }finally{await parallel.pool.end();}
+    assert.equal((await pool.query('SELECT sum(amount_micros)::text AS amount FROM revenue_adjustments WHERE workspace_id=$1 AND original_payment_id=$2',
+      [workspace,adjustmentPayment.id])).rows[0].amount,'700000');
+    const beforeCount=(await pool.query('SELECT count(*)::text AS n FROM revenue_adjustments')).rows[0].n;
+    await assert.rejects(adjustmentStore.ingestAdjustments(workspace,[
+      parseAdjustment({...adjustment,sourceObjectId:'re_atomic_a',amountMicros:'10000'}),
+      parseAdjustment({...adjustment,sourceObjectId:'re_atomic_z',amountMicros:'400000'}),
+    ]),(e:unknown)=>(e as {code?:string}).code==='23514');
+    assert.equal((await pool.query('SELECT count(*)::text AS n FROM revenue_adjustments')).rows[0].n,beforeCount,'Adjustment batch partially committed');
+    for(const statement of ['UPDATE revenue_adjustments SET evidence_ref=evidence_ref','DELETE FROM revenue_adjustments',
+      'TRUNCATE revenue_adjustments','UPDATE revenue_records SET amount_micros=0','DELETE FROM revenue_records','TRUNCATE revenue_records CASCADE'])
+      await assert.rejects(pool.query(statement),/append-only/);
+    await pool.query('UPDATE workspace_api_keys SET expires_at=NULL WHERE key_digest=$1',[createHash('sha256').update(readKey).digest('hex')]);
+    const adjustmentApi=createApp(runtimeStore);
+    const postAdjustment=(record:unknown,rawKey=ingestKey)=>adjustmentApi.request('/v1/revenue/adjustments',{
+      method:'POST',headers:{authorization:'Bearer '+rawKey,'content-type':'application/json'},body:JSON.stringify({records:[record]})});
+    assert.equal((await postAdjustment(adjustment)).status,202);
+    assert.equal((await postAdjustment({...adjustment,amountMicros:'9'})).status,409);
+    assert.equal((await postAdjustment({...adjustment,currency:'EUR'})).status,400);
+    assert.equal((await postAdjustment(adjustment,readKey)).status,403);
     // Financial batch failure rolls back every prior insert and customer row.
     const atomic:StoredEvent={...runtimeEvent,event:{...runtimeEvent.event,id:'atomic-a',customerId:'atomic-customer'},payloadDigest:'atomic'};
     await assert.rejects(runtimeStore.ingest(workspace,[atomic,{...atomic,event:{...atomic.event,id:'atomic-z'},costMicros:-1n}]),
