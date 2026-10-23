@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { calculateEventCost, roundDiv } from '../src/index.ts';
 import { parseBillingCsv, decimalUnits, exactMicros, validateOpenAiBilling, parseBillingConfig } from '../../../scripts/lib/openai-billing.ts';
 import { fixtureCsv, fixtureConfig, usageRow, costRow } from '../../../scripts/lib/openai-billing-fixture.ts';
+import { readCheckedFile } from '../../../scripts/lib/private-files.ts';
 const validate = (u: Record<string, string>[] = [usageRow], c: Record<string, string>[] = [costRow], config = fixtureConfig()) => validateOpenAiBilling(fixtureCsv(u, Object.keys(usageRow)), fixtureCsv(c, Object.keys(costRow)), config);
 const check = (result: ReturnType<typeof validate>, name: string) => result.report.checks.filter(c => c.check === name);
 test('exact observed quantities use production event rounding: 2.5 + 6.5 = 9, not 10', () => {
@@ -159,7 +160,11 @@ test('CLI stores private redacted evidence, never prints cells, and records pipe
         assert.equal(statSync(join(dir, 'reports')).mode & 0o777, 0o700);
         const failed = run(['--postgres']);
         assert.equal(failed.status, 1);
-        const reports = readdirSync(join(dir, 'reports')).map(p => { const path = join(dir, 'reports', p); assert.equal(statSync(path).mode & 0o777, 0o600); return JSON.parse(readFileSync(path, 'utf8')); });
+        const reports = readdirSync(join(dir, 'reports')).map(p => {
+            const input = readCheckedFile(join(dir, 'reports', p), { privateFile: true });
+            assert.equal(input.mode & 0o777, 0o600);
+            return JSON.parse(input.contents);
+        });
         assert.ok(reports.some(r => r.status === 'FAIL' && r.pipeline.status === 'FAIL'));
     }
     finally {
