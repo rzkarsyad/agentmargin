@@ -26,7 +26,7 @@ export const UNKNOWN_MODELS_SQL = `SELECT model, COUNT(*)::text AS event_count
   GROUP BY model ORDER BY COUNT(*) DESC, model ASC LIMIT 21`;
 
 /**
- * Full-workspace totals and a keyset page share one REPEATABLE READ snapshot.
+ * Full-workspace totals and a keyset page share one READ COMMITTED statement snapshot.
  * Never SUM the first N displayed customers to present organization totals.
  */
 const CUSTOMER_ROWS_CTE=`WITH revenue AS (
@@ -105,9 +105,9 @@ export class PostgresEventStore implements EventStore {
             AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
               AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname='revenue_deliveries' THEN 3 ELSE 2 END)=5
         AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
-          (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'))
+          (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'),to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
-          AND has_function_privilege(current_user,p.oid,'EXECUTE'))=2
+          AND has_function_privilege(current_user,p.oid,'EXECUTE'))=3
       ) AS ready`);
     return result.rows[0]?.ready===true;
   }
@@ -218,7 +218,8 @@ export class PostgresEventStore implements EventStore {
         // Serialize identical event IDs even when the customer row has not been created yet.
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[`${workspaceId}:${e.id}`]);
         const existing=await client.query<{payload_digest:string|null}>(
-          'SELECT payload_digest FROM usage_events WHERE workspace_id=$1 AND event_id=$2',[workspaceId,e.id]);
+          this.credential===undefined?'SELECT payload_digest FROM usage_events WHERE workspace_id=$1 AND event_id=$2':
+            "SELECT * FROM agentmargin_auth.event_digest($1,'usage',$2)",[workspaceId,e.id]);
         if (existing.rowCount) {
           if (existing.rows[0]?.payload_digest !== payloadDigest) throw new Error('Idempotency conflict');
           duplicate++; continue;
@@ -243,7 +244,8 @@ export class PostgresEventStore implements EventStore {
       for(const record of [...records].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[`${workspaceId}:revenue:${record.id}`]);
         const old=await client.query<{payload_digest:string|null}>(
-          'SELECT payload_digest FROM revenue_records WHERE workspace_id=$1 AND id=$2',[workspaceId,record.id]);
+          this.credential===undefined?'SELECT payload_digest FROM revenue_records WHERE workspace_id=$1 AND id=$2':
+            "SELECT * FROM agentmargin_auth.event_digest($1,'revenue',$2)",[workspaceId,record.id]);
         if(old.rowCount){
           if(old.rows[0]?.payload_digest!==record.payloadDigest)throw new Error('Idempotency conflict');
           duplicate++;continue;
@@ -331,21 +333,19 @@ export class PostgresEventStore implements EventStore {
   }
   async analyticsPage(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>{
     if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Invalid pagination limit');
-    const client=await this.begin('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const client=await this.begin('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY');
     try{
       const params=[workspaceId,start,end];
-      const summary=await client.query<{
-        customer_count:string;verified_customer_count:string;profitable_customer_count:string;
-        loss_making_customer_count:string;unknown_customer_count:string;
-        usage_event_count:string;unknown_usage_event_count:string;
-        total_revenue_micros:string;total_known_ai_cost_micros:string;
-        verified_customer_contribution_micros:string;
-      }>(ANALYTICS_FULL_SUMMARY_SQL,params);
-      const page=await client.query<{
-        customer_id:string;revenue_micros:string;known_cost_micros:string;
-        usage_events:string;unknown_events:string;
-      }>(ANALYTICS_CUSTOMER_PAGE_SQL,[...params,after,limit+1]);
-      const missing=await client.query<{model:string;event_count:string}>(UNKNOWN_MODELS_SQL,params);
+      // One statement preserves totals/page/diagnostics consistency without a
+      // reusable snapshot that can retain revoked authentication rows.
+      const snapshot=await client.query(`SELECT
+        (SELECT to_jsonb(s) FROM (${ANALYTICS_FULL_SUMMARY_SQL}) s) AS summary,
+        (SELECT coalesce(jsonb_agg(p),'[]'::jsonb) FROM (${ANALYTICS_CUSTOMER_PAGE_SQL}) p) AS page,
+        (SELECT coalesce(jsonb_agg(m),'[]'::jsonb) FROM (${UNKNOWN_MODELS_SQL}) m) AS missing`,
+        [...params,after,limit+1]);
+      const summary={rows:[snapshot.rows[0].summary]};
+      const page={rows:snapshot.rows[0].page as {customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string}[]};
+      const missing={rows:snapshot.rows[0].missing as {model:string;event_count:string}[]};
       await client.query('COMMIT');
       const row=summary.rows[0];
       if(!row)throw new Error('Analytics summary unexpectedly empty');
@@ -382,14 +382,16 @@ export class PostgresEventStore implements EventStore {
     // Independent aggregates prevent revenue * usage-event join multiplication.
     // Read both aggregates from one consistent snapshot. Running queries concurrently
     // breaks PGlite's pg-wire test adapter and can return mismatched financial views.
-    const client=await this.begin('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    let q:pg.QueryResult<{
+    const client=await this.begin('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY');
+    let q:{rows:{
       customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string;
-    }>;
-    let missing:pg.QueryResult<{model:string;event_count:string}>;
+    }[]};
+    let missing:{rows:{model:string;event_count:string}[]};
     try {
-      q=await client.query(ANALYTICS_SQL,[workspaceId,start,end]);
-      missing=await client.query(UNKNOWN_MODELS_SQL,[workspaceId,start,end]);
+      const snapshot=await client.query(`SELECT
+        (SELECT coalesce(jsonb_agg(a),'[]'::jsonb) FROM (${ANALYTICS_SQL}) a) AS customers,
+        (SELECT coalesce(jsonb_agg(m),'[]'::jsonb) FROM (${UNKNOWN_MODELS_SQL}) m) AS missing`,[workspaceId,start,end]);
+      q={rows:snapshot.rows[0].customers};missing={rows:snapshot.rows[0].missing};
       await client.query('COMMIT');
     } catch(err) {
       await this.rollback(client);

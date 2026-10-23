@@ -1,0 +1,21 @@
+-- Incident operator tool, NOT a migration or an automatic revocation mechanism.
+-- Separately authorize use on a deployed database: interrupts ALL tenants using
+-- this shared role. Only run as a trusted role with ALTER ROLE/terminate authority.
+-- psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -v runtime_role=agentmargin_runtime -f db/contain_runtime_sessions.psql
+SELECT set_config('agentmargin.contain_role', :'runtime_role', false);
+DO $guard$
+DECLARE target pg_roles%ROWTYPE;
+BEGIN
+ SELECT * INTO STRICT target FROM pg_roles WHERE rolname=current_setting('agentmargin.contain_role');
+ IF target.rolname=current_user OR target.rolsuper OR target.rolbypassrls
+    OR target.rolcreaterole OR target.rolcreatedb OR target.rolreplication
+    OR target.rolinherit OR EXISTS(SELECT 1 FROM pg_auth_members WHERE member=target.oid)
+ THEN RAISE EXCEPTION 'Refusing containment of an elevated or current role'; END IF;
+ EXECUTE format('ALTER ROLE %I NOLOGIN', target.rolname);
+END;
+$guard$;
+-- NOLOGIN commits before termination, preventing reconnects. Do not filter by a
+-- client-supplied application_name or workspace GUC. Other databases included.
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+ WHERE usesysid=(SELECT oid FROM pg_roles WHERE rolname=current_setting('agentmargin.contain_role'))
+   AND pid<>pg_backend_pid();

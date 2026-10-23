@@ -24,7 +24,7 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
 REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
 GRANT USAGE ON SCHEMA agentmargin_auth TO :"runtime_role";
 GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text),
-  agentmargin_auth.workspace(text) TO :"runtime_role";
+  agentmargin_auth.workspace(text), agentmargin_auth.event_digest(uuid,text,text) TO :"runtime_role";
 -- Reject unsafe effective authority rather than silently claiming isolation.
 DO $guard$
 DECLARE
