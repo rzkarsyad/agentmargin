@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {loadFallbackDashboard,composeFallbackDashboard} from '../src/dashboard-assets.ts';
+import {createHash} from 'node:crypto';
 import {JSDOM} from 'jsdom';
 
 test('dashboard renders incomplete/truncated data without HTML injection or persisting keys',async()=>{
-  const html=readFileSync(new URL('../src/dashboard.html',import.meta.url),'utf8');
+  const {html}=loadFallbackDashboard();
   const dom=new JSDOM(html,{url:'http://localhost:8787/dashboard',runScripts:'outside-only'});
   const {window}=dom;
   const script=dom.window.document.querySelector('script')?.textContent;
@@ -34,4 +36,20 @@ test('dashboard renders incomplete/truncated data without HTML injection or pers
   assert.equal(window.localStorage.length,0);
   assert.equal(window.sessionStorage.length,0);
   dom.window.close();
+});
+
+
+test('fallback CSP hashes exactly one assembled local script, without HTML filtering',()=>{
+ const {html,scriptHash}=loadFallbackDashboard(),dom=new JSDOM(html);
+ try{
+  const scripts=dom.window.document.querySelectorAll('script');assert.equal(scripts.length,1);
+  const script=readFileSync(new URL('../src/dashboard.js',import.meta.url),'utf8');
+  assert.equal(scripts[0]?.textContent,script);
+  assert.equal(createHash('sha256').update(scripts[0]!.textContent!,'utf8').digest('base64'),scriptHash);
+  assert.equal(scripts[0]?.hasAttribute('src'),false);
+ }finally{dom.window.close();}
+ for(const template of ['missing marker','<!-- agentmargin:fallback-script --><!-- agentmargin:fallback-script -->'])
+  assert.throws(()=>composeFallbackDashboard(template,'trusted source'),/one fallback script marker/);
+ const altered=composeFallbackDashboard('<!-- agentmargin:fallback-script -->','different trusted source');
+ assert.notEqual(altered.scriptHash,scriptHash);
 });

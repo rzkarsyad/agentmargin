@@ -1,0 +1,109 @@
+name: CodeQL audit and stack compatibility
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL SARIF (${{ matrix.revision }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Audit all source, including unchanged credential paths on the base.
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [base, patch]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.revision == 'base' && (github.event.pull_request.base.sha || 'main') || github.sha }}
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+      # Default setup remains the authoritative uploaded analysis. Keep the full
+      # audit SARIF (including false positives) without replacing/dismissing alerts
+      # or conflicting with default setup's advanced-upload restrictions.
+      - uses: github/codeql-action/analyze@v4
+        with:
+          upload: false
+          output: codeql-results
+      - name: Record complete analysis evidence
+        run: |
+          git rev-parse HEAD > codeql-results/commit.txt
+          python3 - <<'PYCODE'
+          import json,pathlib
+          required={'js/bad-tag-filter','js/incomplete-multi-character-sanitization','js/insufficient-password-hash'}
+          summaries=[]
+          for path in pathlib.Path('codeql-results').glob('*.sarif'):
+              for run in json.loads(path.read_text())['runs']:
+                  assert 'diff-informed' not in run.get('properties',{}).get('incrementalMode',''), 'Audit must include unchanged code'
+                  components=[run['tool']['driver'],*run['tool'].get('extensions',[])]
+                  rules={rule['id']:rule for component in components for rule in component.get('rules',[])}
+                  assert required<=rules.keys(), 'Required security queries were not run'
+                  summaries.append({'commit':pathlib.Path('codeql-results/commit.txt').read_text().strip(),
+                      'codeqlVersion':run['tool']['driver'].get('semanticVersion'),
+                      'queryCount':len(rules),'resultCount':len(run.get('results',[])),
+                      'queryIds':sorted(rules),'results':run.get('results',[])})
+          assert summaries,'Missing SARIF'
+          pathlib.Path('codeql-results/audit-summary.json').write_text(json.dumps(summaries,indent=2)+'\n')
+          print(json.dumps([{'commit':s['commit'],'queries':s['queryCount'],'results':s['resultCount']} for s in summaries]))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-audit-${{ matrix.revision }}
+          path: codeql-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  stack-compatibility:
+    name: Patch against reviewed PR 32 (migrations 007–011)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agentmargin_ci
+          POSTGRES_USER: agentmargin_ci
+          POSTGRES_PASSWORD: ci-only-disposable
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U agentmargin_ci -d agentmargin_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AGENTMARGIN_STANDALONE_DATABASE_URL: postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:5432/agentmargin_ci
+      # Deliberately pinned review fixture, never deploy or rewrite stacked PRs.
+      STACK_SHA: e80792d328b24d816edba76bc6cf52f40eef1180
+      BASE_SHA: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Apply patch to isolated stack fixture
+        run: |
+          git fetch origin "$STACK_SHA"
+          git diff --binary "$BASE_SHA" HEAD > "$RUNNER_TEMP/codeql-audit.patch"
+          git worktree add --detach "$RUNNER_TEMP/agentmargin-stack" "$STACK_SHA"
+          git -C "$RUNNER_TEMP/agentmargin-stack" apply --3way "$RUNNER_TEMP/codeql-audit.patch"
+      - name: Verify SDK, applications, types and regressions
+        working-directory: ${{ runner.temp }}/agentmargin-stack
+        run: |
+          npm ci
+          npm run check
+          npm run test:postgres
+          node --experimental-strip-types scripts/stripe-delivery-local-test.ts
+          node --experimental-strip-types scripts/server-lifecycle-test.ts
+          python3 scripts/check-release-files.py
