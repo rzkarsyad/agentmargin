@@ -130,5 +130,13 @@ cmp "$fixture/backups/last-success.json" "$fixture/before.json"
 bash scripts/postgres-backup.sh
 if cmp -s "$fixture/backups/last-success.json" "$fixture/before.json"; then exit 1; fi
 [[ ! -d "$fixture/backups/.backup-lock" ]]
+# GNU checksum filename escaping must not corrupt the JSON digest on valid
+# private paths containing spaces/backslashes. Hash stdin, not a printed filename.
+unusual="$fixture/backups with \\slash"
+mkdir "$unusual"
+AGENTMARGIN_BACKUP_DIR="$unusual" bash scripts/postgres-backup.sh
+unusual_archive=("$unusual/"*.dump.enc)
+unusual_sha=$(sha256sum < "${unusual_archive[0]}"); unusual_sha=${unusual_sha%% *}
+[[ "$(cat "$unusual/last-success.json")" == *"\"archiveSha256\":\"$unusual_sha\""* ]]
 bash scripts/postgres-restored-probes.sh "$restored"
 printf '{"kind":"synthetic_backup_recovery","status":"pass","durationSeconds":%d,"authenticatedEncryption":true,"separateLocalKeyRecovery":true,"externalStorageVerified":false,"productionRtoMeasured":false}\n' "$((SECONDS-started))"

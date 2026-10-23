@@ -59,7 +59,7 @@ pg_restore --list "$work/plain.dump" >/dev/null 2>&1
 "$encrypt" "$work/plain.dump" "$work/$id.dump.enc" >/dev/null 2>&1
 [[ -s "$work/$id.dump.enc" ]]
 # A transport integrity reference, not authentication of arbitrary hook output.
-archive_sha=$(sha256sum -- "$work/$id.dump.enc")
+archive_sha=$(sha256sum < "$work/$id.dump.enc")
 archive_sha=${archive_sha%% *}
 archive_bytes=$(stat -c '%s' "$work/$id.dump.enc")
 rm -- "$work/plain.dump"
