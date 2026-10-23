@@ -1,11 +1,12 @@
 "use client";
 
-import { forwardRef, isValidElement, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, Ref, RefObject } from "react";
 import { AnimatePresence, animate, motion, useIsPresent, useMotionValue, useReducedMotion } from "motion/react";
 import type { TargetAndTransition, Variants } from "motion/react";
 import { motionTokens } from "@/lib/motion-tokens";
 import styles from "./button.module.css";
+import {buttonLabelKey,hasButtonLabelText} from "./label-content.ts";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -34,16 +35,6 @@ const fadeIn: TargetAndTransition = { ...rest, opacity: 0 };
 const fadeOut: TargetAndTransition = { opacity: 0, transition: { duration: motionTokens.duration.instant } };
 /** Scale rides the spring; opacity and blur tween so blur never overshoots below zero. */
 const iconEnter = { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] }, filter: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } as const;
-
-/** A key for the label content: text plus element names, so a new label or icon crossfades while prop-only updates stay in place. */
-function labelKey(node: ReactNode): string {
-  if (node == null || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number" || typeof node === "bigint") return String(node);
-  if (Array.isArray(node)) return node.map(labelKey).join("");
-  if (!isValidElement(node)) return "";
-  const type = node.type as string | { displayName?: string; name?: string };
-  return `<${typeof type === "string" ? type : type?.displayName ?? type?.name ?? ""}>${labelKey((node.props as { children?: ReactNode }).children)}`;
-}
 
 /** Springs the slot to the natural width of the incoming label when it changes, so a new label never snaps the button's size.
  *  The outgoing label is popped out of flow at once, so it never holds the old width. Other resizes (a late web font, a parent reflow) jump straight to the new width, so nothing wobbles on first paint. */
@@ -84,7 +75,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const reduceMotion = useReducedMotion() ?? false;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLSpanElement>(null);
-  const key = labelKey(children);
+  const key = buttonLabelKey(children);
   const width = useMorphWidth(contentRef, key, reduceMotion);
   const setRefs = useCallback((node: HTMLButtonElement | null) => {
     buttonRef.current = node;
@@ -119,7 +110,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       <motion.span className={[styles.labelSlot, loading ? styles.loadingLabel : ""].filter(Boolean).join(" ")} style={{ width }}>
         <span ref={contentRef} className={styles.labelContent}>
           <AnimatePresence mode="popLayout" initial={false}>
-            <LabelPhase key={key} icon={!/\S/.test(key.replace(/<[^>]*>/g, ""))} reduced={reduceMotion}>{children}</LabelPhase>
+            <LabelPhase key={key} icon={!hasButtonLabelText(children)} reduced={reduceMotion}>{children}</LabelPhase>
           </AnimatePresence>
         </span>
       </motion.span>

@@ -5,11 +5,14 @@ Runs only a disposable localhost HTTP server and mocks the analytics API.
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-HTML = Path(__file__).resolve().parent.parent / 'apps/api/src/dashboard.html'
+ROOT = Path(__file__).resolve().parent.parent
+ASSETS = json.loads(subprocess.check_output(['node','--experimental-strip-types','--input-type=module','-e',
+    "import {loadFallbackDashboard} from './apps/api/src/dashboard-assets.ts'; console.log(JSON.stringify(loadFallbackDashboard()));"],cwd=ROOT,text=True))
 INJECTION = '<img src=x onerror=alert(1)>'
-URL=HTML.as_uri()
+URL='http://127.0.0.1:8787/dashboard'
 MOCK={'periodStart':'2026-10-01T00:00:00Z','periodEnd':'2026-11-01T00:00:00Z',
       'customers':[{'customerId':INJECTION,'revenueMicros':'49000000',
       'knownAiCostMicros':'12000000','contributionMicros':'37000000',
@@ -26,12 +29,18 @@ try:
             errors=[]
             page.on('pageerror',lambda error:errors.append(str(error)))
 
-            page.goto('about:blank')
-            page.set_content(HTML.read_text(),wait_until='load')
-            page.evaluate('(data) => {window.fetch = async () => ({ok:true,json:async()=>data})}', MOCK)
+            csp="default-src 'none'; script-src 'sha256-"+ASSETS['scriptHash']+"'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+            page.route(URL,lambda route:route.fulfill(status=200,body=ASSETS['html'],headers={'content-type':'text/html','content-security-policy':csp}))
+            def analytics(route):
+                assert route.request.headers.get('authorization','').startswith('Bearer am_')
+                route.fulfill(status=200,json=MOCK)
+            page.route('http://127.0.0.1:8787/v1/analytics?*',analytics)
+            response=page.goto(URL,wait_until='load')
+            assert response.headers['content-security-policy']==csp
+
             page.locator('#key').fill('am_'+'x'*40)
             page.locator('#load').click()
-            page.wait_for_function("document.querySelector('#status').textContent.includes('Partial results')")
+            page.wait_for_function("() => document.querySelector('#status').textContent.includes('Partial results')")
             assert page.locator('#rows tr').count()==1
             assert page.locator('#rows img').count()==0, 'Customer ID injected HTML'
             assert page.locator('#missing-panel').is_visible(), 'Missing model diagnostics not visible'

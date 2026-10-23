@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import {loadFallbackDashboard} from './dashboard-assets.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
@@ -109,6 +110,11 @@ const validTime = (s: unknown): s is string => typeof s === 'string' &&
   Number.isFinite(Date.parse(s)) &&
   // Date.parse normalizes impossible dates (e.g. February 31), so reject them explicitly.
   new Date(`${s.slice(0,10)}T00:00:00Z`).toISOString().slice(0,10) === s.slice(0,10);
+/** Stable SHA-256 for opaque 256-bit API keys and canonical payloads, NOT human
+ * passwords. Issuers use randomBytes(32); SQL migrations 007/009 use these exact
+ * UTF-8 bytes/hex encoding. A password KDF here would break existing keys/RLS.
+ * See docs/PREAUTH_SECURITY.md for the CodeQL CWE-916 triage evidence.
+ */
 export function digest(value: string): string { return createHash('sha256').update(value).digest('hex'); }
 
 function parseEvent(x: unknown, workspaceId: string): {event: UsageEvent; payloadDigest: string} {
@@ -165,10 +171,8 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
-  const dashboard=readFileSync(hasReactBuild?builtDashboard:new URL('./dashboard.html',import.meta.url),'utf8');
-  const inlineScript=hasReactBuild?null:dashboard.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-  if(!hasReactBuild&&!inlineScript)throw new Error('Legacy dashboard script missing');
-  const scriptHash=inlineScript?createHash('sha256').update(inlineScript).digest('base64'):null;
+  const fallback=hasReactBuild?null:loadFallbackDashboard();
+  const dashboard=hasReactBuild?readFileSync(builtDashboard,'utf8'):fallback!.html;
   app.use('*',async(c,next)=>{
     const requestId=randomUUID();
     const started=performance.now();
@@ -194,7 +198,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     await next();
     c.header('Content-Security-Policy',hasReactBuild
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-      : `default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+      : `default-src 'none'; script-src 'sha256-${fallback!.scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   });
   app.get('/dashboard',c=>c.html(dashboard));
   // Serve only the build's hashed JS/CSS assets from localhost; no arbitrary paths.
