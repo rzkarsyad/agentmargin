@@ -4,12 +4,12 @@ import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
-import {createApp, type StoredEvent, type StoredRevenue} from '../apps/api/src/app.ts';
+import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot} from '../apps/api/src/app.ts';
 
 const connectionString=process.env.AGENTMARGIN_STANDALONE_DATABASE_URL;
 if(!connectionString)throw new Error('AGENTMARGIN_STANDALONE_DATABASE_URL is required');
 const url=new URL(connectionString);
-if(!['postgresql:','postgres:'].includes(url.protocol)||url.pathname!=='/agentmargin_ci')
+if(!['postgresql:','postgres:'].includes(url.protocol)||url.pathname!=='/agentmargin_ci'||!['127.0.0.1','localhost'].includes(url.hostname))
   throw new Error('Refusing to test: database URL must target /agentmargin_ci exactly');
 const pool=new pg.Pool({connectionString,max:2});
 let store:PostgresEventStore|undefined;
@@ -23,6 +23,32 @@ try {
   await pool.query(readFileSync(new URL('../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/005_api_key_roles.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/006_api_key_expiry.sql',import.meta.url),'utf8'));
+  // Upgrade fixture: preserve existing financial rows and keys; a failed additive
+  // migration must roll back every schema change before a successful retry.
+  const upgradeWorkspace=randomUUID(),upgradeKey='am_'+randomBytes(32).toString('base64url');
+  await pool.query('INSERT INTO workspaces(id,name) VALUES($1,$2)',[upgradeWorkspace,'Upgrade fixture']);
+  await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES($1,$2,$3,$4)',
+    [randomUUID(),upgradeWorkspace,createHash('sha256').update(upgradeKey).digest('hex'),'legacy-upgrade']);
+  await pool.query("INSERT INTO customers(workspace_id,id) VALUES($1,'upgrade')",[upgradeWorkspace]);
+  await pool.query("INSERT INTO revenue_records(workspace_id,id,customer_id,occurred_at,amount_micros) VALUES($1,'legacy','upgrade','2026-10-10Z',1234567)",[upgradeWorkspace]);
+  const migration=readFileSync(new URL('../db/007_credential_tenant_isolation.sql',import.meta.url),'utf8');
+  const upgrade=await pool.connect();
+  try{
+    await assert.rejects(upgrade.query(migration.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await upgrade.query('ROLLBACK');
+    assert.equal((await upgrade.query("SELECT count(*)::integer AS n FROM pg_namespace WHERE nspname='agentmargin_auth'")).rows[0].n,0);
+    assert.equal((await upgrade.query("SELECT relrowsecurity FROM pg_class WHERE oid='customers'::regclass")).rows[0].relrowsecurity,false);
+    const blocker=await pool.connect();
+    try{
+      await blocker.query('BEGIN');await blocker.query('LOCK TABLE customers IN ACCESS EXCLUSIVE MODE');
+      await assert.rejects(upgrade.query(migration.replace("lock_timeout = '5s'","lock_timeout = '100ms'")),
+        (e:unknown)=>(e as {code?:string}).code==='55P03');
+      await upgrade.query('ROLLBACK');
+      assert.equal((await upgrade.query("SELECT count(*)::integer AS n FROM pg_namespace WHERE nspname='agentmargin_auth'")).rows[0].n,0);
+    }finally{await blocker.query('ROLLBACK');blocker.release();}
+    await upgrade.query(migration);
+    assert.equal((await upgrade.query('SELECT amount_micros::text FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].amount_micros,'1234567');
+  }finally{upgrade.release();}
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
@@ -169,12 +195,31 @@ try {
   try{
     const grants=readFileSync(new URL('../db/runtime_privileges.psql',import.meta.url),'utf8')
       .replaceAll(':"runtime_role"','"'+runtimeRole+'"')
+      .replaceAll(":'runtime_role'","'"+runtimeRole+"'")
       .split('\n').filter(line=>!line.startsWith('--')).join('\n');
+    const refused=async()=>{
+      const setup=await pool.connect();
+      try{await assert.rejects(setup.query(grants),/Unsafe runtime/);}finally{await setup.query('ROLLBACK');setup.release();}
+    };
+    await pool.query('ALTER ROLE "'+runtimeRole+'" BYPASSRLS');
+    await refused();await pool.query('ALTER ROLE "'+runtimeRole+'" NOBYPASSRLS');
+    await pool.query('GRANT agentmargin_ci TO "'+runtimeRole+'"');
+    await refused();await pool.query('REVOKE agentmargin_ci FROM "'+runtimeRole+'"');
+    // PUBLIC privilege drift is effective even for NOINHERIT roles.
+    await pool.query('GRANT UPDATE(key_digest) ON workspace_api_keys TO PUBLIC');
+    // The template actively revokes PUBLIC auth-table grants, including columns.
+    await pool.query(grants);
+    assert.equal((await pool.query("SELECT has_column_privilege($1,'workspace_api_keys','key_digest','UPDATE') AS unsafe",[runtimeRole])).rows[0].unsafe,false);
+    await pool.query('ALTER TABLE customers OWNER TO "'+runtimeRole+'"');
+    await refused();await pool.query('ALTER TABLE customers OWNER TO agentmargin_ci');
+    await pool.query('GRANT CREATE ON SCHEMA public TO PUBLIC');
+    await refused();await pool.query('REVOKE CREATE ON SCHEMA public FROM PUBLIC');
     await pool.query(grants);
     const runtimeURL=new URL(connectionString);
     runtimeURL.username=runtimeRole;
     runtimeURL.password=runtimePassword;
-    runtimeStore=new PostgresEventStore(runtimeURL.toString());
+    runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
+      connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
     assert.deepEqual(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),
       {workspaceId:workspace,accessRole:'admin'});
     const runtimeEvent:StoredEvent={...stored,event:{...event,id:'runtime-role-usage',customerId:'runtime-customer'},
@@ -190,8 +235,84 @@ try {
     assert.equal((await runtimeStore.prices(workspace,'runtime-priced','2026-12-02T00:00:00Z'))[0]?.id,runtimePrice.id);
     assert.ok((await runtimeStore.analyticsPage(workspace,'2026-10-01T00:00:00Z',
       '2026-11-01T00:00:00Z',null,20)).summary.customerCount);
+    // The stolen DB password alone cannot discover key digests or tenant data.
+    for(const table of ['customers','usage_events','revenue_records','workspace_price_versions']){
+      assert.equal((await runtimeStore.pool.query('SELECT * FROM '+table)).rowCount,0,table+' must default deny');
+    }
+    const direct=await runtimeStore.pool.connect();
+    const selectTenants=async()=> (await direct.query<{workspace_id:string}>('SELECT DISTINCT workspace_id FROM usage_events')).rows.map(r=>r.workspace_id);
+    try{
+      for(const forged of ['',other,createHash('sha256').update(key).digest('hex'),'am_'+'x'.repeat(43)]){
+        await direct.query('BEGIN');
+        await direct.query("SELECT set_config('agentmargin.workspace_id',$1,true),set_config('agentmargin.api_key',$2,true)",[other,forged]);
+        assert.deepEqual(await selectTenants(),[],'Forged context granted read access');
+        await assert.rejects(direct.query('INSERT INTO customers(workspace_id,id) VALUES($1,$2)',[other,'forged']),
+          (e:unknown)=>(e as {code?:string}).code==='42501');
+        await direct.query('ROLLBACK');
+      }
+      await direct.query('BEGIN');
+      await direct.query("SET LOCAL search_path=pg_temp,public,pg_catalog");
+      await direct.query('CREATE TEMP TABLE workspace_api_keys(key_digest text,workspace_id uuid,access_role text)');
+      await direct.query('INSERT INTO workspace_api_keys VALUES($1,$2,$3)',[createHash('sha256').update(key).digest('hex'),other,'admin']);
+      await direct.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      assert.equal((await direct.query('SELECT workspace_id FROM agentmargin_auth.principal($1)',[key])).rows[0].workspace_id,workspace,
+        'SECURITY DEFINER resolved a shadow key table');
+      assert.equal((await direct.query('SELECT * FROM agentmargin_auth.principal($1)',["am_'; SET ROLE agentmargin_ci; --"])).rowCount,0);
+      assert.deepEqual(await selectTenants(),[workspace]);
+      await assert.rejects(direct.query('INSERT INTO customers(workspace_id,id) VALUES($1,$2)',[other,'cross-tenant']),
+        (e:unknown)=>(e as {code?:string}).code==='42501');
+      await direct.query('ROLLBACK');
+      assert.deepEqual(await selectTenants(),[],'Rollback leaked tenant context');
+      await direct.query('BEGIN');
+      await direct.query("SELECT set_config('agentmargin.api_key',$1,true)",[otherKey]);
+      assert.deepEqual(await selectTenants(),[other]);
+      await direct.query('COMMIT');
+      assert.deepEqual(await selectTenants(),[],'Commit leaked tenant context');
+    }finally{await direct.query('ROLLBACK');direct.release();}
+    // Pooled adapter queries cannot assert another workspace even with a valid A key.
+    assert.equal((await runtimeStore.analytics(other,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z')).customers.length,0);
+    await assert.rejects(runtimeStore.ingest(other,[otherEvent]),(e:unknown)=>(e as {code?:string}).code==='42501');
+    await assert.rejects(runtimeStore.ingestRevenue(other,[rev]),(e:unknown)=>(e as {code?:string}).code==='42501');
+    await assert.rejects(runtimeStore.createPriceVersion(other,createHash('sha256').update(key).digest('hex'),
+      {...firstPrice,id:randomUUID()}),(e:unknown)=>(e as {code?:string}).code==='42501');
+    assert.equal((await runtimeStore.forCredential(upgradeKey).analytics(upgradeWorkspace,
+      '2026-10-01T00:00:00Z','2026-11-01T00:00:00Z')).customers[0]?.revenueMicros,'1234567');
+    // DB writes enforce key capabilities as well as tenant identity.
+    await pool.query('UPDATE workspace_api_keys SET expires_at=NULL WHERE key_digest=$1',
+      [createHash('sha256').update(readKey).digest('hex')]);
+    assert.equal((await runtimeStore.forCredential(readKey).authenticate('ignored'))?.accessRole,'read');
+    await assert.rejects(runtimeStore.forCredential(readKey).ingest(workspace,[{...runtimeEvent,event:{...runtimeEvent.event,id:'read-write-denied'}}]),
+      (e:unknown)=>(e as {code?:string}).code==='42501');
+    await assert.rejects(runtimeStore.forCredential(ingestKey).createPriceVersion(workspace,
+      createHash('sha256').update(ingestKey).digest('hex'),{...firstPrice,id:randomUUID(),model:'forbidden'}),
+      (e:unknown)=>(e as {code?:string}).code==='42501');
+    await pool.query("UPDATE workspace_api_keys SET expires_at=now()-interval '1 second' WHERE key_digest=$1",
+      [createHash('sha256').update(readKey).digest('hex')]);
+    const restrictedApi=createApp(runtimeStore);
+    assert.equal((await restrictedApi.request(period)).status,401);
+    assert.equal((await restrictedApi.request(period,{headers:{authorization:'Bearer '+readKey}})).status,401);
+    const totalsBefore=await store.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20);
+    const totalsAfter=await runtimeStore.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20);
+    assert.deepEqual(totalsAfter,totalsBefore,'RLS changed financial results');
+    for(let n=0;n<10;n++){
+      const [tenantA,tenantB]:[AnalyticsSnapshot,AnalyticsSnapshot]=await Promise.all([runtimeStore.analytics(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z'),
+        runtimeStore.forCredential(otherKey).analytics(other,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z')]);
+      assert.ok(!tenantA.customers.some(c=>c.customerId==='other-customer'));
+      assert.deepEqual(tenantB.customers.map(c=>c.customerId),['other-customer']);
+    }
+    // Revocation affects the already-created credential view on its next statement.
+    await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',
+      [createHash('sha256').update(otherKey).digest('hex')]);
+    assert.equal(await runtimeStore.forCredential(otherKey).authenticate('ignored'),null);
+    assert.equal((await runtimeStore.forCredential(otherKey).analytics(other,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z')).customers.length,0);
+    assert.equal((await restrictedApi.request(period,{headers:{authorization:'Bearer '+otherKey}})).status,401);
     const denied=[
       'SELECT * FROM workspaces',
+      'SELECT * FROM workspace_api_keys',
+      'ALTER FUNCTION agentmargin_auth.principal(text) OWNER TO CURRENT_USER',
+      'CREATE OR REPLACE FUNCTION agentmargin_auth.workspace(text) RETURNS uuid LANGUAGE sql AS $$SELECT gen_random_uuid()$$',
+      'ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY',
+      'SET ROLE agentmargin_ci',
       'INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES (gen_random_uuid(),gen_random_uuid(),repeat(\'a\',64),\'forbidden\')',
       'UPDATE revenue_records SET amount_micros=0',
       'DELETE FROM revenue_records',

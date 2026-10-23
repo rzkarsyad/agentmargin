@@ -22,6 +22,8 @@ export interface WorkspacePrice extends PriceInput {createdAt:string}
 export type WorkspaceKeyRole='admin'|'ingest'|'read';
 export interface AuthenticatedWorkspace {workspaceId:string; accessRole:WorkspaceKeyRole}
 export interface EventStore {
+  /** Request-local credential view; never mutate shared pool authentication state. */
+  forCredential?(credential:string):EventStore;
   authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null>;
   prices(workspaceId: string, model: string, timestamp: string): Promise<ScopedPriceVersion[]>;
   createPriceVersion?(workspaceId:string, creatorDigest:string, input:PriceInput):Promise<WorkspacePrice>;
@@ -162,7 +164,7 @@ function parsePriceInput(x:unknown):PriceInput {
 }
 
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink) {
-  const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole } }>();
+  const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole; store:EventStore } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
   const dashboard=readFileSync(hasReactBuild?builtDashboard:new URL('./dashboard.html',import.meta.url),'utf8');
@@ -221,13 +223,15 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
       return c.json({error:'Unauthorized'},401);
     }
     const keyDigest=digest(auth.slice(7));
-    const principal=await store.authenticate(keyDigest);
+    const requestStore=store.forCredential?.(auth.slice(7))??store;
+    const principal=await requestStore.authenticate(keyDigest);
     if(!principal){
       if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
       return c.json({error:'Unauthorized'},401);
     }
     if(!keyRoleAllowed(principal.accessRole,requiredKeyRole(c.req.method,c.req.path)))
       return c.json({error:'Forbidden for this API key role'},403);
+    c.set('store',requestStore);
     c.set('workspaceId',principal.workspaceId);
     c.set('keyRole',principal.accessRole);
     c.set('keyDigest',keyDigest);
@@ -235,12 +239,14 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   });
   app.use('/v1/*', bodyLimit({maxSize:256_000,onError:c=>c.json({error:'Payload too large'},413)}));
   app.get('/v1/prices',async c=>{
+    const store=c.get('store');
     const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     if(!store.listPriceVersions)return c.json({error:'Pricing unavailable'},503);
     return c.json(await store.listPriceVersions(workspaceId));
   });
   app.post('/v1/prices',async c=>{
+    const store=c.get('store');
     const creatorDigest=c.get('keyDigest');
     const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
@@ -257,6 +263,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }
   });
   app.get('/v1/analytics', async c=>{
+    const store=c.get('store');
     const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const start=c.req.query('start'),end=c.req.query('end');
@@ -268,6 +275,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   // Paginated, full-workspace analytics. The summary is calculated on the server,
   // never inferred from a partial table page.
   app.get('/v1/analytics/page',async c=>{
+    const store=c.get('store');
     const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const start=c.req.query('start'),end=c.req.query('end');
@@ -290,6 +298,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   });
 
   app.post('/v1/revenue',async c=>{
+    const store=c.get('store');
     const workspaceId=c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     if(!store.ingestRevenue)return c.json({error:'Revenue ingestion unavailable'},503);
@@ -309,6 +318,7 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }
   });
   app.post('/v1/events', async c => {
+    const store=c.get('store');
     const workspaceId = c.get('workspaceId');
     if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
     const contentLength = Number(c.req.header('content-length') ?? 0);

@@ -85,12 +85,47 @@ function mapAnalyticsCustomer(r:{
 
 export class PostgresEventStore implements EventStore {
   readonly pool: pg.Pool;
-  constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString, max:10, connectionTimeoutMillis:5000,
+  private readonly credential?:string;
+  private readonly brokenClients=new WeakSet<pg.PoolClient>();
+  constructor(connectionString: string, options:{pool?:pg.Pool;credential?:string}={}) {
+    this.credential=options.credential;
+    this.pool = options.pool??new Pool({ connectionString, max:10, connectionTimeoutMillis:5000,
+      statement_timeout:15000, idle_in_transaction_session_timeout:15000,
       ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized:true } : undefined });
   }
+  forCredential(credential:string):PostgresEventStore {
+    return new PostgresEventStore('',{pool:this.pool,credential});
+  }
+  private async begin(sql='BEGIN'):Promise<pg.PoolClient> {
+    const client=await this.pool.connect();
+    try {
+      await client.query(sql);
+      // Always overwrite context, including unauthenticated calls, before SQL.
+      await client.query("SELECT set_config('agentmargin.api_key',$1,true)",[this.credential??'']);
+      return client;
+    } catch(error) {try{await client.query('ROLLBACK');client.release();}catch{client.release(true);}throw error;}
+  }
+  private async rollback(client:pg.PoolClient):Promise<void> {
+    try {await client.query('ROLLBACK');} catch {
+      // Mark broken sockets for destruction by the single finally release.
+      this.brokenClients.add(client);
+    }
+  }
+  private async query<R extends pg.QueryResultRow>(sql:string,params?:unknown[]):Promise<pg.QueryResult<R>> {
+    const client=await this.begin();
+    try {const result=await client.query<R>(sql,params);await client.query('COMMIT');return result;}
+    catch(error){await this.rollback(client);throw error;}
+    finally {client.release(this.brokenClients.has(client));}
+  }
   async authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null> {
-    const q = await this.pool.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
+    if(this.credential!==undefined){
+      const q=await this.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
+        'SELECT * FROM agentmargin_auth.principal($1)',[this.credential]);
+      const row=q.rows[0];
+      return row?{workspaceId:row.workspace_id,accessRole:row.access_role}:null;
+    }
+    // Trusted owner tooling compatibility only. Restricted runtime cannot read keys.
+    const q = await this.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
       `SELECT workspace_id,access_role FROM workspace_api_keys
        WHERE key_digest=$1 AND revoked_at IS NULL
          AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,[keyDigest]);
@@ -98,7 +133,7 @@ export class PostgresEventStore implements EventStore {
     return row?{workspaceId:row.workspace_id,accessRole:row.access_role}:null;
   }
   async prices(workspaceId:string,model:string,timestamp:string):Promise<ScopedPriceVersion[]> {
-    const scoped=await this.pool.query<{
+    const scoped=await this.query<{
       id:string;model:string;effective_from:Date;effective_to:Date|null;
       input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
     }>(`SELECT * FROM workspace_price_versions WHERE workspace_id=$1 AND model=$2
@@ -115,7 +150,7 @@ export class PostgresEventStore implements EventStore {
         scope:'workspace'}];
     }
     // Legacy prices remain read-only fallback only before workspace-specific versions exist.
-    const old=await this.pool.query<{
+    const old=await this.query<{
       id:string;model:string;effective_from:Date;effective_to:Date|null;
       input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
     }>('SELECT * FROM price_versions WHERE model=$1 AND effective_from <= $2::timestamptz AND (effective_to IS NULL OR effective_to > $2::timestamptz)',[model,timestamp]);
@@ -126,7 +161,7 @@ export class PostgresEventStore implements EventStore {
       scope:'legacy'}));
   }
   async createPriceVersion(workspaceId:string,actor:string,input:PriceInput):Promise<WorkspacePrice> {
-    const q=await this.pool.query<{created_at:Date}>(`INSERT INTO workspace_price_versions
+    const q=await this.query<{created_at:Date}>(`INSERT INTO workspace_price_versions
       (id,workspace_id,model,effective_from,effective_to,input_micros_per_million,
        output_micros_per_million,cached_input_micros_per_million,source_note,created_by_key_digest)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (workspace_id,model,effective_from)
@@ -138,7 +173,7 @@ export class PostgresEventStore implements EventStore {
     return {...input,createdAt:q.rows[0]!.created_at.toISOString()};
   }
   async listPriceVersions(workspaceId:string):Promise<{items:WorkspacePrice[];truncated:boolean}> {
-    const q=await this.pool.query<{
+    const q=await this.query<{
       id:string;model:string;effective_from:Date;effective_to:Date|null;
       input_micros_per_million:string;output_micros_per_million:string;cached_input_micros_per_million:string|null;
       source_note:string;created_at:Date;
@@ -155,10 +190,9 @@ export class PostgresEventStore implements EventStore {
     })),truncated:q.rows.length>100};
   }
   async ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{inserted:number;duplicate:number}> {
-    const client = await this.pool.connect();
+    const client = await this.begin();
     let inserted=0,duplicate=0;
     try {
-      await client.query('BEGIN');
       // Acquire advisory locks in deterministic order across batches. Opposing
       // event order (A,B vs B,A) would otherwise risk a PostgreSQL deadlock.
       for (const {event:e,payloadDigest,costMicros,source,priceId,workspacePriceId} of [...events].sort((a,b)=>
@@ -183,14 +217,13 @@ export class PostgresEventStore implements EventStore {
       await client.query('COMMIT');
       return {inserted,duplicate};
     } catch(err) {
-      await client.query('ROLLBACK'); throw err;
-    } finally {client.release();}
+      await this.rollback(client); throw err;
+    } finally {client.release(this.brokenClients.has(client));}
   }
   async ingestRevenue(workspaceId:string,records:readonly StoredRevenue[]):Promise<{inserted:number;duplicate:number}>{
-    const client=await this.pool.connect();
+    const client=await this.begin();
     let inserted=0,duplicate=0;
     try{
-      await client.query('BEGIN');
       for(const record of [...records].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[`${workspaceId}:revenue:${record.id}`]);
         const old=await client.query<{payload_digest:string|null}>(
@@ -208,14 +241,13 @@ export class PostgresEventStore implements EventStore {
       }
       await client.query('COMMIT');
       return {inserted,duplicate};
-    }catch(err){await client.query('ROLLBACK');throw err;}
-    finally{client.release();}
+    }catch(err){await this.rollback(client);throw err;}
+    finally{client.release(this.brokenClients.has(client));}
   }
   async analyticsPage(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>{
     if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Invalid pagination limit');
-    const client=await this.pool.connect();
+    const client=await this.begin('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     try{
-      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       const params=[workspaceId,start,end];
       const summary=await client.query<{
         customer_count:string;verified_customer_count:string;profitable_customer_count:string;
@@ -257,28 +289,27 @@ export class PostgresEventStore implements EventStore {
         unknownModelsTruncated:missing.rows.length>20,
       };
     }catch(err){
-      await client.query('ROLLBACK');throw err;
-    }finally{client.release();}
+      await this.rollback(client);throw err;
+    }finally{client.release(this.brokenClients.has(client));}
   }
 
   async analytics(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>{
     // Independent aggregates prevent revenue * usage-event join multiplication.
     // Read both aggregates from one consistent snapshot. Running queries concurrently
     // breaks PGlite's pg-wire test adapter and can return mismatched financial views.
-    const client=await this.pool.connect();
+    const client=await this.begin('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     let q:pg.QueryResult<{
       customer_id:string;revenue_micros:string;known_cost_micros:string;usage_events:string;unknown_events:string;
     }>;
     let missing:pg.QueryResult<{model:string;event_count:string}>;
     try {
-      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       q=await client.query(ANALYTICS_SQL,[workspaceId,start,end]);
       missing=await client.query(UNKNOWN_MODELS_SQL,[workspaceId,start,end]);
       await client.query('COMMIT');
     } catch(err) {
-      await client.query('ROLLBACK');
+      await this.rollback(client);
       throw err;
-    } finally {client.release();}
+    } finally {client.release(this.brokenClients.has(client));}
     const truncated=q.rows.length>2000;
     const customers=q.rows.slice(0,2000).map(r=>{
       const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=Number(r.unknown_events);
