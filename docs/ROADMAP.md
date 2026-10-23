@@ -48,7 +48,7 @@
 The following work is **mandatory before** any production internet deployment. Track detailed evidence and acceptance checks in [Security & reliability gate #10](https://github.com/rzkarsyad/agentmargin/issues/10).
 
 - **v0.7:** independent tenant threat model; PostgreSQL least-privilege role/RLS assessment; authenticated gateway, TLS, unauthenticated and distributed abuse controls. A reviewed [runtime role grant template](DB_RUNTIME_ROLE.md) and disposable CI permission tests are implemented, but deployment-specific application and RLS remain unverified.
-- **v0.8:** monitored, encrypted backups and **restore drills**; privacy lifecycle, export/deletion policy, structured redacted logging, alerts, incident handling. A [synthetic PostgreSQL 16 backup/restore CI drill](BACKUP_RESTORE.md) is implemented; real scheduled backups, encryption/retention, restore timing, and operational monitoring remain **unverified**.
+- **v0.8:** monitored, encrypted backups and **restore drills**; privacy lifecycle, export/deletion policy, structured redacted logging, alerts, incident handling. A [synthetic PostgreSQL 16 backup/restore CI drill](BACKUP_RESTORE.md) and [opt-in redacted request telemetry](OBSERVABILITY.md) are implemented; real scheduled backups, encryption/retention, restore timing, alerting, and operational monitoring remain **unverified**.
 - **v0.9:** pricing/provider bill reconciliation, refunds and revenue adjustments, data migrations with rollback tests, resilience/load and recovery scenarios.
 
 ## v1.0 — stable release (NOT DONE)
