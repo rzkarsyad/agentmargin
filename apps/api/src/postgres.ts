@@ -112,6 +112,9 @@ export class PostgresEventStore implements EventStore {
             AND c.relrowsecurity
             AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
               AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname IN ('revenue_deliveries','adjustment_deliveries') THEN 3 ELSE 2 END)=8
+        AND to_regclass('public.delivery_history') IS NOT NULL
+        AND to_regclass('public.delivery_requeues') IS NOT NULL
+        AND to_regprocedure('agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid)') IS NOT NULL
         AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'),to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']

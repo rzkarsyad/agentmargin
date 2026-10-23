@@ -77,3 +77,18 @@ READ COMMITTED does **not** revoke a statement's existing snapshot. A hostile st
 **Gate remains open:** independent review must approve migrations 007–009, helper ownership/ACLs, the residual inbox/digest authority, in-flight statement behavior, credential separation and the incident containment procedure. Synthetic tests do not establish production readiness or a hard revocation deadline.
 
 The adjustment/delivery follow-ups (010–011) preserve the same unapproved boundary. Ingest SQL credentials can read their tenant's normalized inbox financial payloads and payment-source metadata. The payment validation trigger also permits an own-tenant remaining-amount oracle through attempted writes/rollbacks. Narrowing original-table SELECT does not eliminate these capabilities. Strong separation requires different API enqueue and replay database identities plus reviewed restricted procedures (or isolated tenant credentials/infrastructure); it is not achieved by HTTP scopes or a session variable. Independent review must assess these authorities and every new fixed-search-path definer trigger before rollout.
+
+
+## Delivery recovery extension (012)
+
+Apply 012 after 011 with writers drained, then reapply runtime grants and deploy
+the matching API/worker. Readiness now requires the recovery tables/function;
+old intermediate schemas fail closed. `delivery_history` permits tenant read/admin
+SELECT only; `delivery_requeues` permits tenant admin SELECT only. Neither grants
+runtime INSERT/UPDATE/DELETE/TRUNCATE. The trigger and recovery function have
+fixed `pg_catalog` search paths, qualified table names and revoked PUBLIC EXECUTE.
+Only the admin-authorized function can increase retry cycles under runtime grants.
+Its owner is the trusted migrator. Checkpoints preserve pre-012 receipts without
+inventing historical attempts. Normal append-only protections also cover audit
+rows. Independently review these new definer functions and inherited/effective
+grants with 007–011; no independent acceptance has occurred.
