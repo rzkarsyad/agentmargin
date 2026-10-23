@@ -61,7 +61,7 @@ The following work is **mandatory before** any production internet deployment. T
 | v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
 | v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |
 | v0.8 | Encrypted backup hook/restore CI drill, privacy-safe classified telemetry, readiness, private Prometheus metrics, graceful shutdown, DB operation time bounds | Scheduled encrypted external backups, measured RPO/RTO, alerts and incident drills open | No |
-| v0.9 | Offline traceable cost/revenue reconciliation, signed credits/refunds in reports, exact tolerances/cached-token diagnostics, durable report replay, ingestion concurrency/rollback/connection-recovery smoke and atomic migration failure/retry tests | Real billing imports, deployed webhook/account validation, persisted adjustment ingestion, provider/accountant review and production-scale load evidence open | No |
+| v0.9 | Offline traceable cost/revenue reconciliation, signed credits/refunds in reports, exact tolerances/cached-token diagnostics, durable report replay, normalized Stripe inbox/atomic replay candidate, ingestion concurrency/rollback/connection-recovery smoke and atomic migration failure/retry tests | Real billing imports, deployed webhook/account validation, persisted adjustment ingestion, provider/accountant review and production-scale load evidence open | No |
 | v1.0 | Release gates tracked below | No independent release approval | No |
 
 ## v1.0 — stable release (NOT DONE)
@@ -172,3 +172,14 @@ After security migration/residual findings receive **explicit approval**, merge 
 
 
 A separate `feat/durable-revenue-deliveries` candidate now implements backlog item 1's local foundation: migration 008, tenant-scoped committed enqueue, atomic idempotent replay, eight-attempt backoff/dead letters, aggregate backlog reporting and signed synthetic receiver E2E. It follows #27 and does not change the required #24 → #25 → #26 → #27 order or authorize a merge. Review its schema/state-update grants separately. Persisted financial adjustments, real Stripe sandbox/account mapping, official billing imports and all independent/operational release gates remain open.
+
+
+| Reviewed candidate | Current reviewed head | Latest audit CI evidence |
+| --- | --- | --- |
+| #24 | `403f066` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910305923) |
+| #25 | `a2e645f` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910535006) |
+| #26 | `260219e` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910770329) |
+| #27 | `609dc94` | [Full CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910883628), [starter/registry verification passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910883631) |
+| [#28](https://github.com/rzkarsyad/agentmargin/pull/28) | Separate durable-delivery candidate | Local checks passed (58 tests plus one pre-existing TODO, PostgreSQL 16, signed local receiver, migration/role/retry/race tests); [current PR checks](https://github.com/rzkarsyad/agentmargin/pull/28/checks) must pass on its final reviewed head |
+
+Passing CI is technical evidence only. No reviewer approval has been inferred from CI or this preliminary audit; all candidates remain blocked from merge until the requested security/critical-finding review and explicit approval.

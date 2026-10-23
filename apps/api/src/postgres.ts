@@ -316,11 +316,12 @@ export class PostgresEventStore implements EventStore {
       }
       await client.query('RELEASE SAVEPOINT delivery_write');
       const state=result?'delivered':errorClass!=='database_retry'||attempts>=8?'failed':'pending';
-      await client.query(`UPDATE revenue_deliveries SET state=$3,attempts=$4,error_class=$5,
+      const updated=await client.query(`UPDATE revenue_deliveries SET state=$3,attempts=$4,error_class=$5,
         delivered_at=CASE WHEN $3='delivered' THEN statement_timestamp() ELSE NULL END,
         available_at=statement_timestamp()+make_interval(secs=>$6)
         WHERE workspace_id=$1 AND provider_event_id=$2`,
         [workspaceId,row.provider_event_id,state,attempts,errorClass,Math.min(300,2**attempts)]);
+      if(updated.rowCount!==1)throw new Error('Delivery authorization changed');
       // Ledger insertion and completion share the same commit. A crash releases
       // the row claim and rolls back both, so no processing lease can get stuck.
       await client.query('COMMIT');

@@ -403,6 +403,21 @@ try {
     }finally{await pool.query('DROP TRIGGER queue_test_failure ON revenue_records; DROP FUNCTION queue_test_failure()');}
     assert.equal((await runtimeStore.revenueDeliveryStatus(workspace)).failed,'2');
     assert.equal((await runtimeStore.forCredential(otherKey).revenueDeliveryStatus(workspace)).failed,'0');
+    await runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_queue_scope_change',record:{...queuedRecord,id:'queue-scope-change'}});
+    await pool.query(`CREATE FUNCTION queue_scope_change() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$BEGIN
+      IF NEW.id='queue-scope-change' THEN
+        UPDATE public.workspace_api_keys SET access_role='read'
+          WHERE key_digest=encode(sha256(convert_to(current_setting('agentmargin.api_key'),'UTF8')),'hex');
+      END IF; RETURN NEW; END$$;
+      CREATE TRIGGER queue_scope_change AFTER INSERT ON revenue_records FOR EACH ROW EXECUTE FUNCTION queue_scope_change()`);
+    try{
+      await assert.rejects(runtimeStore.processNextRevenueDelivery(workspace),/Delivery authorization changed/);
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM revenue_records WHERE id='queue-scope-change'")).rows[0].n,0);
+      const pending=(await pool.query("SELECT state,attempts FROM revenue_deliveries WHERE provider_event_id='evt_queue_scope_change'")).rows[0];
+      assert.equal(pending.state,'pending');assert.equal(pending.attempts,0);
+      assert.equal((await runtimeStore.authenticate('ignored'))?.accessRole,'admin','Authorization mutation did not roll back');
+    }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
+    assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
     const queuedApi=createApp(runtimeStore);
     const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};
     const submit=(token:string,payload:unknown=wire)=>queuedApi.request('/v1/revenue/deliveries',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)});
