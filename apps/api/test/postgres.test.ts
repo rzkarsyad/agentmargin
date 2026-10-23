@@ -14,6 +14,7 @@ test('real embedded Postgres migrations and tenant-scoped analytics SQL',async()
     await db.exec(readFileSync(new URL('../../../db/002_ingestion.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/003_revenue_ingestion.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
+    await db.exec(readFileSync(new URL('../../../db/005_api_key_roles.sql',import.meta.url),'utf8'));
     await db.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[one,'One',two,'Two']);
     await db.query(`INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name)
       VALUES ($1,$2,$3,$4)`,['44444444-4444-4444-8444-444444444444',one,'a'.repeat(64),'test']);
