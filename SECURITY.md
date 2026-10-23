@@ -16,6 +16,7 @@ Do not publish vulnerability details in public issues. For private vulnerability
 - Browser dashboard sends the key as a bearer header, avoids local storage, uses `textContent` to render customer data, and receives CSP/no-store headers.
 - Per-process per-workspace request limiter; revocation queries live database state.
 - Basic source credential scan and dependency audit are included in CI.
+- Optional DBA-provisioned, least-privilege PostgreSQL runtime grants have CI tests for allowed API queries and denied destructive SQL. They are **not** enabled by the local demo and do not provide tenant RLS.
 
 ## v0.3 alpha security notes
 
@@ -26,7 +27,7 @@ Do not publish vulnerability details in public issues. For private vulnerability
 
 ## Known limitations — production deployment blockers
 
-1. **No complete internet-facing authorization review or penetration test.** Database row-level security (RLS) is not configured. A compromised API database credential can access all tenants; use a dedicated least-privilege role and isolate deployments.
+1. **No complete internet-facing authorization review or penetration test.** Database row-level security (RLS) is not configured. A compromised API database credential can access all tenants; the optional [runtime role](docs/DB_RUNTIME_ROLE.md) limits SQL privileges but does not prevent cross-tenant reads. Isolate deployments.
 2. **No TLS terminator or reverse proxy is shipped.** Production use requires audited TLS termination, trusted forwarding, gateway rate limits before auth (including invalid tokens), and protection against abuse.
 3. **Local limiter is in-memory only.** Multiple API instances do not share quotas, and unauthenticated invalid-key attempts are not throttled here.
 4. **No operational assurance.** Set up encrypted backups, restore drills, log redaction, structured monitoring, alerts, secret rotation policy, upgrades, and incident response.

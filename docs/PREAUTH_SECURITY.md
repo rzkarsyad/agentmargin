@@ -6,7 +6,7 @@ This experimental branch adds a **pre-authentication invalid-key limiter** to `/
 
 ## Database least-privilege evaluation
 
-PostgreSQL app credentials currently can view multiple workspaces if compromised because RLS is not enabled. A dedicated application database role must be provisioned by an authorized DB administrator, separate from the owner/migrator. Grant only CONNECT, schema USAGE, and required SELECT/INSERT on the small set of tables used by the API. Do not grant CREATE, ALTER, DROP, DELETE, TRUNCATE or UPDATE on accounting tables. Test permissions with a throwaway database and migration-specific privileged role.
+PostgreSQL app credentials currently can view multiple workspaces if compromised because RLS is not enabled. The optional [runtime role grants](DB_RUNTIME_ROLE.md) now narrow database operations to specific SELECT/INSERT privileges and are exercised with a throwaway, non-owner role in CI. An authorized DBA must provision that role separately from the owner/migrator for each deployment. The local demo still uses a privileged synthetic database account by default; this is not evidence of secure production configuration.
 
 Do not enable RLS solely from a copied SQL snippet: RLS requires a trusted tenant session identity, transaction ownership rules, no bypass privilege, a separate migration role, and denial-by-default tests. Until verified, the API must remain localhost-only.
 
