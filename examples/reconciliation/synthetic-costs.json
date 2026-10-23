@@ -1,0 +1,8 @@
+{
+  "scope": {"workspaceId":"synthetic-workspace","provider":"synthetic-provider","accountId":"synthetic-account","currency":"USD","kind":"cost","periodStart":"2026-10-01T00:00:00Z","periodEnd":"2026-11-01T00:00:00Z"},
+  "recordedExportRef":"synthetic:ledger-export:1",
+  "billingExportRef":"synthetic:provider-invoice:1",
+  "tolerance":{"absoluteMicros":"1","basisPoints":0},
+  "records":[{"id":"synthetic-request-1","sourceRef":"synthetic:usage:1","currency":"USD","occurredAt":"2026-10-10T00:00:00Z","amountMicros":"123456","source":"estimated","pricingRef":"synthetic:price-effective-2026-10-01","tokens":{"input":100,"output":50,"cachedInput":20}}],
+  "billed":[{"id":"synthetic-line-1","sourceRef":"synthetic:invoice:1:line:1","currency":"USD","occurredAt":"2026-10-10T00:00:00Z","amountMicros":"123457","kind":"charge","recordIds":["synthetic-request-1"],"tokens":{"input":100,"output":50,"cachedInput":20}}]
+}

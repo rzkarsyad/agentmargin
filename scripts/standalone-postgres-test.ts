@@ -306,6 +306,32 @@ try {
       assert.ok(!tenantA.customers.some(c=>c.customerId==='other-customer'));
       assert.deepEqual(tenantB.customers.map(c=>c.customerId),['other-customer']);
     }
+    // Financial batch failure rolls back every prior insert and customer row.
+    const atomic:StoredEvent={...runtimeEvent,event:{...runtimeEvent.event,id:'atomic-a',customerId:'atomic-customer'},payloadDigest:'atomic'};
+    await assert.rejects(runtimeStore.ingest(workspace,[atomic,{...atomic,event:{...atomic.event,id:'atomic-z'},costMicros:-1n}]),
+      (e:unknown)=>(e as {code?:string}).code==='23514');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM usage_events WHERE workspace_id=$1 AND event_id LIKE 'atomic-%'",[workspace])).rows[0].n,0);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM customers WHERE workspace_id=$1 AND id='atomic-customer'",[workspace])).rows[0].n,0);
+    // Terminate only a connection belonging to this disposable test role.
+    const interrupted=await runtimeStore.pool.connect();
+    interrupted.on('error',()=>{});
+    const pid=(await interrupted.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const rejected=assert.rejects(interrupted.query('SELECT pg_sleep(5)'),(e:unknown)=>(e as {code?:string}).code==='57P01');
+    await pool.query('SELECT pg_terminate_backend($1)',[pid]);
+    await rejected;interrupted.release(true);
+    assert.ok((await runtimeStore.analyticsPage(workspace,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z',null,20)).summary.customerCount);
+    // Bounded synthetic concurrency smoke; not a production throughput benchmark.
+    const loadStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:4,
+      connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
+    const loadEvent={...runtimeEvent,event:{...runtimeEvent.event,id:'load-replay'},payloadDigest:'load-replay'};
+    const loadStarted=performance.now();
+    try{
+      const results=await Promise.all(Array.from({length:80},(_,n)=>loadStore.ingest(workspace,[n<40?loadEvent:
+        {...loadEvent,event:{...loadEvent.event,id:'load-unique-'+n},payloadDigest:'load-unique-'+n}])));
+      assert.equal(results.reduce((n,r)=>n+r.inserted,0),41);
+      assert.equal(results.reduce((n,r)=>n+r.duplicate,0),39);
+      process.stdout.write('Synthetic restricted-role concurrency: 80 requests, 41 unique rows, '+Math.round(performance.now()-loadStarted)+' ms.\n');
+    }finally{await loadStore.pool.end();}
     // Revocation affects the already-created credential view on its next statement.
     await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',
       [createHash('sha256').update(otherKey).digest('hex')]);

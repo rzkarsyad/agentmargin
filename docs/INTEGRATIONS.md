@@ -35,3 +35,25 @@ Use the optional `STRIPE_ACCOUNT_ID` to require a specific connected account. Fo
 - Do not deploy this webhook receiver or the alpha AgentMargin API to the public internet.
 
 For production Stripe integration, a formal event contract and reconciliation process are required before supporting refunds, subscription revenue attribution or cross-currency.
+
+## Offline financial reconciliation foundation (v0.9 candidate)
+
+`packages/core/src/reconciliation.ts` compares explicit recorded exports with external billing exports. It makes no provider requests and never mutates financial records or applies pricing. Run the fictional fixture with:
+
+```bash
+node --experimental-strip-types scripts/reconcile.ts \
+  examples/reconciliation/synthetic-costs.json /tmp/agentmargin-private-reports
+```
+
+The input contract includes workspace/provider/account, currency, half-open period, immutable export/source references, recorded amounts (reported/estimated/unknown), effective-pricing references, optional inclusive-input/cached/output counts, and external invoice lines with explicit record-ID attribution. For revenue use `scope.kind="revenue"`; include payments and signed refund/credit/adjustment evidence from an audited source. A credit must be nonpositive; adjustments can have either sign. This **does not add negative records to the existing positive-only revenue API**. Persistent refund/adjustment ledger ingestion and a durable Stripe webhook inbox remain unfinished work.
+
+The engine deduplicates identical IDs, rejects conflicting duplicates and overlapping allocations, and sorts evidence so out-of-order delivery produces the same report. Amounts use exact integer micros. Tolerance is the maximum of an absolute amount and the ceiling of absolute billed amount × basis points / 10,000. Each line reports external amount, known recorded amount, signed variance (external minus recorded), tolerance, missing/unknown IDs and token variances. Estimated rows require pricing provenance. Cached counts remain a subset of inclusive input tokens; mismatches cannot be hidden by matching dollar totals.
+
+Unknown amounts never become zero or a verified margin. Missing billing evidence, unmatched rows, credits without explicit attribution, missing token evidence and any line variance keep `complete=false`; an empty report cannot be complete. Separate unallocated credits do not silently reduce an individual usage line. No fuzzy matching, allocation guesses, automatic price replacement, FX conversion, tax/fee recognition or revenue-recognition policy is applied. Different currencies are rejected; use separate currency/account/period reports or supply an explicitly reviewed conversion export with rate/date/source evidence. AgentMargin's current HTTP ledger is USD, so its direct exports must be reconciled as USD.
+
+Reports contain a deep snapshot of every normalized input, source references, per-line outcomes and a canonical SHA-256 digest. The CLI writes private mode-600 files under a mode-700 directory, fsyncs complete bytes and publishes by an exclusive atomic link. Identical replay verifies the stored bytes; altered existing evidence is never overwritten. A crash can leave an unpublished private `.report-*` temporary file for operator cleanup. SHA-256 is an integrity/reference identifier, **not** a signature or proof that a provider supplied an input. Reports contain sensitive account/financial data: apply the backup/privacy policy and never send them to request logs or public CI artifacts.
+
+Synthetic tests cover exact large amounts, tolerance edges, missing usage, unknown cached pricing, cached-token mismatches, credits/refunds, duplicate and out-of-order evidence, currency boundaries and durable report replay. Real provider statement import/export authenticity, actual Stripe sandbox refunds/credit notes, FX/accounting policy and independent accountant/provider validation remain external release gates. The adapter is an auditable foundation, not a claim of completed live reconciliation.
+
+
+Preliminary integration review hardened the original JSON boundary: billing `recordIds` must be an actual array (strings are rejected before iterable copying), and the total allocation budget is checked before deep copying. Estimated inference costs cannot be negative; signed provider credits remain separate reported adjustment evidence. These checks prevent malformed evidence from acquiring a complete reconciliation result. Independent billing/accounting review remains required.
