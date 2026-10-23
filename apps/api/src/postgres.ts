@@ -91,7 +91,9 @@ export class PostgresEventStore implements EventStore {
   }
   async authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null> {
     const q = await this.pool.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
-      'SELECT workspace_id,access_role FROM workspace_api_keys WHERE key_digest=$1 AND revoked_at IS NULL',[keyDigest]);
+      `SELECT workspace_id,access_role FROM workspace_api_keys
+       WHERE key_digest=$1 AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,[keyDigest]);
     const row=q.rows[0];
     return row?{workspaceId:row.workspace_id,accessRole:row.access_role}:null;
   }
