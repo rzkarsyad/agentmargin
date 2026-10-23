@@ -57,9 +57,19 @@ function unique<T extends {id:string}>(entries:T[]):T[]{
 }
 const abs=(n:bigint)=>n<0n?-n:n;
 export function reconcileFinancialRecords(input:ReconciliationInput){
-  input=structuredClone(input);
   // Runtime validation matters: this interface is also consumed from JSON files.
   if(!input||!input.scope||!input.tolerance||!Array.isArray(input.records)||!Array.isArray(input.billed))throw new Error('Invalid reconciliation input');
+  if(input.records.length>10000||input.billed.length>10000)throw new Error('Invalid reconciliation bounds');
+  let allocations=0;
+  for(const row of input.records)if(!row||typeof row!=='object'||Array.isArray(row))throw new Error('Invalid recorded evidence');
+  for(const line of input.billed){
+    // Validate the original JSON shape before copying/sorting: strings are iterable.
+    if(!line||typeof line!=='object'||Array.isArray(line)||!Array.isArray(line.recordIds)||
+      line.recordIds.length>10000||!line.recordIds.every(id))throw new Error('Invalid billing allocation');
+    allocations+=line.recordIds.length;
+    if(allocations>20000)throw new Error('Too many billing allocations');
+  }
+  input=structuredClone(input);
   const {scope}=input;
   if(![scope.workspaceId,scope.provider,scope.accountId,input.recordedExportRef,input.billingExportRef].every(id)||
     !['cost','revenue'].includes(scope.kind)||! /^[A-Z]{3}$/.test(scope.currency))throw new Error('Invalid reconciliation scope');
@@ -77,7 +87,10 @@ export function reconcileFinancialRecords(input:ReconciliationInput){
   for(const record of records){
     within(record);
     if(!['reported','estimated','unknown'].includes(record.source)||((record.amountMicros===null)!==(record.source==='unknown')))throw new Error('Unknown cost must remain explicit');
-    if(record.amountMicros!==null)amount(record.amountMicros);
+    if(record.amountMicros!==null){
+      const value=amount(record.amountMicros);
+      if(scope.kind==='cost'&&record.source==='estimated'&&value<0n)throw new Error('Estimated inference cost cannot be negative');
+    }
     if(record.source==='estimated'&&!id(record.pricingRef))throw new Error('Estimated cost requires pricing provenance');
   }
   const byId=new Map(records.map(r=>[r.id,r])),allocated=new Set<string>();

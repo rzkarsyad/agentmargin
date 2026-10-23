@@ -80,3 +80,14 @@ test('CLI persists complete report bytes and supports replay without overwriting
   writeFileSync(report,'tampered');assert.throws(run);assert.equal(readFileSync(report,'utf8'),'tampered');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('JSON allocation shapes fail closed before iterable coercion or unbounded copying',()=>{
+ for(const malformed of ['usage-1',null,{},42]){
+  const input=fixture();(input.billed[0] as unknown as {recordIds:unknown}).recordIds=malformed;
+  assert.throws(()=>reconcileFinancialRecords(input),/Invalid billing allocation/);
+ }
+ const over=fixture();over.billed=Array.from({length:3},(_,n)=>({...over.billed[0]!,id:'line-'+n,recordIds:Array.from({length:10000},(_,i)=>'id-'+n+'-'+i)}));
+ assert.throws(()=>reconcileFinancialRecords(over),/Too many billing allocations/);
+ const negative=fixture();negative.records[0]!.amountMicros='-1';
+ assert.throws(()=>reconcileFinancialRecords(negative),/cannot be negative/);
+});
