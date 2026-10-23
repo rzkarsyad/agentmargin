@@ -43,9 +43,9 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #31 | `45395eb` | #30 | [39940014653](https://github.com/rzkarsyad/agentmargin/actions/runs/39940014653) passed |
 | #32 | `e80792d` | #31 | [39941973060](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) passed |
 | #33 | `ec81227` | main, independent | [39953503015](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503015) CI, [39953503022](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503022) CodeQL/stack compatibility passed |
-| #34 | `f3e8b51` | #32 | [39965876033](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) passed, including additive 012/013 |
-| #35 | `0ea5aeb` | #34 | [Final-head CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39966149713) and [starter/registry](https://github.com/rzkarsyad/agentmargin/actions/runs/39966149557) passed |
-| #36 release preparation | release branch | #35 | Final source, full combined rehearsal and unfiltered CodeQL evidence pending workflow completion |
+| #34 | `79d9dd0` | #32 | [39969459723](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed, including 012/013 and bounded descriptor reads |
+| #35 | `960a61d` | #34 | [39969544723](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544723) CI and [39969544383](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544383) starter/registry passed |
+| #36 release preparation | release branch | #35 | [Complete rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969944175) passed (73 pass + existing TODO); [unfiltered CodeQL checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39970382041) has 103 rules / 1 retained hash finding. Current [final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after each update |
 
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
 #28 → #29 → #30 → #31 → #32 → #34 → #35 → #36**. #33 is independent and its
@@ -83,7 +83,10 @@ not approval. No independent reviewer or publication authorization is recorded.
   random bits; human-password KDF advice does not apply to those paths. No hashing,
   key compatibility, RLS or revocation semantics changed. No suppression/dismissal.
   Main #1/#2 await approved integration/rescan; #3 needs authorized false-positive
-  triage. Stored alerts/Dependabot endpoints are unavailable to the connector;
+  triage. Full-stack scanning also found seven filesystem race checks; bounded
+  descriptor reads and canonical private directories removed all seven. The
+  remaining full-stack result includes operator bearer-key environment paths,
+  documented with the fixture paths in PREAUTH_SECURITY.md. Stored alerts/Dependabot endpoints are unavailable to the connector;
   current authoritative alert state is **not verified**.
 
 Reviewer package: [threat model and checklist](TENANT_THREAT_MODEL.md),
@@ -105,7 +108,12 @@ The connected account was confirmed test-only; only new labeled customer, produc
 price, item and unpaid invoice were created. No existing customer reads, unrelated
 modifications, deletes, paid-out-of-band simulation or live operations. Private API
 evidence is kept outside Git. Real event API-version/signature evidence remains
-unavailable. [Harness and secure setup](INTEGRATIONS.md) describe the exact CLI path.
+unavailable. Sanitized invoice alias:
+`sha256:bec9af311407eabdc0e1bfe4ad983b83a68e75abc3a1c59befd1aea153698825`;
+private evidence bundle digest:
+`70011557a5137cda2e70b4bb043c3908c61e3e2e3261aa6cac2f318af4735193`.
+The tool schema is `2026-09-30.preview`; it does not reveal the actual event API
+version, so no event-version verification is claimed. [Harness and secure setup](INTEGRATIONS.md) describe the exact CLI path.
 
 Official OpenAI/Anthropic exports and trusted pricing provenance are not supplied.
 The existing reconciliation input interface accepts explicit provider/account,
@@ -173,6 +181,13 @@ mappings against evidence; no automatic guessed backfill. On failure: rollback,
 investigate/retry or restore a new isolated DB; no destructive down-migration.
 
 ## Release package and external gates
+
+At the completed rehearsal checkpoint, 73 tests passed plus one pre-existing TODO;
+PostgreSQL 16 catalog/RLS/recovery/privacy/financial regressions passed. The synthetic
+DB restart recovered in 434 ms; full dump/restore took 1 second on the small fixture.
+These are sample drill observations, not RPO/RTO guarantees or representative load.
+Root/starter audits reported zero vulnerabilities; actual shared gateway/storage/
+alert delivery remain external gates.
 
 The read-only `v09-validation.yml` rehearses #33 plus the whole stack, runs full CI,
 registry/starter and unfiltered CodeQL, then prepares source/SDK tarballs, exact

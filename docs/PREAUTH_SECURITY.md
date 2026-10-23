@@ -14,8 +14,16 @@ Operator input files had separate path stat/read operations; those are hardened
 using O_NOFOLLOW descriptor open, descriptor type/mode/size validation, a bounded
 read from that same descriptor and canonical private output directories with
 trusted ancestors. Tests inspect the same opened-file metadata and contents.
-No query, path, fixture or result is excluded. Final SARIF evidence must confirm
-which results remain; workflow success alone is never a zero-findings assertion.
+No query, path, fixture or result is excluded. The full unfiltered follow-up
+[39970382041](https://github.com/rzkarsyad/agentmargin/actions/runs/39970382041)
+reports **103 rules / one result**, solely `js/insufficient-password-hash`; all
+seven filesystem results and both regex results are absent. Its preserved
+[SARIF](https://github.com/rzkarsyad/agentmargin/actions/runs/39970382041/artifacts/12509345683)
+identifies combined commit `250f3e3d3c2a859a31cc239dc051c848e8140127`, tree
+`6af7eb9709dec27f5aa86e7fa6b89c01420fe4f8`, SARIF SHA-256
+`eb639e81a2f2517a25e9daa6f5bb9580466eb8b9529fd0dfd99ac2fd029b9de0`.
+Later source changes require their own final-head checks. Workflow success alone
+is never a zero-findings assertion.
 
 The full-stack SHA-256 result additionally reaches the unchanged digest helper
 from `scripts/export-financial-ledger.ts` and `scripts/revenue-replay-worker.ts`
