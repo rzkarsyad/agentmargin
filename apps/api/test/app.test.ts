@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp, digest, type EventStore, type StoredEvent, type SafeRequestLog } from '../src/app.ts';
+import { createApp, digest, type EventStore, type StoredEvent, type SafeRequestLog, type AuthenticatedWorkspace } from '../src/app.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
 import {WorkspaceRateLimiter,InvalidCredentialLimiter} from '../src/rate-limit.ts';
 
@@ -10,7 +10,7 @@ const entry={id:'e1',customerId:'c1',model:'m',occurredAt:'2026-10-01T00:00:00Z'
 class MemoryStore implements EventStore {
   rows=new Map<string,StoredEvent>();
   authenticationQueries=0;
-  async authenticate(keyDigest:string){this.authenticationQueries++;return keyDigest===digest(apiKey)?'w1':null;}
+  async authenticate(keyDigest:string):Promise<AuthenticatedWorkspace|null>{this.authenticationQueries++;return keyDigest===digest(apiKey)?{workspaceId:'w1',accessRole:'admin'}:null;}
   async prices(){return [price];}
   async analytics(_workspace:string,start:string,end:string){return {periodStart:start,periodEnd:end,truncated:false,customers:[{customerId:'c1',revenueMicros:'1000000',knownAiCostMicros:'200',contributionMicros:'999800',marginBasisPoints:'9998',usageEvents:1,unknownEvents:0}]};}
   async ingest(_workspace:string,events:readonly StoredEvent[]){
@@ -108,6 +108,36 @@ test('each API request authenticates exactly once before route handling',async()
   assert.equal(store.authenticationQueries,3);
   assert.equal((await send(app,{events:[entry]},'am_'+'q'.repeat(40))).status,401);
   assert.equal(store.authenticationQueries,4);
+});
+
+test('read and ingest keys can only use their assigned routes; admin keeps legacy access',async()=>{
+  const readKey='am_'+'r'.repeat(40),ingestKey='am_'+'i'.repeat(40);
+  const store=new MemoryStore();
+  store.authenticate=async keyDigest=>{
+    store.authenticationQueries++;
+    if(keyDigest===digest(readKey))return {workspaceId:'w1',accessRole:'read'};
+    if(keyDigest===digest(ingestKey))return {workspaceId:'w1',accessRole:'ingest'};
+    if(keyDigest===digest(apiKey))return {workspaceId:'w1',accessRole:'admin'};
+    return null;
+  };
+  const app=createApp(store);
+  const period='/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z';
+  const auth=(key:string)=>({headers:{authorization:'Bearer '+key}});
+  const eventBody={events:[entry]};
+  assert.equal((await app.request(period,auth(readKey))).status,200);
+  assert.equal((await app.request('/v1/prices',auth(readKey))).status,503,'Read permitted; optional store feature absent');
+  assert.equal((await send(app,eventBody,readKey)).status,403);
+  assert.equal((await app.request('/v1/revenue',{method:'POST',headers:{authorization:'Bearer '+readKey}})).status,403);
+  assert.equal((await app.request('/v1/prices',{method:'POST',headers:{authorization:'Bearer '+readKey}})).status,403);
+  assert.equal((await send(app,eventBody,ingestKey)).status,202);
+  assert.equal((await app.request(period,auth(ingestKey))).status,403);
+  assert.equal((await app.request('/v1/prices',auth(ingestKey))).status,403);
+  assert.equal((await app.request('/v1/prices',{method:'POST',headers:{authorization:'Bearer '+ingestKey}})).status,403);
+  assert.equal((await app.request('/v1/future-feature',auth(readKey))).status,403,'Unknown endpoint defaults to admin-only');
+  assert.equal((await app.request('/v1/future-feature',auth(apiKey))).status,404);
+  assert.equal((await app.request(period,auth(apiKey))).status,200);
+  assert.equal((await send(app,eventBody,apiKey)).status,202);
+  assert.equal((await app.request('/v1/prices',{method:'POST',headers:{authorization:'Bearer '+apiKey}})).status,503);
 });
 
 test('request telemetry is opt-in, allowlisted and never logs customer details or secrets',async()=>{
