@@ -92,3 +92,25 @@ Its owner is the trusted migrator. Checkpoints preserve pre-012 receipts without
 inventing historical attempts. Normal append-only protections also cover audit
 rows. Independently review these new definer functions and inherited/effective
 grants with 007–011; no independent acceptance has occurred.
+
+
+## Catalog shadowing containment (013) — confirmed finding
+
+PostgreSQL implicitly searches `pg_temp` first for **relations/types** even with
+`search_path=pg_catalog`, unless `pg_temp` is explicitly placed last. The ownership
+guards in 010/011/012 read unqualified `pg_roles`/`pg_class`. A restricted runtime
+with TEMP privilege plus its own ingest key can forge those temporary catalogs,
+skip the pre-RLS guard, and distinguish another tenant's hidden payment through
+privileged BEFORE-trigger validation errors. The final RLS INSERT check still
+blocks cross-tenant insertion; no cross-tenant SELECT result or write was
+established. This is a confirmed cross-tenant error oracle, not a blanket RLS bypass.
+
+Migration 013 replaces the three affected definer trigger functions with
+**explicitly qualified `pg_catalog.pg_roles`/`pg_catalog.pg_class` references**
+and `search_path=pg_catalog,pg_temp`. Application relations remain schema-qualified. The real PostgreSQL 16
+suite reproduces the hidden-payment allowance error **before** 013, then requires
+`42501 Adjustment authorization denied` for the exact same session, key and forged
+temporary catalogs after 013. Failure/rollback/retry are tested. Readiness requires
+the fixed paths. Apply after 012 with the entire review stack; do not deploy
+007–012 alone as a completed security migration. Independent review must assess
+this remediation and TEMP/extension/definer authority; the security gate remains open.
