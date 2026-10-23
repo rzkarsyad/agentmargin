@@ -12,6 +12,9 @@ jobs:
     name: CodeQL SARIF (${{ matrix.revision }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # Audit all source, including unchanged credential paths on the base.
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -20,10 +23,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.revision == 'base' && (github.event.pull_request.base.sha || 'main') || github.sha }}
-      - name: Record analyzed commit
-        run: |
-          mkdir -p codeql-results
-          git rev-parse HEAD > codeql-results/commit.txt
       - uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
@@ -36,6 +35,27 @@ jobs:
         with:
           upload: false
           output: codeql-results
+      - name: Record complete analysis evidence
+        run: |
+          git rev-parse HEAD > codeql-results/commit.txt
+          python3 - <<'PYCODE'
+          import json,pathlib
+          required={'js/bad-tag-filter','js/incomplete-multi-character-sanitization','js/insufficient-password-hash'}
+          summaries=[]
+          for path in pathlib.Path('codeql-results').glob('*.sarif'):
+              for run in json.loads(path.read_text())['runs']:
+                  assert 'diff-informed' not in run.get('properties',{}).get('incrementalMode',''), 'Audit must include unchanged code'
+                  components=[run['tool']['driver'],*run['tool'].get('extensions',[])]
+                  rules={rule['id']:rule for component in components for rule in component.get('rules',[])}
+                  assert required<=rules.keys(), 'Required security queries were not run'
+                  summaries.append({'commit':pathlib.Path('codeql-results/commit.txt').read_text().strip(),
+                      'codeqlVersion':run['tool']['driver'].get('semanticVersion'),
+                      'queryCount':len(rules),'resultCount':len(run.get('results',[])),
+                      'queryIds':sorted(rules),'results':run.get('results',[])})
+          assert summaries,'Missing SARIF'
+          pathlib.Path('codeql-results/audit-summary.json').write_text(json.dumps(summaries,indent=2)+'\n')
+          print(json.dumps([{'commit':s['commit'],'queries':s['queryCount'],'results':s['resultCount']} for s in summaries]))
+          PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
