@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/starter.yml'
+      - 'scripts/sdk-registry-consumer-smoke.mjs'
 
 permissions:
   contents: read
@@ -29,6 +30,8 @@ jobs:
         run: |
           npm run build:sdk
           npm run sdk:packcheck
+      - name: Verify published npm consumer, signatures and provenance
+        run: node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
       - name: Install starter dependencies and build
         run: |
           npm --prefix examples/nextjs-starter install --no-audit --no-fund

@@ -17,3 +17,9 @@ test('SDK posts event JSON with auth header',async()=>{
   assert.equal((await client.track([{id:'e1',customerId:'c1',model:'m',occurredAt:'2026-10-01T00:00:00Z',inputTokens:1,outputTokens:1}])).inserted,1);
   assert.equal(seen,true);
 });
+
+test('SDK accepts HTTP IPv6 loopback and rejects unsupported schemes or embedded credentials',()=>{
+ assert.doesNotThrow(()=>new AgentMarginClient({endpoint:'http://[::1]:8787',apiKey}));
+ for(const endpoint of ['ftp://localhost','file:///tmp/local','https://user:password@example.com'])
+  assert.throws(()=>new AgentMarginClient({endpoint,apiKey}),/HTTP\(S\)/);
+});

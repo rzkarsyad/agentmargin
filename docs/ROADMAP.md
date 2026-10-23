@@ -23,7 +23,7 @@
 - [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
 - [x] Add a **weekly, read-only provider pricing candidate scan** and review artifact; not automatic price application or invoice reconciliation.
 - [x] **First public SDK release:** `@makinohq/agentmargin@0.4.0-alpha.1` published to npm under the `alpha` tag; npm GitHub Actions Trusted Publisher configured by the owner. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
-- [x] **OIDC publication:** `0.4.0-alpha.2` published successfully by [Actions run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098). Registry artifact/provenance inspection and clean external consumer checks remain separate evidence.
+- [x] **OIDC publication:** `0.4.0-alpha.2` published successfully by [Actions run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098). Clean registry artifact consumption and integrity/provenance metadata inspection passed; full cryptographic verification is a separate CI check. See [consumer evidence](V04_DEV_ADOPTION.md).
 - [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 
 **Important:** catalog import is not an unattended official provider feed. An operator must review and explicitly apply the rates. Official invoice reconciliation is not shipped.
@@ -56,7 +56,7 @@ The following work is **mandatory before** any production internet deployment. T
 
 | Stage | Implemented and automated evidence | Externally verified | Production-ready |
 | --- | --- | --- | --- |
-| v0.4 | ESM/declarations, package contents, Next.js starter, onboarding | OIDC publication run succeeded; three independent developers and registry consumer/provenance checks remain open | No |
+| v0.4 | ESM/declarations, package contents, Next.js starter, onboarding | OIDC publication run succeeded; clean registry ESM/TypeScript consumer passed; three independent developers and cryptographic provenance verification remain open | No |
 | v0.5 | Exact workspace totals, pagination, effective pricing, unknown-cost diagnostics | Real provider invoice/tier validation and pricing approval policy open | No |
 | v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
 | v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |

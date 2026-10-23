@@ -22,7 +22,8 @@ export function fromAnthropicMessage(message:AnthropicMessageUsage,customerId:st
     typeof customerId!=='string'||customerId.length<1||customerId.length>200)
     throw new Error('Invalid message/model/customer ID');
  const time=new Date(occurredAt);
- if(!Number.isFinite(time.getTime())||!/Z|[+-]\d\d:\d\d$/.test(occurredAt))
+ if(!Number.isFinite(time.getTime())||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(occurredAt)||
+   new Date(occurredAt.slice(0,10)+'T00:00:00Z').toISOString().slice(0,10)!==occurredAt.slice(0,10))
    throw new Error('Explicit timezone timestamp required');
  const u=message.usage;
  const input=safeCount(u.input_tokens,'input_tokens');
