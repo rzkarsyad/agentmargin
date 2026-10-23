@@ -1,12 +1,15 @@
 /** Local-only Stripe CLI receiver for verified invoice.paid revenue tracking.
  * Never deploy this example as a public production webhook service.
  */
+import {readFileSync} from 'node:fs';
 import * as http from 'node:http';
-import {AgentMarginClient,stripeInvoicePaidToRevenue} from '../packages/sdk/src/index.ts';
+import {AgentMarginClient,stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery,type StripeRefundLink} from '../packages/sdk/src/index.ts';
 const secret=process.env.STRIPE_WEBHOOK_SECRET;
 const key=process.env.AGENTMARGIN_API_KEY;
 if(!secret||!key)throw new Error('Set STRIPE_WEBHOOK_SECRET and AGENTMARGIN_API_KEY in the local shell');
 const client=new AgentMarginClient({endpoint:process.env.AGENTMARGIN_ENDPOINT??'http://127.0.0.1:8787',apiKey:key});
+const refundLinks:Record<string,StripeRefundLink>=process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE?
+ JSON.parse(readFileSync(process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE,'utf8')):{};
 const expectedAccount=process.env.STRIPE_ACCOUNT_ID;
 const port=Number(process.env.STRIPE_LOCAL_PORT??8788);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid local Stripe port');
@@ -22,17 +25,25 @@ http.createServer(async(req,res)=>{
    chunks.push(b);
   }
   const data=Buffer.concat(chunks);
-  let record;
-  try{record=stripeInvoicePaidToRevenue(data,header,secret!,Math.floor(Date.now()/1000),expectedAccount);}
-  catch{res.writeHead(400).end();return;}
-  if(!record){res.writeHead(200,{'content-type':'application/json'}).end('{"ignored":true}');return;}
   if(process.env.AGENTMARGIN_DURABLE_REVENUE==='true'){
-    // Parsing occurs only after raw-body verification above. A connected account
-    // must have an explicit trusted mapping to this receiver's one workspace.
-    const event=JSON.parse(data.toString('utf8')) as {id:string;account?:string};
-    if(event.account&&!expectedAccount){res.writeHead(400).end();return;}
-    await client.enqueueRevenueDelivery({providerEventId:event.id,providerAccount:expectedAccount??'platform',record},AbortSignal.timeout(5000));
-  }else await client.trackRevenue([record]);
+    let delivery;
+    try{delivery=stripeEventToFinancialDelivery(data,header,secret!,Math.floor(Date.now()/1000),{expectedAccount,refundLinks});}
+    catch(error){
+      // Valid but unsupported/unmapped financial evidence must not be acknowledged
+      // as successfully recorded. Integrators must alert on these repeated errors.
+      const unresolved=error instanceof Error&&/^(Unsupported|Stripe .*requires)/.test(error.message);
+      res.writeHead(unresolved?503:400).end();return;
+    }
+    if(!delivery){res.writeHead(200).end('{"ignored":true}');return;}
+    if(delivery.kind==='payment')await client.enqueueRevenueDelivery(delivery,AbortSignal.timeout(5000));
+    else await client.enqueueAdjustmentDelivery(delivery,AbortSignal.timeout(5000));
+  }else{
+    let record;
+    try{record=stripeInvoicePaidToRevenue(data,header,secret!,Math.floor(Date.now()/1000),expectedAccount);}
+    catch{res.writeHead(400).end();return;}
+    if(!record){res.writeHead(200).end('{"ignored":true}');return;}
+    await client.trackRevenue([record]);
+  }
   res.writeHead(200,{'content-type':'application/json'}).end('{"accepted":true}');
  }catch{
   // A 5xx allows Stripe to retry; AgentMargin uses stable invoice IDs for idempotency.

@@ -15,9 +15,15 @@ try{
     if(result.state==='empty')break;
     counts[result.state]++;
   }
+  const adjustments={delivered:0,retry:0,failed:0};
+  for(let n=0;n<limit;n++){
+    const result=await store.processNextAdjustmentDelivery(principal.workspaceId);
+    if(result.state==='empty')break;adjustments[result.state]++;
+  }
+  const adjustmentBacklog=await store.adjustmentDeliveryStatus(principal.workspaceId);
   const backlog=await store.revenueDeliveryStatus(principal.workspaceId);
-  process.stdout.write(JSON.stringify({kind:'revenue_replay',...counts,backlog})+'\n');
-  if(counts.failed||BigInt(backlog.failed)>0n)process.exitCode=1;
+  process.stdout.write(JSON.stringify({kind:'revenue_replay',...counts,backlog,adjustments,adjustmentBacklog})+'\n');
+  if(counts.failed||BigInt(backlog.failed)>0n||adjustments.failed||BigInt(adjustmentBacklog.failed)>0n)process.exitCode=1;
 }catch{
   // SQL/connection errors can contain customer IDs or credentials.
   process.stderr.write('{"kind":"revenue_replay_failed"}\n');process.exitCode=1;

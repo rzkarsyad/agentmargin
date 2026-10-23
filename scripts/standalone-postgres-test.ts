@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
+import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
 import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot} from '../apps/api/src/app.ts';
@@ -88,6 +89,14 @@ try {
     await ledgerUpgrade.query(ledgerMigration);
     assert.equal((await ledgerUpgrade.query('SELECT amount_micros::text,currency FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].currency,'USD');
   }finally{ledgerUpgrade.release();}
+  const deliveryUpgrade=await pool.connect();
+  try{
+    const sql=readFileSync(new URL('../db/011_adjustment_deliveries.sql',import.meta.url),'utf8');
+    await assert.rejects(deliveryUpgrade.query(sql.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await deliveryUpgrade.query('ROLLBACK');
+    assert.equal((await deliveryUpgrade.query("SELECT to_regclass('public.adjustment_deliveries') AS name")).rows[0].name,null);
+    await deliveryUpgrade.query(sql);
+  }finally{deliveryUpgrade.release();}
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
@@ -402,7 +411,7 @@ try {
     await runtimeStore.ingestRevenue(workspace,[adjustmentPayment]);
     const adjustment=parseAdjustment({originalPaymentId:adjustmentPayment.id,customerId:adjustmentPayment.customerId,
       kind:'refund',amountMicros:'100000',currency:'USD',occurredAt:'2026-10-11T00:00:00Z',
-      provider:'stripe',providerAccount:'acct_synthetic',sourceObjectId:'re_ledger_partial',evidenceRef:'stripe:refund:re_ledger_partial'});
+      provider:'import',providerAccount:'acct_synthetic',sourceObjectId:'re_ledger_partial',evidenceRef:'stripe:refund:re_ledger_partial'});
     const adjustmentStore=runtimeStore.forCredential(ingestKey);
     const replayed=await Promise.all(Array.from({length:12},()=>adjustmentStore.ingestAdjustments(workspace,[adjustment])));
     assert.equal(replayed.reduce((n,r)=>n+r.inserted,0),1);assert.equal(replayed.reduce((n,r)=>n+r.duplicate,0),11);
@@ -545,6 +554,7 @@ try {
       assert.equal((await runtimeStore.authenticate('ignored'))?.accessRole,'admin','Authorization mutation did not roll back');
     }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
     assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
+    await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
     const queuedApi=createApp(runtimeStore);
     const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};
     const submit=(token:string,payload:unknown=wire)=>queuedApi.request('/v1/revenue/deliveries',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)});

@@ -79,6 +79,13 @@ export class AgentMarginClient {
     if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
     return await response.json() as {duplicate:boolean;state:string};
   }
+  async enqueueAdjustmentDelivery(delivery:{providerEventId:string;providerAccount:string;record:AdjustmentInput},signal?:AbortSignal):Promise<{duplicate:boolean;state:string}>{
+    const response=await this.fetchImpl(new URL('/v1/revenue/adjustments/deliveries',this.endpoint),{method:'POST',headers:{
+      authorization:`Bearer ${this.apiKey}`,'content-type':'application/json'
+    },body:JSON.stringify(delivery),signal});
+    if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
+    return await response.json() as {duplicate:boolean;state:string};
+  }
   async trackAdjustments(records:AdjustmentInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 adjustments');
     const response=await this.fetchImpl(new URL('/v1/revenue/adjustments',this.endpoint),{method:'POST',headers:{
@@ -100,4 +107,5 @@ export type { ResponsesUsage, ChatCompletionsUsage } from './openai.ts';
 
 export {fromAnthropicMessage} from './anthropic.ts';
 export type {AnthropicMessageUsage} from './anthropic.ts';
-export {stripeInvoicePaidToRevenue} from './stripe.ts';
+export type {StripeFinancialDelivery,StripeFinancialOptions,StripeRefundLink} from './stripe.ts';
+export {stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery} from './stripe.ts';
