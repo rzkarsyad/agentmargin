@@ -164,3 +164,194 @@ Set `DATABASE_URL` to the restricted runtime and `AGENTMARGIN_API_KEY` to the
 fixture admin key through the shell's secret tooling. Never pass them as CLI
 arguments or log SQL bound parameters. The tool intentionally refuses remote or
 non-CI databases. It does not schedule a worker or clear the release approval gate.
+
+
+## Current Stripe credit-note schema and platform routing
+
+The original synthetic credit fixture used `credit_amount`, `refund_amount` and
+`refund`. The official [Stripe OpenAPI snapshot](https://github.com/stripe/openapi/blob/90539938d9aad57955213f39ffbb23312ddbb6c8/openapi/spec3.json)
+(`2026-09-30.endive`) instead returns `refunds: [{refund, amount_refunded}]`.
+`credit_amount` is a **create-request parameter**, not a credit-note object field.
+Source now accepts pure post-payment balance credits only when amount equals
+post-payment amount, pre-payment/out-of-band amounts are zero, refunds is empty,
+and an explicit customer-balance transaction exists. Wholly refund-backed notes
+are ignored in favor of succeeded refund events; mixed, duplicate-refund,
+expanded/unknown allocation and contradictory old/new shapes fail explicitly.
+Legacy fixture shapes remain compatible but are not claimed as live API evidence.
+
+For a dedicated **platform-account** signing secret, set
+`STRIPE_PLATFORM_ACCOUNT_ID` (events omit `event.account`). For a connected-account
+endpoint use `STRIPE_ACCOUNT_ID` (the signed event must match). Choose exactly one.
+Never derive a workspace/account from untrusted webhook metadata. The additive SDK
+`platformAccount` option binds this trusted routing configuration; a platform
+endpoint rejects connected-account envelopes. The legacy no-option SDK converter
+still uses `platform` for compatibility; new durable receivers require explicit
+routing. Stripe may return `out_of_band_amount: null` for an unused optional allocation.
+Only explicit null in that field is normalized to zero, in both current and legacy
+shapes; the signed object is not mutated. Missing values, strings, positive or
+negative out-of-band amounts, null required monetary values, partial refund/balance
+mixtures and contradictory allocation shapes remain rejected. A wholly refund-backed
+note still returns no adjustment so succeeded refund events count the reduction once.
+Signature verification still precedes normalization and durable acceptance.
+
+## Genuine sandbox QA harness and recovery
+
+`scripts/stripe-sandbox-qa.ts` requires a test-only API key, explicitly selected
+Moland sandbox account, and an existing loopback `agentmargin_ci` migrated through
+014 with the tested restricted runtime grants. It never uses live mode, public
+tunnels, fabricated signatures or account-wide cleanup. Keep private financial
+receipts outside the checkout in an operator-owned mode-0700 directory.
+
+Configure through secret tooling (never commit or paste secrets):
+`STRIPE_API_KEY` (test prefix only), `STRIPE_SANDBOX_ACCOUNT_ID`,
+`AGENTMARGIN_STANDALONE_DATABASE_URL`, `AGENTMARGIN_SANDBOX_RUNTIME_URL`, and
+`AGENTMARGIN_SANDBOX_EVIDENCE`. The owner URL must use user/database
+`agentmargin_ci` at `127.0.0.1`; the runtime URL must target that same disposable
+DB with a different, least-privilege role. Existing data/workspaces are retained.
+
+**Resume existing fixtures on macOS without creating financial objects:**
+
+```sh
+# Preserve your current work by using a separate checkout. Do not reset or clean it.
+git fetch origin release/v0.9.0-alpha.1:refs/remotes/origin/release/v0.9.0-alpha.1
+git worktree add --detach ../agentmargin-qa-resume origin/release/v0.9.0-alpha.1
+cd ../agentmargin-qa-resume
+npm ci
+stripe version                         # validated CLI protocol: v1.55.1
+env -u STRIPE_API_KEY stripe whoami --format json
+# The CLI login must select Moland, matching the restricted key's exact account.
+# Keep your existing DB/key/account settings; use the ORIGINAL evidence directory
+# containing qa-run.json. Do not create a new run ID or edit that file.
+export AGENTMARGIN_SANDBOX_EVIDENCE="$HOME/<existing-private-QA-directory>"
+AGENTMARGIN_STRIPE_SANDBOX_QA=test-only AGENTMARGIN_SANDBOX_MODE=recover \
+  node --experimental-strip-types scripts/stripe-sandbox-qa.ts
+```
+
+The harness independently checks BOTH the restricted-key account and the CLI
+login account before opening the listener. It removes `STRIPE_API_KEY` from the
+listener and resend subprocess environments only, preserving CLI login/profile,
+proxy and CA configuration. API reads continue to use the restricted test key.
+No need to export a signing secret: the running listener supplies it privately.
+Do not use `stripe config --list`, debug logging, `--live`, or `--skip-verify`.
+
+`recover` is the default. It requires the original `qa-run.json`, verifies its
+account/age, fully paginates the four expected event types from that run's creation
+time, and keeps only exact `agentmargin-qa-<run>` metadata matches. It reads the
+existing three paid invoices, refunds and credit, verifies exact InvoicePayment
+payment-intent links and shared customer, and confirms the unpaid $15 invoice.
+Ambiguous, incomplete, changed, unrelated or older-than-30-day fixtures fail
+closed. Discovery is API evidence, **never signed delivery**. Stripe Refund
+resources have no `livemode` field in the pinned official schema; their false-mode
+signed events, selected test-key context and exact payment links establish mode.
+
+After mapping, recovery executes `stripe events resend EVENT_ID` **without**
+`--webhook-endpoint`, using the same CLI login as the listener. In
+[CLI v1.55.1](https://github.com/stripe/stripe-cli/blob/4501fc5a6e58dacab6a60a089e93317cc7b84861/pkg/cmd/resource/events_resend.go),
+that command requests `for_stripecli=true`, routing existing events to the active
+local listener. It does not create invoices, payments, refunds or credits. The
+transport forbids all financial POSTs in recovery; the only remote write is this
+run-scoped delivery retry, with an account check before each request. It can also
+reach other active CLI listeners on the same sandbox: stop unrelated listeners
+first. Retry is bounded to two resend requests per missing event. CLI command
+success alone never satisfies the delivery check. A missing/denied/expired resend
+fails the run and preserves diagnostics; it never falls back to re-signing an API
+object, widening signature age or creating replacement transactions.
+
+The localhost receiver verifies literal bytes, one timestamp within five minutes,
+v1 HMAC and false platform mode before matching run metadata. Run-scoped verified
+receipts are written privately and fsynced **before** enqueue/HTTP acknowledgment;
+no signing secret is persisted. Signature-invalid/unrelated requests are counted
+but their payloads are discarded. Normalized payment/adjustment acceptance uses
+the real API and restricted PostgreSQL role. Every recovery attempt uses a fresh
+local workspace to prove delivery/processing from the same existing Stripe
+objects; it does not alter earlier workspaces. Saved raw receipts are audit
+inputs, not a way to bypass signature expiry. Recovery always requests fresh
+signed delivery. API calls are asynchronous so fixture creation cannot block the
+receiver's event loop.
+
+Stdout/stderr contain allowlisted JSON only: stage, listener start/ready/exit,
+exit code/signal, expected/verified-received/accepted unique event counts by type,
+HTTP response counts, AgentMargin HTTP status counts, and fixed rejection
+categories. No keys, secrets, raw CLI/error text, event/object/customer IDs or
+payloads appear there. Interpret failures as follows:
+
+| Diagnostic | Meaning / next action |
+| --- | --- |
+| `account-check`, `listener-start` | Login/account mismatch, CLI setup, early exit or secret timeout; fix local login without the restricted-key override |
+| `missingAtListener` | Neither an observed CLI event nor a verified HTTP receipt; inspect CLI connection/subscription/resend permission |
+| `seenWithoutHttp` | CLI saw event, receiver has no verified receipt; inspect forwarding/HTTP status and signature counters |
+| `signature_missing`, `signature_invalid`, `signature_expired` (400) | Receiver reached, signature rejected; do not disable verification |
+| `account_mode`, `fixture_mismatch` (400/422) | Wrong account envelope/test flag or run metadata; investigate routing |
+| `fixture_mapping_pending` (503) | Genuine receipt raced the local mapping; resend after discovery/mapping |
+| `normalization` (422) | Unsupported/malformed financial snapshot; inspect private API-version/raw evidence |
+| `normalized_delivery` (503) | AgentMargin rejected or timed out; inspect aggregate upstream HTTP statuses and local DB/runtime setup |
+| `evidence_write` (503) | Private receipt could not be persisted; repair permissions/storage before replay |
+| `unsupported_fx` (422) | Expected EUR rejection, retained as unresolved FX; never included in USD sums |
+
+`received` counts only authenticated, run-matched receipts; signature rejects are
+shown separately. Counts are unique event IDs, with duplicate HTTP attempts counted
+separately. CLI log parsing is supplementary: missing log lines do not override a
+verified HTTP receipt. Default delivery wait is 30 seconds per round; optional
+`AGENTMARGIN_SANDBOX_DELIVERY_TIMEOUT_MS` is bounded to 1000–120000. It cannot make a
+missing/rejected receipt successful. Private session discovery/failure files and
+raw receipts survive failures; successful report files retain API versions,
+provider evidence, exact ledger/reconciliation, delivery history and hashes.
+Do not upload these financial files publicly.
+
+For a genuinely new fixture run only, use a **new private directory** and explicit
+`AGENTMARGIN_SANDBOX_MODE=create`. It refuses any existing run file, checks the
+selected account before every financial write, uses deterministic operation keys,
+sets invoice currency explicitly (including EUR), and labels newly created
+objects. An interrupted create run is recovered without automatic financial
+mutation; missing fixtures remain a blocker. Never reuse Stripe's expiring
+idempotency namespace to recreate an old run.
+
+**Genuine signed sandbox acceptance: PASS — operator-verified on macOS,
+reported 2026-10-24 (Asia/Jakarta).** The existing Moland test fixtures were
+recovered without creating additional transactions. Complete event pagination and
+all eight genuine signed receipts were verified: three `invoice.paid`, two
+`refund.created`, two `refund.updated`, and one `credit_note.created`. Seven
+financial deliveries were accepted; the EUR invoice was correctly rejected as
+unsupported FX. Ledger/API/reconciliation produced:
+
+| Measure | Expected | Actual |
+| --- | --- | --- |
+| Gross USD revenue | $128.00 | $128.00 |
+| Refunds | $105.25 | $105.25 |
+| Credits | $12.00 | $12.00 |
+| Net revenue | $10.75 | $10.75 |
+| Reconciliation variance | $0.00 | $0.00 |
+
+The operator reported final output `kind: stripe_sandbox_qa`, `status: pass`,
+`actualMicros: 10750000`, `varianceMicros: 0`. The final compatibility issue was an
+unused `out_of_band_amount: null` in the genuine credit-note shape; the narrow
+normalization above resolves it. Regression fixtures use fictional identifiers and
+test signatures, with null/zero equivalence, strict rejection and real restricted
+PostgreSQL coverage. They are separate from this operator's genuine Stripe run.
+Private receipts, object IDs, customer details and credentials remain with the
+operator; no private financial files are committed or published. This implementing
+agent has not independently inspected those files or repeated the external run.
+
+This clears the supported USD platform-account **genuine signed sandbox** acceptance
+check. EUR remains unsupported; unknown pricing keeps complete contribution null.
+It does not clear authentic independent provider billing-export corroboration,
+accountant policy approval, independent SQL/security/CodeQL review, multi-account
+or unsupported allocation/FX coverage, deployment-specific backup/monitoring/load
+validation, protected integration, or explicit release/publication authorization.
+No additional Stripe transactions are needed to record or regression-test this
+result. Any future recovery must use the existing private run directory as above.
+
+Static-analysis review of this harness is preliminary. Two intentional receiver
+patterns can produce CodeQL candidates: `js/user-controlled-bypass` identifies
+HTTP path selection, which only selects a route and cannot bypass the subsequent
+HMAC/mode/run checks; `js/http-to-file-access` identifies the receipt signature
+header written into the private audit JSON after those checks. The latter is
+intentional evidence capture, with a 3000-character signature bound, 256 KB body
+bound, 200-receipt attempt bound, generated filenames, JSON encoding, exclusive
+no-follow writes and trusted private ancestors; files are never evaluated or
+served. Invalid/unsigned/unrelated payloads are not persisted. Tests verify both
+rejection and unchanged financial totals. No rule/query/path exclusion or alert
+dismissal is used. An independent reviewer must assess these data flows along
+with the existing high-entropy bearer-digest classification. The fictional CLI
+now generates its payloads from source constants and limits HTTP destinations to
+loopback, rather than sending arbitrary JSON read from a configuration file.

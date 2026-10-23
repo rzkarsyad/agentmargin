@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
+import {testV09FinancialFixture} from './v09-financial-fixture.ts';
 import {testFinancialReports} from './financial-report-tests.ts';
 import {testDefinerCatalogShadow} from './definer-shadow-tests.ts';
 import {testDeliveryRecovery} from './delivery-recovery-tests.ts';
@@ -580,6 +581,7 @@ try {
     await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
     await testDeliveryRecovery(pool,runtimeStore,workspace,other,key,ingestKey,readKey);
     await testFinancialReports(pool,runtimeURL.toString());
+    await testV09FinancialFixture(pool,runtimeURL.toString());
     const queuedApi=createApp(runtimeStore);
     const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};
     const submit=(token:string,payload:unknown=wire)=>queuedApi.request('/v1/revenue/deliveries',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)});

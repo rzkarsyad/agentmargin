@@ -71,6 +71,8 @@ export function stripeInvoicePaidToRevenue(
 export interface StripeRefundLink {originalPaymentId:string;customerId:string}
 export interface StripeFinancialOptions {
  expectedAccount?:string;
+ /** Account owning a dedicated platform webhook secret; platform events omit event.account. */
+ platformAccount?:string;
  /** Trusted, account-scoped mapping maintained by the integrator, never webhook metadata. */
  refundLinks?:Readonly<Record<string,StripeRefundLink>>;
 }
@@ -82,10 +84,12 @@ export type StripeFinancialDelivery =
  */
 export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatureHeader:string,webhookSecret:string,
  nowSeconds=Math.floor(Date.now()/1000),options:StripeFinancialOptions={}):StripeFinancialDelivery|null{
+ if(options.platformAccount&&(!/^acct_[A-Za-z0-9_]{1,190}$/.test(options.platformAccount)||options.expectedAccount))throw new Error('Invalid Stripe account routing');
  const e=verifiedStripeEvent(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount);
+ if(options.platformAccount&&e.account!=null)throw new Error('Stripe platform endpoint cannot accept connected-account events');
  if(!/^evt_[A-Za-z0-9_]{1,196}$/.test(String(e.id)))throw new Error('Invalid Stripe event identifier');
  if(e.account&&!options.expectedAccount)throw new Error('Stripe connected account requires trusted mapping');
- const providerAccount=options.expectedAccount??'platform';
+ const providerAccount=options.expectedAccount??options.platformAccount??'platform';
  const envelope={providerEventId:e.id as string,providerAccount};
  if(e.type==='invoice.paid')return {kind:'payment',...envelope,
    record:stripeInvoicePaidToRevenue(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount)!};
@@ -114,11 +118,44 @@ export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatu
    return {kind:'adjustment',...envelope,record:{...link,kind:'refund',currency:'USD',amountMicros:micros(r.amount),
      occurredAt:at.toISOString(),provider:'stripe',providerAccount,sourceObjectId:r.id,evidenceRef:'stripe:refund:'+r.id}};
  }
+ // Current Stripe schema (2026-09-30.endive): credit_amount is a CREATE
+ // parameter, not a returned object field. Only a pure, evidenced balance credit
+ // or a wholly refund-backed note is supported; never infer mixed allocations.
+ // Stripe returns null for an unused optional out-of-band allocation. Normalize
+ // only that explicit null; missing/malformed values and required amounts still
+ // fail validation. Keep the signed source object unchanged for provenance.
+ const outOfBandAmount=r.out_of_band_amount===null?0:r.out_of_band_amount;
+ if(r.refunds!==undefined){
+   const cents=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
+   if(!stripeId(r.id,'cn')||!stripeId(r.invoice,'in')||!stripeId(r.customer,'cus')||r.status!=='issued'||r.type!=='post_payment')throw new Error('Invalid Stripe credit note');
+   if(![r.amount,r.pre_payment_amount,r.post_payment_amount,outOfBandAmount].every(cents)||r.pre_payment_amount!==0||outOfBandAmount!==0||r.amount!==r.post_payment_amount||!Array.isArray(r.refunds)||r.refunds.length>100)
+     throw new Error('Unsupported Stripe credit allocation requires reconciliation');
+   let refunded=0n;
+   const seen=new Set<string>();
+   for(const item of r.refunds){
+     if(!item||typeof item!=='object'||Array.isArray(item))throw new Error('Unsupported Stripe refund allocation');
+     const a=item as Record<string,unknown>;
+     if(!stripeId(a.refund,'re')||!cents(a.amount_refunded)||a.amount_refunded===0||seen.has(a.refund))throw new Error('Unsupported Stripe refund allocation');
+     seen.add(a.refund);refunded+=BigInt(a.amount_refunded);
+   }
+   // Reject contradictory legacy fields if an integrator provides both schemas.
+   if(r.credit_amount!==undefined||r.refund_amount!==undefined||r.refund!==undefined)throw new Error('Unsupported Stripe ambiguous credit schema');
+   if(refunded>0n){
+     if(refunded!==BigInt(r.post_payment_amount as number)||r.customer_balance_transaction!=null)throw new Error('Unsupported Stripe mixed credit allocation');
+     return null; // Succeeded refund events record the economic effect once.
+   }
+   if(!stripeId(r.customer_balance_transaction,'cbtxn'))throw new Error('Unsupported Stripe credit allocation requires reconciliation');
+   return {kind:'adjustment',...envelope,record:{originalPaymentId:'stripe:invoice:'+r.invoice,customerId:'stripe:'+r.customer,
+     kind:'credit',currency:'USD',amountMicros:micros(r.post_payment_amount),occurredAt:at.toISOString(),provider:'stripe',providerAccount,
+     sourceObjectId:r.id,evidenceRef:'stripe:credit_note:'+r.id}};
+ }
+ // Legacy fixture/API shape remains compatible but is not evidence of validation
+ // against a particular provider API version.
  if(!stripeId(r.id,'cn')||!stripeId(r.invoice,'in')||!stripeId(r.customer,'cus')||r.status!=='issued'||r.type!=='post_payment')throw new Error('Invalid Stripe credit note');
  // Restrict to an explicitly allocated post-payment reduction. Mixed, pre-payment,
  // out-of-band and newer array allocation shapes are not silently interpreted.
- const values=[r.pre_payment_amount,r.post_payment_amount,r.credit_amount,r.refund_amount,r.out_of_band_amount];
- if(values.some(v=>typeof v!=='number'||!Number.isSafeInteger(v)||v<0)||r.pre_payment_amount!==0||r.out_of_band_amount!==0)
+ const values=[r.pre_payment_amount,r.post_payment_amount,r.credit_amount,r.refund_amount,outOfBandAmount];
+ if(values.some(v=>typeof v!=='number'||!Number.isSafeInteger(v)||v<0)||r.pre_payment_amount!==0||outOfBandAmount!==0)
    throw new Error('Unsupported Stripe credit allocation requires reconciliation');
  if(Number(r.refund_amount)>0){
    if(r.credit_amount!==0||r.post_payment_amount!==r.refund_amount||!stripeId(r.refund,'re'))throw new Error('Unsupported Stripe mixed credit allocation');

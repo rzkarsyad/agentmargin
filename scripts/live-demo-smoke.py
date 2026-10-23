@@ -5,6 +5,7 @@ Use ONLY in a disposable development/CI environment. The generated demo API
 key is consumed in memory and never printed or saved by this smoke test.
 """
 import os
+import json
 import re
 import signal
 import subprocess
@@ -174,6 +175,35 @@ occurredAt:now.toISOString(),provider:'import',providerAccount:'synthetic',sourc
     print("PASS: live SDK partial refund, original payment preserved, adjusted net totals and negative-period UI")
 
 
+
+def v09_fixture_browser(browser):
+    code = """
+import pg from 'pg';
+import {testV09FinancialFixture} from './scripts/v09-financial-fixture.ts';
+const url='postgresql://agentmargin_demo:local-development-only@127.0.0.1:55432/agentmargin_demo';
+const pool=new pg.Pool({connectionString:url});
+try {const result=await testV09FinancialFixture(pool,url);process.stdout.write(JSON.stringify(result));}
+finally {await pool.end();}
+"""
+    result = subprocess.run(["node", "--experimental-strip-types", "--input-type=module", "-e", code], cwd=ROOT,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, "Synthetic v0.9 fixture failed"
+    fixture = json.loads(result.stdout.splitlines()[-1])
+    for width in (1280, 390):
+        page = browser.new_page(viewport={"width": width, "height": 850})
+        try:
+            page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
+            page.locator("#key").fill(fixture["key"])
+            page.locator("#load").click()
+            expect(page.locator("#revenue")).to_have_text("$10.75", timeout=15000)
+            expect(page.locator("#rows tr")).to_have_count(1)
+            assert "stripe:cus_v09_fixture" in page.locator("#rows").inner_text()
+            assert "Net of recorded adjustments" in page.locator(".metrics").inner_text()
+        finally:
+            page.close()
+    print("PASS: synthetic v0.9 $128 gross / $117.25 reductions / $10.75 net across ledger, API, reconciliation and desktop/mobile dashboard")
+
+
 def main():
     if not (os.environ.get("CI") == "true" and os.environ.get("GITHUB_ACTIONS") == "true"):
         raise SystemExit("This disposable Docker demo smoke test is restricted to GitHub Actions CI.")
@@ -250,6 +280,7 @@ def main():
                     live_browser(browser, key, width, 4, 2)
                 live_pricing_browser(browser, key)
                 live_adjustment_browser(browser, key)
+                v09_fixture_browser(browser)
             finally:
                 browser.close()
         print("PASS: full live demo E2E — Docker PostgreSQL, API auth, SDK metering, and Chromium")
