@@ -156,7 +156,7 @@ test('request telemetry is opt-in, allowlisted and never logs customer details o
   assert.equal(logs[0]?.status,202);
   assert.ok(logs[0]!.durationMs>=0);
   assert.deepEqual(Object.keys(logs[0]!).sort(),
-    ['kind','requestId','timestamp','route','method','status','durationMs'].sort());
+    ['kind','requestId','timestamp','route','method','status','durationMs','errorClass'].sort());
   const text=JSON.stringify(logs);
   for(const forbidden of [apiKey,querySecret,'private-body-customer','private-header','authorization','workspaceId'])
     assert.ok(!text.includes(forbidden),'Sensitive value appeared in request telemetry');

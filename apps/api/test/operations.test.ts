@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createApp,type EventStore} from '../src/app.ts';
+import {OperationalMetrics} from '../src/metrics.ts';
+const store:EventStore={authenticate:async()=>{throw Object.assign(new Error('private connection details'),{code:'ECONNRESET'});},prices:async()=>[],ingest:async()=>({inserted:0,duplicate:0})};
+test('readiness fails closed and metrics are private with fixed labels',async()=>{
+  let ready=false,draining=false;
+  const metrics=new OperationalMetrics();
+  const app=createApp(store,undefined,undefined,undefined,{metrics,metricsToken:'synthetic-monitor-secret',ready:async()=>ready,isDraining:()=>draining});
+  assert.equal((await app.request('/health')).status,200);
+  assert.equal((await app.request('/ready')).status,503);
+  ready=true;assert.equal((await app.request('/ready')).status,200);
+  draining=true;assert.equal((await app.request('/ready')).status,503);
+  assert.equal((await app.request('/v1/events')).status,503);
+  assert.equal((await app.request('/metrics')).status,401);
+  await app.request('/private-customer?apiKey=private');
+  const response=await app.request('/metrics',{headers:{authorization:'Bearer synthetic-monitor-secret'}});
+  assert.equal(response.status,200);
+  const text=await response.text();
+  assert.match(text,/agentmargin_http_requests_total\{route="readiness",status="503"\} 2/);
+  assert.match(text,/agentmargin_http_duration_seconds_bucket/);
+  assert.doesNotMatch(text,/private|secret|apiKey|customer/);
+  assert.equal((await createApp(store).request('/metrics')).status,404);
+  assert.equal((await createApp(store).request('/ready')).status,503);
+});
+test('dependency failures and readiness exceptions disclose no connection details',async()=>{
+  const app=createApp(store,undefined,undefined,undefined,{ready:async()=>{throw new Error('secret');}});
+  assert.equal((await app.request('/ready')).status,503);
+  const response=await app.request('/v1/events',{headers:{authorization:'Bearer am_'+'x'.repeat(40)}});
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:'Service unavailable'});
+});
