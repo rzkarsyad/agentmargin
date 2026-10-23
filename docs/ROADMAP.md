@@ -61,7 +61,7 @@ The following work is **mandatory before** any production internet deployment. T
 | v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
 | v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |
 | v0.8 | Encrypted backup hook/restore CI drill, privacy-safe classified telemetry, readiness, private Prometheus metrics, graceful shutdown, DB operation time bounds | Scheduled encrypted external backups, measured RPO/RTO, alerts and incident drills open | No |
-| v0.9 | Ingestion concurrency/idempotency and atomic isolation migration failure/retry tests | Provider/revenue reconciliation, adjustments and failure/load evidence open | No |
+| v0.9 | Offline traceable cost/revenue reconciliation, signed credits/refunds in reports, exact tolerances/cached-token diagnostics, durable report replay, ingestion concurrency/rollback/connection-recovery smoke and atomic migration failure/retry tests | Real billing imports, durable webhook inbox/adjustment ingestion, provider/accountant review and production-scale load evidence open | No |
 | v1.0 | Release gates tracked below | No independent release approval | No |
 
 ## v1.0 — stable release (NOT DONE)
