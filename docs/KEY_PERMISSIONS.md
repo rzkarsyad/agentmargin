@@ -33,6 +33,12 @@ node --experimental-strip-types apps/api/src/create-key.ts WORKSPACE_UUID writer
 
 The third positional argument is the key name; the fourth is `admin`, `ingest`, or `read`; the optional fifth argument is lifetime in days (`1`–`365`, default `90`). For backwards compatibility, omitting the role still creates an `admin` key, but newly issued CLI keys **always expire**. The CLI prints the raw secret **once** along with its UTC expiry; never paste it into issue trackers, CI logs or screenshots. Use `apps/api/src/revoke-key.ts` to invalidate keys after rotating them. Plan overlap so clients are updated before expiration; rotation is not automated.
 
+## Synthetic credential rotation drill
+
+CI now runs `scripts/key-rotation-ci.ts` against the disposable PostgreSQL fixture **only** after the integration test has populated `agentmargin_ci`. It requires GitHub Actions, an explicit `AGENTMARGIN_KEY_ROTATION_DRILL=ci-only` opt-in, and the local CI database address and user. It tests the safe overlap/cutover sequence, immediate invalidation of a revoked key, rejection of expired keys, continued access with a replacement ingest key, denied analytics with that key, and cross-workspace revoke scoping. Temporary synthetic credentials are deleted afterward, and secrets are never logged.
+
+This is a verification drill, **not** managed rotation. An operator must still distribute new credentials securely, coordinate rollout, confirm clients have switched, and revoke old keys. Before production, provide a reliable rotation/recovery runbook and independent review.
+
 ## Risk and acceptance evidence
 
 Unit tests exercise the authorization matrix, admin compatibility, fail-closed unknown `/v1/*` routes and revocation behavior. CI's disposable PostgreSQL 16 suite verifies that expired keys are rejected, existing keys remain valid and roles are persisted through the real adapter. The runtime SQL role remains separate from the schema migrator; it can SELECT key roles/expiry but cannot create or revoke keys.
