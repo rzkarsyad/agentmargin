@@ -101,3 +101,10 @@ Human judgments needed: acceptable threat boundary for password-plus-tenant-key
 compromise; revocation incident response versus separate identities; financial
 credit/cross-period policy; real retention/erasure and operator recovery authority.
 No automated reviewer or implementer self-review substitutes for these approvals.
+
+
+Shared-role availability is not isolated by RLS. Runtime-password holders share
+session/resource identity and can disrupt same-role work; review cancellation,
+termination, connection/resource limits and incident blast radius independently.
+The data-scope tests do not claim availability containment. Separate identities
+or infrastructure may be required by the deployment's accepted threat model.

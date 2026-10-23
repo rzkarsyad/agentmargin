@@ -43,8 +43,8 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #31 | `45395eb` | #30 | [39940014653](https://github.com/rzkarsyad/agentmargin/actions/runs/39940014653) passed |
 | #32 | `e80792d` | #31 | [39941973060](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) passed |
 | #33 | `ec81227` | main, independent | [39953503015](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503015) CI, [39953503022](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503022) CodeQL/stack compatibility passed |
-| #34 | `79d9dd0` | #32 | [39969459723](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed, including 012/013 and bounded descriptor reads |
-| #35 | `960a61d` | #34 | [39969544723](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544723) CI and [39969544383](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544383) starter/registry passed |
+| #34 | `554103a` | #32 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/34/checks) cover restore ACL and redaction follow-ups |
+| #35 | `d77a223` | #34 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544723) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544383) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) cover propagated ACL/redaction |
 | #36 release preparation | release branch | #35 | [Complete rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969944175) passed (73 pass + existing TODO); [unfiltered CodeQL checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39970382041) has 103 rules / 1 retained hash finding. Current [final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after each update |
 
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
@@ -188,6 +188,13 @@ DB restart recovered in 434 ms; full dump/restore took 1 second on the small fix
 These are sample drill observations, not RPO/RTO guarantees or representative load.
 Root/starter audits reported zero vulnerabilities; actual shared gateway/storage/
 alert delivery remain external gates.
+
+The all-language checkpoint [39971847379](https://github.com/rzkarsyad/agentmargin/actions/runs/39971847379)
+ran JavaScript 103 queries (one retained hash finding), Python 50 (zero), and Actions
+23 (zero), all unfiltered. Final source changes require their own checks. Restore
+follow-ups quarantine default PUBLIC definer grants recreated by `--no-acl` and
+probe restored RLS, guard settings and financial/source-account integrity; reapply
+runtime privileges before any restored application access.
 
 The read-only `v09-validation.yml` rehearses #33 plus the whole stack, runs full CI,
 registry/starter and unfiltered CodeQL, then prepares source/SDK tarballs, exact
