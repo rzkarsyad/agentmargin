@@ -44,6 +44,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/002_ingestion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/003_revenue_ingestion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/004_workspace_pricing.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/005_api_key_roles.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/006_api_key_expiry.sql
 ```
 
 ## 3. Create a workspace and local API key
@@ -57,6 +58,7 @@ node --experimental-strip-types apps/api/src/create-key.ts "$WORKSPACE_ID"
 ```
 
 Copy the generated **AgentMargin** API key into your password manager. It is displayed only once. Do not confuse it with your OpenAI provider key and do not commit it.
+Newly issued keys expire after 90 days by default. Before expiry, provision a replacement and update the client secret; the CLI accepts an optional 1–365 day TTL after the access role.
 
 ## 4. Start the local API and dashboard
 
