@@ -1,6 +1,7 @@
 /** Private OpenAI export validation. No network calls, repricing or credentials.
  * CSV buckets are aggregate evidence, never fabricated provider response IDs. */
 import { createHash } from 'node:crypto';
+import { fractionalMicros, tokenCostNumerator } from './openai-cost-precision.ts';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../packages/core/src/index.ts';
 export type EvidenceStatus = 'PASS' | 'FAIL' | 'INCONCLUSIVE';
 export interface EvidenceCheck {
@@ -46,7 +47,10 @@ export interface BillingUsage {
     cached: number;
     supported: boolean;
     issues: string[];
-    event: UsageEvent;
+    event: UsageEvent | null;
+    pricingSupported: boolean;
+    exactCostMicros: string | null;
+    dimensionRef: string;
     price: PriceVersion | null;
     costMicros: string | null;
 }
@@ -57,8 +61,9 @@ const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,149}$/;
 const validModel = (value: unknown): value is string => typeof value === 'string' && modelPattern.test(value);
 function validInstant(value: unknown): value is string {
-    if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
-    return new Date(value.slice(0,19)+'Z').toISOString().slice(0,19) === value.slice(0,19);
+    if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value)))
+        return false;
+    return new Date(value.slice(0, 19) + 'Z').toISOString().slice(0, 19) === value.slice(0, 19);
 }
 /** Bounded RFC4180 scanner; rejects duplicate headers, ragged rows and junk after quotes. */
 export function parseBillingCsv(text: string): {
@@ -70,11 +75,21 @@ export function parseBillingCsv(text: string): {
     text = text.replace(/^\uFEFF/, '');
     const records: string[][] = [];
     let row: string[] = [], cell = '', quoted = false, closed = false;
-    const pushCell = () => { row.push(cell); cell = ''; closed = false; if (row.length > 100)
-        bad('too_many_columns'); };
-    const pushRow = () => { pushCell(); if (row.some(v => v !== ''))
-        records.push(row); row = []; if (records.length > 100001)
-        bad('too_many_rows'); };
+    const pushCell = () => {
+        row.push(cell);
+        cell = '';
+        closed = false;
+        if (row.length > 100)
+            bad('too_many_columns');
+    };
+    const pushRow = () => {
+        pushCell();
+        if (row.some(v => v !== ''))
+            records.push(row);
+        row = [];
+        if (records.length > 100001)
+            bad('too_many_rows');
+    };
     for (let i = 0; i < text.length; i++) {
         const c = text[i]!;
         if (quoted) {
@@ -118,8 +133,13 @@ export function parseBillingCsv(text: string): {
     const headers = records.shift();
     if (!headers?.length || headers.some(h => !h || h.length > 100) || new Set(headers).size !== headers.length)
         bad('invalid_csv_headers');
-    const rows = records.map(values => { if (values.length !== headers.length)
-        bad('ragged_csv_row'); const result: Record<string, string> = Object.create(null); headers.forEach((h, i) => { result[h] = values[i]!; }); return result; });
+    const rows = records.map(values => {
+        if (values.length !== headers.length)
+            bad('ragged_csv_row');
+        const result: Record<string, string> = Object.create(null);
+        headers.forEach((h, i) => { result[h] = values[i]!; });
+        return result;
+    });
     return { headers, rows };
 }
 // USD values retain up to 60 fractional places. All arithmetic remains BigInt.
@@ -220,6 +240,7 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
         model: string;
         tier: string;
         batch: string;
+        organization: string;
     }[] = [];
     const periods = { usage: new Set<string>(), cost: new Set<string>() }, seen = { usage: new Set<string>(), cost: new Set<string>() };
     let emptyUsage = 0, emptyCost = 0;
@@ -261,19 +282,23 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
         if (requests !== 1)
             issues.push('aggregate_not_one_request');
         if (input > 272000)
-            issues.push('unsupported_long_context');
+            issues.push(requests === 1 ? 'unsupported_long_context' : 'unavailable_per_request_long_context');
         for (const name of usageCsv.headers.filter(h => /(?:token|tier|batch|region|processing|modality|provider|discount|rate)/i.test(h) && !['model', 'num_model_requests', 'input_tokens', 'output_tokens', 'input_cached_tokens', 'batch', 'service_tier', 'input_text_tokens', 'output_text_tokens', 'input_cached_text_tokens', 'input_uncached_tokens', 'input_cache_write_tokens', 'input_cache_write_30m_tokens', 'input_cache_write_12h_tokens', 'input_audio_tokens', 'input_cached_audio_tokens', 'output_audio_tokens', 'input_image_tokens', 'input_cached_image_tokens', 'output_image_tokens'].includes(h)))
             if (row[name] !== '' && row[name] !== '0' && row[name] !== '0.0')
                 issues.push('unrecognized_pricing_dimension');
         if (row.api_source)
             issues.push('unavailable_endpoint_interpretation');
-        const event: UsageEvent = { id: 'csv-qa-' + hash(usageText).slice(0, 16) + '-' + (index + 2), workspaceId: 'local-aggregate-qa', customerId: 'synthetic-csv-qa', model: row.model!, occurredAt: p.start, inputTokens: input, outputTokens: output, cachedInputTokens: cached };
+        const event: UsageEvent | null = requests === 1 ? { id: 'csv-qa-' + hash(usageText).slice(0, 16) + '-' + (index + 2), workspaceId: 'local-aggregate-qa', customerId: 'synthetic-csv-qa', model: row.model!, occurredAt: p.start, inputTokens: input, outputTokens: output, cachedInputTokens: cached } : null;
         const available = config.rates.filter(r => r.source.kind === 'official_current').map(rateVersion);
         const bucketPrices = available.filter(rate => rate.model === row.model && Date.parse(rate.effectiveFrom) < Date.parse(p.end) && Date.parse(rate.effectiveTo!) > Date.parse(p.start));
         if (bucketPrices.length > 1 || bucketPrices.length === 1 && (Date.parse(bucketPrices[0]!.effectiveFrom) > Date.parse(p.start) || Date.parse(bucketPrices[0]!.effectiveTo!) < Date.parse(p.end)))
             issues.push('ambiguous_price_within_bucket');
-        const calculated = calculateEventCost(event, issues.length ? [] : available), price = available.find(p => p.id === calculated.priceVersionId) ?? null;
-        usage.push({ row: index + 2, ...p, model: row.model!, project: row.project_id ?? '', apiKey: row.api_key_id ?? '', requests, input, output, cached, supported: !issues.length, issues, event, price, costMicros: calculated.amountMicros?.toString() ?? null });
+        const pricingSupported = issues.every(i => i === 'aggregate_not_one_request') && requests > 0;
+        const price = pricingSupported && bucketPrices.length === 1 ? bucketPrices[0]! : null;
+        const numerator = price ? tokenCostNumerator({ input, output, cached }, price) : null;
+        const calculated = event ? calculateEventCost(event, issues.length ? [] : available) : null;
+        const dimensionRef = hash(JSON.stringify(Object.entries(row).filter(([name]) => !name.endsWith('_tokens') && name !== 'num_model_requests').sort(([a], [b]) => a.localeCompare(b))));
+        usage.push({ row: index + 2, ...p, model: row.model!, project: row.project_id ?? '', apiKey: row.api_key_id ?? '', requests, input, output, cached, supported: !issues.length, pricingSupported, issues, event, price, dimensionRef, exactCostMicros: numerator === null ? null : fractionalMicros(numerator), costMicros: calculated?.amountMicros?.toString() ?? null });
         const unsupported = issues.some(i => (i.startsWith('unsupported_') && !i.startsWith('unsupported_or_missing')) || i.startsWith('inconsistent_') || i === 'unrecognized_pricing_dimension')
             || (!!row.service_tier && row.service_tier !== 'default') || (!!row.batch && !['False', 'false'].includes(row.batch));
         if (issues.length)
@@ -306,7 +331,7 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
             add('billing_dimensions', 'INCONCLUSIVE', 'Additional billing dimensions require reviewed interpretation.');
         if (costCsv.headers.some(h => /(?:region|processing|modality|provider|discount|rate)/i.test(h) && row[h]))
             add('billing_dimensions', 'INCONCLUSIVE', 'Additional pricing/account dimensions require reviewed interpretation.');
-        costs.push({ row: index + 2, ...p, amount, project: row.project_id ?? '', apiKey: row.api_key_id ?? '', model: row.model ?? '', tier: row.service_tier ?? '', batch: row.batch ?? '' });
+        costs.push({ row: index + 2, ...p, amount, project: row.project_id ?? '', apiKey: row.api_key_id ?? '', model: row.model ?? '', tier: row.service_tier ?? '', batch: row.batch ?? '', organization: row.organization_id ?? '' });
     }
     add('source_structure', 'PASS', 'Original exports parsed read-only with exact decimals; source hashes and row references retained.');
     if (!usage.length)
@@ -338,11 +363,11 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
             add('overlapping_billing_scopes', 'INCONCLUSIVE', `cost_row_${c.row}: overlapping aggregate scopes cannot be allocated automatically`);
             continue;
         }
-        if (!matching.length || matching.some(u => u.costMicros === null) || group.some(c => c.amount === null))
+        if (!matching.length || matching.some(u => u.exactCostMicros === null) || group.some(c => c.amount === null))
             add('scoped_bucket_consistency', 'INCONCLUSIVE', `cost_row_${c.row}: matching usage/pricing/amount unavailable`);
         else {
-            const estimate = matching.reduce((n, u) => n + BigInt(u.costMicros!), 0n) * SCALE / 1000000n, bill = group.reduce((n, c) => n + c.amount!, 0n);
-            add('scoped_bucket_consistency', estimate === bill ? 'PASS' : 'FAIL', `cost_row_${c.row}: exact UTC bucket and available project/key dimensions compared`);
+            const estimate = matching.reduce((n, u) => n + decimalUnits(u.exactCostMicros!) / 1000000n, 0n), bill = group.reduce((n, c) => n + c.amount!, 0n);
+            add('scoped_bucket_consistency', estimate === bill ? 'PASS' : 'FAIL', `cost_row_${c.row}: exact unrounded token estimate compared by UTC bucket and available project/key/model/tier dimensions; ledger rounding remains separate`);
         }
     }
     let calculatedTotal = 0n;
@@ -352,7 +377,14 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
     const allPriced = usage.length > 0 && usage.every(u => u.costMicros !== null), allBilled = costs.length > 0 && costs.every(c => c.amount !== null);
     const billedTotal = costs.reduce((sum, c) => sum + (c.amount ?? 0n), 0n), variance = allPriced && allBilled ? calculatedTotal * SCALE / 1000000n - billedTotal : null;
     add('production_engine_calculation', allPriced ? 'PASS' : 'INCONCLUSIVE', allPriced ? 'Existing calculateEventCost resolves exact models/effective dates and rounds once per single-request event; rate history remains conditional.' : 'Missing official-observed rate or unsupported/aggregate dimensions keep cost unknown.');
-    add('provided_export_amount_consistency', variance === null ? 'INCONCLUSIVE' : variance === 0n ? 'PASS' : 'FAIL', variance === null ? 'A complete compared total is unavailable.' : 'Comparison is conditional on supplied rates and provided export coverage, not proof of project allocation.');
+    const allExact = usage.length > 0 && usage.every(u => u.exactCostMicros !== null);
+    const exactTotal = usage.reduce((n, u) => n + (u.exactCostMicros === null ? 0n : decimalUnits(u.exactCostMicros) / 1000000n), 0n);
+    const exactVariance = allExact && allBilled ? exactTotal - billedTotal : null;
+    const roundingError = allPriced && allExact ? calculatedTotal * SCALE / 1000000n - exactTotal : null;
+    add('exact_token_estimate_consistency', exactVariance === null ? 'INCONCLUSIVE' : exactVariance === 0n ? 'PASS' : 'FAIL', 'Conditional linear token/rate arithmetic, without rounding a multi-request bucket or proving source allocation.');
+    add('provided_export_amount_consistency', variance === null ? 'INCONCLUSIVE' : variance === 0n ? 'PASS' : exactVariance === 0n ? 'INCONCLUSIVE' : 'FAIL', variance === null ? 'Per-event rounded totals cannot be reconstructed from daily aggregates.' : variance === 0n ? 'Conditional ledger/export amounts agree; allocation remains separate.' : exactVariance === 0n ? 'Nonzero ledger variance is explained arithmetically by event rounding; it remains visible and requires policy/materiality review.' : 'Variance remains unexplained by event rounding; investigate inputs and billing.');
+    if (roundingError !== null && variance !== null && exactVariance !== null)
+        add('rounding_decomposition', 'PASS', 'ledger - provider = (ledger - unrounded token estimate) + (unrounded token estimate - provider); no tolerance or ledger correction applied.');
     const totals = { requests: usage.reduce((n, u) => n + BigInt(u.requests), 0n), input: usage.reduce((n, u) => n + BigInt(u.input), 0n), output: usage.reduce((n, u) => n + BigInt(u.output), 0n), cached: usage.reduce((n, u) => n + BigInt(u.cached), 0n) };
     if (config.expected) {
         const e = config.expected;
@@ -365,12 +397,12 @@ export function validateOpenAiBilling(usageText: string, costText: string, confi
     add('complete_provider_billing_coverage', 'INCONCLUSIVE', 'Completion exports do not prove all billed products, adjustments, regional modifiers or account usage are covered.');
     add('accounting_policy_approval', 'INCONCLUSIVE', 'Founder/accountant approval must be recorded independently.');
     const status: EvidenceStatus = checks.some(c => c.status === 'FAIL') ? 'FAIL' : checks.some(c => c.status === 'INCONCLUSIVE') ? 'INCONCLUSIVE' : 'PASS';
-    const report = { schemaVersion: 1, provider: 'openai', status, checks,
+    const report = { schemaVersion: 2, provider: 'openai', status, checks,
         sources: { usage: { sha256: hash(usageText), bytes: Buffer.byteLength(usageText), rows: usageCsv.rows.length, blankBuckets: emptyUsage }, cost: { sha256: hash(costText), bytes: Buffer.byteLength(costText), rows: costCsv.rows.length, blankBuckets: emptyCost }, pricingConfig: { sha256: hash(JSON.stringify(config)), basis: 'Parsed configuration JSON, not original file bytes' } },
-        totals: { requests: totals.requests.toString(), inputTokens: totals.input.toString(), outputTokens: totals.output.toString(), cachedInputTokens: totals.cached.toString(), calculatedMicros: allPriced ? calculatedTotal.toString() : null, knownCalculatedSubtotalMicros: calculatedTotal.toString(), billedMicros: allBilled ? exactMicros(billedTotal) : null, knownBilledSubtotalMicros: exactMicros(billedTotal), varianceMicros: variance === null ? null : exactMicros(variance) },
+        totals: { requests: totals.requests.toString(), inputTokens: totals.input.toString(), outputTokens: totals.output.toString(), cachedInputTokens: totals.cached.toString(), calculatedMicros: allPriced ? calculatedTotal.toString() : null, knownCalculatedSubtotalMicros: calculatedTotal.toString(), billedMicros: allBilled ? exactMicros(billedTotal) : null, knownBilledSubtotalMicros: exactMicros(billedTotal), varianceMicros: variance === null ? null : exactMicros(variance), unroundedEstimatedMicros: allExact ? exactMicros(exactTotal) : null, knownUnroundedSubtotalMicros: exactMicros(exactTotal), unroundedEstimateVarianceMicros: exactVariance === null ? null : exactMicros(exactVariance), eventRoundingErrorMicros: roundingError === null ? null : exactMicros(roundingError) },
         attribution: { projectCostProven: projectAttributable, apiKeyCostProven: keyAttributable, usageProjectPresent: usage.some(u => !!u.project), usageApiKeyPresent: usage.some(u => !!u.apiKey), originalResponseIdAvailable: false },
         pricingSources: config.rates.map(p => ({ ...p, periodBasis: 'operator_supplied_QA_window_not_official_historical_attestation' })),
-        rows: usage.map(u => ({ row: u.row, start: u.start, end: u.end, model: u.model, requests: u.requests, inputTokens: u.input, outputTokens: u.output, cachedInputTokens: u.cached, issues: u.issues, costMicros: u.costMicros, priceVersionRef: u.price?.id ?? null, eventIdentityBasis: 'local_aggregate_QA_ID_not_provider_response_ID', timestampBasis: 'UTC_bucket_start_for_disposable_replay' })),
-        providerNetworkCalls: 0, originalsModified: false };
-    return { report, usage, config };
+        rows: usage.map(u => ({ row: u.row, start: u.start, end: u.end, model: u.model, requests: u.requests, inputTokens: u.input, outputTokens: u.output, cachedInputTokens: u.cached, issues: u.issues, costMicros: u.costMicros, unroundedEstimatedMicros: u.exactCostMicros, priceVersionRef: u.price?.id ?? null, eventIdentityBasis: u.event ? 'local_single_request_QA_ID_not_provider_response_ID' : 'daily_aggregate_no_event_identity', timestampBasis: u.event ? 'UTC_bucket_start_for_disposable_replay' : 'UTC_aggregate_interval_only' })),
+        roundingPolicy: { unit: 'USD_microdollar', mode: 'per_event_half_up', aggregateBucketRoundingAllowed: false, maximumAbsoluteEventRoundingErrorMicros: fractionalMicros(totals.requests * 500000n), boundIsAcceptanceTolerance: false, boundAppliesOnlyTo: 'fully_priced_events_under_reviewed_rates', financialPolicyApproval: 'pending' }, providerNetworkCalls: 0, originalsModified: false };
+    return { report, usage, costs, config };
 }

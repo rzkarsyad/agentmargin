@@ -15,13 +15,13 @@ test('exact observed quantities use production event rounding: 2.5 + 6.5 = 9, no
     assert.equal(u.costMicros, '9');
     assert.equal(r.report.totals.billedMicros, '9');
     assert.equal(r.report.totals.varianceMicros, '0');
-    assert.equal(calculateEventCost(u.event, [u.price!]).amountMicros, 9n);
+    assert.equal(calculateEventCost(u.event!, [u.price!]).amountMicros, 9n);
     assert.equal(roundDiv(25n * 100000n, 1000000n) + roundDiv(13n * 500000n, 1000000n), 10n);
     assert.equal(u.price!.id, 'synthetic-rate');
     assert.equal(check(r, 'provided_export_amount_consistency')[0]!.status, 'PASS');
     assert.equal(r.report.status, 'INCONCLUSIVE');
     assert.equal(r.report.attribution.originalResponseIdAvailable, false);
-    assert.match(u.event.id, /^csv-qa-/);
+    assert.match(u.event!.id, /^csv-qa-/);
 });
 test('RFC4180 handles BOM, CRLF, escaped quotes and embedded newlines without executing cells', () => {
     const r = parseBillingCsv('\uFEFFa,b\r\n"quoted, value","line\n""two"""\r\n');

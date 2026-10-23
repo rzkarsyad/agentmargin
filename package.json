@@ -20,7 +20,8 @@
     "sdk:packcheck": "node scripts/sdk-package-smoke.mjs",
     "pricing:import": "node --experimental-strip-types scripts/pricing-import.ts",
     "qa:openai:billing": "node --experimental-strip-types scripts/openai-billing-qa.ts",
-    "test:openai:postgres": "node --experimental-strip-types scripts/openai-billing-local-test.ts"
+    "test:openai:postgres": "node --experimental-strip-types scripts/openai-billing-local-test.ts",
+    "qa:openai:snapshots": "node --experimental-strip-types scripts/openai-billing-snapshots.ts"
   },
   "engines": {
     "node": ">=22.18"

@@ -17,7 +17,7 @@ export async function replayBillingInDisposableDatabase(rows: BillingUsage[], or
     const a = new URL(ownerUrl), b = new URL(runtimeUrl);
     if (!['postgres:', 'postgresql:'].includes(a.protocol) || !['postgres:', 'postgresql:'].includes(b.protocol) || a.search || a.hash || b.search || b.hash || !b.username || a.hostname !== '127.0.0.1' || a.pathname !== '/agentmargin_ci' || a.username !== 'agentmargin_ci' || b.hostname !== a.hostname || b.port !== a.port || b.pathname !== a.pathname || b.username === a.username)
         throw new Error('Disposable local database only');
-    const selected = rows.filter(r => r.supported && r.costMicros !== null && r.price);
+    const selected = rows.filter(r => r.requests === 1 && r.event && r.supported && r.costMicros !== null && r.price);
     if (!selected.length)
         return { status: 'INCONCLUSIVE', reason: 'No supported single-request rows with official-observed rate hypotheses; no replay performed.' };
     if (selected.length > 100)
@@ -25,7 +25,7 @@ export async function replayBillingInDisposableDatabase(rows: BillingUsage[], or
     if (originalResponse) {
         assert.equal(selected.length, 1);
         const normalized = fromOpenAIResponse(originalResponse, 'synthetic-priced'), row = selected[0]!;
-        assert.equal(normalized.id, row.event.id);
+        assert.equal(normalized.id, row.event!.id);
         assert.equal(normalized.model, row.model);
         assert.equal(normalized.occurredAt, row.start);
         assert.equal(normalized.inputTokens, row.input);
@@ -67,7 +67,7 @@ export async function replayBillingInDisposableDatabase(rows: BillingUsage[], or
                 models.add(row.model);
             }
         }
-        const events = selected.map(r => ({ id: r.event.id, customerId: 'synthetic-priced', model: r.model, occurredAt: r.start, inputTokens: r.input, outputTokens: r.output, cachedInputTokens: r.cached }));
+        const events = selected.map(r => ({ id: r.event!.id, customerId: 'synthetic-priced', model: r.model, occurredAt: r.start, inputTokens: r.input, outputTokens: r.output, cachedInputTokens: r.cached }));
         const late = events.map(e => ({ ...e, id: 'late-' + e.id, customerId: 'synthetic-late' }));
         await client.track(late);
         for (const row of selected) {
@@ -84,7 +84,7 @@ export async function replayBillingInDisposableDatabase(rows: BillingUsage[], or
         await client.track([{ ...events[0]!, id: 'unknown-' + randomUUID(), customerId: 'synthetic-unknown', model: 'unknown-' + randomUUID() }]);
         const stored = (await owner.pool.query('SELECT event_id,calculated_cost_micros::text,cost_source,workspace_price_version_id FROM usage_events WHERE workspace_id=$1', [workspace])).rows;
         for (const row of selected) {
-            const priced = stored.find(s => s.event_id === row.event.id), unknown = stored.find(s => s.event_id === 'late-' + row.event.id);
+            const priced = stored.find(s => s.event_id === row.event!.id), unknown = stored.find(s => s.event_id === 'late-' + row.event!.id);
             assert.equal(priced.calculated_cost_micros, row.costMicros);
             assert.equal(priced.cost_source, 'estimated');
             assert.equal(priced.workspace_price_version_id, versions.get(row.price!.id));
@@ -114,7 +114,7 @@ export async function replayBillingInDisposableDatabase(rows: BillingUsage[], or
         const otherResult = await fetch(endpoint + path, { headers: { authorization: 'Bearer ' + otherKey }, signal: AbortSignal.timeout(10000) });
         assert.equal(otherResult.status, 200);
         assert.equal((await otherResult.json() as AnalyticsPage).summary.totalKnownAiCostMicros, '0');
-        return { status: 'PASS', basis: originalResponse ? 'SDK Responses normalization retains supplied ID/time; capture provenance and billing need separate review' : 'Synthetic local aggregate replay; not proof of original provider response ingestion', responseIdentityPreserved: !!originalResponse, calculatedMicros: expected, priceVersionReferences: [...versions.values()], priceReferenceVerified: true, duplicateTrackingVerified: true, latePricingPreservesUnknown: true, unknownPricingVerified: true, paginationAndWorkspaceTotalsVerified: true, tenantIsolationVerified: true, missingAuthDenied: true };
+        return { status: 'PASS', basis: originalResponse ? 'SDK Responses normalization retains supplied ID/time; capture provenance and billing need separate review' : 'Synthetic local aggregate replay; not proof of original provider response ingestion', responseIdentityPreserved: !!originalResponse, replayedSingleRequestRows: selected.length, excludedAggregateRows: rows.filter(r => r.requests !== 1).length, calculatedMicros: expected, priceVersionReferences: [...versions.values()], priceReferenceVerified: true, duplicateTrackingVerified: true, latePricingPreservesUnknown: true, unknownPricingVerified: true, paginationAndWorkspaceTotalsVerified: true, tenantIsolationVerified: true, missingAuthDenied: true };
     }
     finally {
         if (server)

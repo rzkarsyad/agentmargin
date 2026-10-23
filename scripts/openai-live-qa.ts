@@ -43,7 +43,7 @@ async function main() {
     const usage = { ...usageInput, workspaceId: 'disposable-live-qa' }, calculated = calculateEventCost(usage, prices), price = prices.find(p => p.id === calculated.priceVersionId) ?? null;
     if (!price || calculated.amountMicros === null)
         throw new Error('matching_reviewed_price_required_before_tracking');
-    const row: BillingUsage = { row: 1, start: at, end: new Date(Date.parse(at) + 1000).toISOString(), model: event.model, project: '', apiKey: '', requests: 1, input: event.inputTokens, output: event.outputTokens, cached: event.cachedInputTokens ?? 0, supported: true, issues: [], event: usage, price, costMicros: calculated.amountMicros.toString() };
+    const row: BillingUsage = { row: 1, start: at, end: new Date(Date.parse(at) + 1000).toISOString(), model: event.model, project: '', apiKey: '', requests: 1, input: event.inputTokens, output: event.outputTokens, cached: event.cachedInputTokens ?? 0, supported: true, pricingSupported: true, exactCostMicros: null, dimensionRef: 'captured-private-response', issues: [], event: usage, price, costMicros: calculated.amountMicros.toString() };
     const { withOpenAiDisposableRuntime } = await import('./lib/openai-disposable-runtime.ts');
     const pipeline = await withOpenAiDisposableRuntime(async (runtimeUrl) => {
         process.env.AGENTMARGIN_OPENAI_QA_RUNTIME_URL = runtimeUrl;

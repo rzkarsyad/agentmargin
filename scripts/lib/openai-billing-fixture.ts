@@ -24,3 +24,9 @@ export function fixtureCsv(rows: Record<string, string>[], headers = Object.keys
     const quote = (v: string) => '"' + v.replaceAll('"', '""') + '"';
     return [headers, ...rows.map(r => headers.map(h => r[h] ?? ''))].map(r => r.map(quote).join(',')).join('\r\n') + '\r\n';
 }
+/** Synthetic reproductions of the disclosed aggregate quantities; no real identities. */
+export const secondUsageRow: Record<string, string> = { ...usageRow, input_tokens: '10.0', input_text_tokens: '10.0', input_uncached_tokens: '10.0', output_tokens: '5.0', output_text_tokens: '5.0' };
+export const afterUsageRow: Record<string, string> = { ...usageRow, num_model_requests: '2.0', input_tokens: '35.0', input_text_tokens: '35.0', input_uncached_tokens: '35.0', output_tokens: '18.0', output_text_tokens: '18.0' };
+export const snapshotBeforeCost = { ...costRow, organization_id: 'synthetic-organization' };
+export const snapshotAfterCost = { ...snapshotBeforeCost, amount_value: '0.000012500000000000000000000000000' };
+export function syntheticSecondReceipt() { return { schemaVersion: 1, state: 'tracked', response: { id: 'resp_synthetic_second_request', model: 'gpt-6-luna', created_at: 1792717200, status: 'completed', service_tier: 'default', usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } } }, pipeline: { status: 'PASS', responseIdentityPreserved: true, calculatedMicros: '4' } }; }

@@ -69,3 +69,18 @@ rounding yields 9 micros, conditional on the reviewed rates; organization-level
 See [evidence and outstanding v0.5 gates](OPENAI_INTEGRATION.md#private-openai-billing-validation-v05).
 Founder/accountant approval of rounding, cost allocation, coverage and this policy
 must be dated and recorded separately; synthetic tests cannot supply that approval.
+
+
+The founder’s second genuine 10-input/5-output OpenAI event illustrates quantization:
+3.5 exact estimated micros become 4 recorded micros under the unchanged half-up
+contract. The reported aggregate is 13 ledger vs 12.5 provider micros, +0.5.
+Precision-aware reports retain the separate event-rounding error and unrounded
+pricing/billing residual; they never erase the difference or silently correct the
+ledger. Daily aggregate tokens cannot reconstruct individual rounded amounts.
+
+Repeated half ties can create linear upward drift (+$0.50 per million identical
+3.5-micro events); other workloads can drift downward. This is a hypothetical
+scale illustration, not an observed production bill. Materiality/tolerance and any
+future exact-numerator sidecar, higher precision or alternative rounding require
+explicit financial and compatibility review. The current contract is unchanged;
+founder/accountant approval remains pending. See [variance and drift evidence](OPENAI_INTEGRATION.md#second-genuine-request-and-fractional-micro-variance).
