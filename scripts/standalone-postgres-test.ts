@@ -23,6 +23,8 @@ try {
   await pool.query(readFileSync(new URL('../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/005_api_key_roles.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/006_api_key_expiry.sql',import.meta.url),'utf8'));
+  const readinessStore=new PostgresEventStore(connectionString);
+  try{assert.equal(await readinessStore.ready(),false,'Pre-007 schema must not be ready');}finally{await readinessStore.pool.end();}
   // Upgrade fixture: preserve existing financial rows and keys; a failed additive
   // migration must roll back every schema change before a successful retry.
   const upgradeWorkspace=randomUUID(),upgradeKey='am_'+randomBytes(32).toString('base64url');
@@ -220,6 +222,10 @@ try {
     runtimeURL.password=runtimePassword;
     runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
       connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
+    assert.equal(await runtimeStore.ready(),true);
+    await pool.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
+    try{assert.equal(await runtimeStore.ready(),false,'Disabled RLS must fail readiness');}
+    finally{await pool.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');}
     assert.deepEqual(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),
       {workspaceId:workspace,accessRole:'admin'});
     const runtimeEvent:StoredEvent={...stored,event:{...event,id:'runtime-role-usage',customerId:'runtime-customer'},
