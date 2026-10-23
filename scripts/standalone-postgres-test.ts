@@ -22,6 +22,7 @@ try {
   await pool.query(readFileSync(new URL('../db/003_revenue_ingestion.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/005_api_key_roles.sql',import.meta.url),'utf8'));
+  await pool.query(readFileSync(new URL('../db/006_api_key_expiry.sql',import.meta.url),'utf8'));
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
@@ -149,6 +150,13 @@ try {
     authorization:'Bearer '+ingestKey,'content-type':'application/json'},
     body:JSON.stringify({events:[{...event,id:'role-restricted-event',reportedCostMicros:'100'}]})});
   assert.equal(ingestByRole.status,202);
+  // Expiry is enforced at authentication time, independent of API key role.
+  await pool.query(`UPDATE workspace_api_keys SET expires_at = now() - interval '1 second'
+    WHERE key_digest=$1`,[createHash('sha256').update(readKey).digest('hex')]);
+  assert.equal(await store.authenticate(createHash('sha256').update(readKey).digest('hex')),null);
+  assert.equal((await api.request(period,{headers:{authorization:'Bearer '+readKey}})).status,401);
+  assert.equal((await api.request(period,{headers:{authorization:'Bearer '+key}})).status,200,
+    'Legacy no-expiry key remains valid');
   // v0.7: prove the documented runtime grants support API queries while blocking
   // schema/accounting mutations. The role exists only for this isolated CI run.
   const runtimeRole='agentmargin_ci_runtime_'+randomBytes(6).toString('hex');
