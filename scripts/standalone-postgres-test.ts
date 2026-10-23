@@ -113,6 +113,14 @@ try {
     assert.equal((await auditUpgrade.query("SELECT operation FROM delivery_history WHERE provider_event_id='evt_upgrade_checkpoint'")).rows[0].operation,'checkpoint');
   }finally{auditUpgrade.release();}
   await testDefinerCatalogShadow(pool,connectionString);
+  const transitionUpgrade=await pool.connect();
+  try{
+    const sql=readFileSync(new URL('../db/014_delivery_transition_guard.sql',import.meta.url),'utf8');
+    await assert.rejects(transitionUpgrade.query(sql.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await transitionUpgrade.query('ROLLBACK');
+    assert.equal((await transitionUpgrade.query("SELECT to_regprocedure('agentmargin_auth.enforce_delivery_transition()') AS name")).rows[0].name,null);
+    await transitionUpgrade.query(sql);
+  }finally{transitionUpgrade.release();}
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);

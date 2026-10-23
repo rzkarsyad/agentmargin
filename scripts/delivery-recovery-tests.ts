@@ -18,6 +18,13 @@ export async function testDeliveryRecovery(pool:pg.Pool,runtime:PostgresEventSto
    if(attempt<8)await pool.query('UPDATE adjustment_deliveries SET available_at=now() WHERE workspace_id=$1 AND provider_event_id=$2',[workspace,event]);
  }
  assert.deepEqual((await history()).map(r=>r.attempts),[0,1,2,3,4,5,6,7,8]);
+ for(const key of [ingestKey,adminKey]){
+   const direct=await runtime.pool.connect();
+   try{
+     await direct.query('BEGIN');await direct.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+     await assert.rejects(direct.query("UPDATE adjustment_deliveries SET state='pending',attempts=0,error_class=NULL WHERE workspace_id=$1 AND provider_event_id=$2",[workspace,event]),(e:unknown)=>(e as {code?:string}).code==='42501');
+   }finally{await direct.query('ROLLBACK');direct.release();}
+ }
  const recover=async(key:string,tenant=workspace,id=request,review='incident:synthetic-qa',hash=record.payloadDigest)=>{
    const c=await runtime.pool.connect();
    try{

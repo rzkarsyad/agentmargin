@@ -123,3 +123,19 @@ it on the isolated restore before enabling runtime access. Do not treat restored
 ownership/schema counts alone as privilege verification. This hardens the restored
 permission contract; current proof-checking functions still require bearer keys,
 so no new cross-tenant data bypass is asserted from default EXECUTE alone.
+
+
+## Reviewed recovery containment (014)
+
+Direct runtime UPDATE grants previously allowed a failed inbox row to be reset
+without the reviewed RPC. Additive 014 uses a catalog-qualified SECURITY INVOKER
+trigger: runtime callers may only advance pending attempts by one, retain their
+cycle, and respect retry backoff. Failed/delivered rows cannot be reset directly,
+even with an admin bearer key. The admin-authorized SECURITY DEFINER recovery
+function updates as the trusted owner after checking proof, digest, classification,
+review receipt and cycle bounds. Owner/migrator remains trusted. Readiness now
+requires both transition triggers; apply through 014 before enabling the candidate.
+PostgreSQL tests deny direct ingest/admin resets, allow reviewed recovery and
+exercise migration rollback/retry and normal worker behavior. Pending-state
+completion/state authority still belongs to the runtime worker; this is not a
+separate writer/worker credential architecture or independent approval.
