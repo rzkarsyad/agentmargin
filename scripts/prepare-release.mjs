@@ -37,7 +37,8 @@ const manifest={preparedOnly:true,published:false,platformVersion:platform,sdkVe
  artifacts:[source,packed.filename].map(name=>({name,sha256:sha(join(out,name))})),npmIntegrity:packed.integrity,
  migrations:readdirSync('db').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort().map(name=>({name,sha256:sha(join('db',name))})),
  consumer:{outsideRepository:true,esm:true,typescript:true,newAdjustmentDeliveryMethods:true},
- externalGates:['independent_security_review','accounting_policy','genuine_signed_Stripe_QA','official_provider_billing','protected_main_integration','release_authorization']};
+ externalEvidence:{genuineSignedStripeQA:{status:'operator_verified_pass',reportedOn:'2026-10-24',timezone:'Asia/Jakarta',testMode:true,signatureVerifiedEvents:8,acceptedFinancialEvents:7,unsupportedFxEvents:1,grossMicros:'128000000',refundsMicros:'105250000',creditsMicros:'12000000',netMicros:'10750000',varianceMicros:'0',source:'Operator aggregate attestation in docs/INTEGRATIONS.md; private receipts not included; no independent agent verification'}},
+ externalGates:['independent_security_review','accounting_policy','official_provider_billing','protected_main_integration','release_authorization']};
 writeFileSync(join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600,flag:'wx'});
 writeFileSync(join(out,'SHA256SUMS'),manifest.artifacts.map(a=>a.sha256+'  '+a.name).join('\n')+'\n',{mode:0o600,flag:'wx'});
 console.log('PASS: prepared alpha source/SDK artifacts, hashes and clean ESM/TypeScript consumer; nothing published');

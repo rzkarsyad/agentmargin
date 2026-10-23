@@ -7,7 +7,10 @@
 - Bounded durable financial replay, immutable attempt/requeue history and reviewed
   dead-letter recovery; preserve original payments and append linked USD reductions.
 - Exact net revenue and traceable signed reconciliation with unknown FX/tier/unmatched
-  evidence. Current Stripe credit schemas and explicit platform-account routing.
+  evidence. Current Stripe credit schemas and explicit platform-account routing;
+  accept only explicit null for unused out-of-band allocation while rejecting mixed
+  allocations. Operator-verified signed sandbox recovery passed with $10.75 net
+  and zero variance; independent billing/security/accounting gates remain open.
 - Operational/readiness/backup/restore/restart/privacy rehearsals and full-stack
   browser/SDK validation. No deployment-specific production certification.
 - SDK candidate 0.5.0-alpha.1 adds adjustment and durable delivery methods while

@@ -1,6 +1,6 @@
 # AgentMargin release dashboard
 
-Authoritative status as of 2026-10-23. **Engineering complete, integrated, externally
+Authoritative status as of 2026-10-24 (Asia/Jakarta). **Engineering complete, integrated, externally
 verified, released and production-ready are separate claims.** This candidate is
 not yet integrated or released. No production action, tag or npm publication occurred.
 
@@ -16,10 +16,10 @@ methods; platform and SDK milestones deliberately differ). Neither is published.
 | --- | --- | --- | --- | --- | --- | --- |
 | v0.4 developer adoption | Complete foundation | Existing SDK/starter on main; source additions PR only | Published ESM/TypeScript consumer, signatures/provenance and Next.js CI [39953502998](https://github.com/rzkarsyad/agentmargin/actions/runs/39953502998) | Alpha.2 OIDC/registry verified; independent users pending | Release integrity review open for candidate | Foundation passed; three real developer trials remain a **v1.0 adoption gate**, not a sole blocker for v0.9 engineering |
 | v0.5 analytics/pricing | Complete for supported USD/token contract | Baseline on main; net adjustments PR only | Whole-workspace/pagination/effective pricing/unknown costs; [#32 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) | Official provider bills and accountant review pending | Candidate review open | Blocked: supply authentic exports, approved allocations/prices and accounting policy |
-| v0.6 integrations | Partial validation | Original adapters on main; durable/current-schema fixes PR only | SDK/signature/schema fixtures; [#35 original CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39959864754) | Moland **test-mode unpaid $15 invoice / $0 paid verified**; paid/refund/credit/signed CLI path pending | Account/routing review open | Blocked: supported CLI test credentials/listener or equivalent tooling for unavailable payment/credit APIs |
+| v0.6 integrations | Supported USD platform-account flow implemented and sandbox-validated | Original adapters on main; durable/current-schema fixes PR only | SDK/signature/current+legacy nullable allocation regressions; restricted PostgreSQL signed-delivery tests | **PASS: operator-verified Moland signed recovery**, eight receipts / seven accepted / EUR rejected; [aggregate evidence](INTEGRATIONS.md#genuine-sandbox-qa-harness-and-recovery) | Independent account/routing and CodeQL review open | Signed sandbox acceptance passed; account-bound integration review and approved protected integration remain. FX/mixed/multi-account extensions are not claimed |
 | v0.7 security | Implemented candidate boundary; residual powers remain | PR only | PostgreSQL 16 007–014 attacks, RLS, scopes, pooling; [013 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) | **No independent security approval** | Catalog error oracle fixed in 013; cursor/in-flight and inbox authority open | Blocked: independently review/accept boundary and migrations, approve protected PRs |
 | v0.8 reliability/privacy | Partial deployment validation | PR only | Encrypted/full restores, key rotation, readiness, lifecycle and bounded concurrency CI; disposable privacy/restart follow-up in release candidate | External storage/key recovery, delivered alerts, scale/RPO/RTO and privacy approval pending | Operations review open | Blocked: deployment-specific storage, ingress/shared quotas, scheduled drills and operator sign-off |
-| v0.9 financial engineering | Supported ledger/replay/net reports implemented; genuine QA incomplete | PR only | Exact $128−$117.25=$10.75 synthetic fixture across ledger/API/reconciliation/browser; immutable recovery tests | Authentic Stripe paid/refund/credit, official provider billing and policy approval pending | Independent SQL/accounting approval open | Blocked: clear external evidence and merge gates, validate final main commit, authorize alpha publication |
+| v0.9 financial engineering | Supported ledger/replay/net reports implemented; genuine signed Stripe QA passed | PR only | Exact ledger/API/reconciliation/browser fixture, nullable allocation rejection and immutable recovery tests | **PASS: operator-verified $128 gross − $105.25 refunds − $12 credits = $10.75 net; $0 variance**. Independent official billing and policy approval pending | Independent SQL/accounting approval open | Blocked: independent billing/policy evidence, security/review and integration gates; validate final main/artifacts and authorize alpha publication |
 
 **Production-ready: No for every candidate stage.** Unsupported FX, mixed/prepayment
 credits, cache-creation billing tiers, positive reinstatements and full dispute
@@ -44,8 +44,8 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #32 | `e80792d` | #31 | [39941973060](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) passed |
 | #33 | `ec81227` | main, independent | [39953503015](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503015) CI, [39953503022](https://github.com/rzkarsyad/agentmargin/actions/runs/39953503022) CodeQL/stack compatibility passed |
 | #34 | `eff636a` | #32 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/34/checks) cover restore ACL and redaction follow-ups |
-| #35 | `3852f84` | #34 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544723) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39969544383) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) cover propagated ACL/redaction |
-| #36 release preparation | release branch | #35 | [Complete rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969944175) passed (73 pass + existing TODO); [unfiltered CodeQL checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39970382041) has 103 rules / 1 retained hash finding. Current [final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after each update |
+| #35 | latest nullable-allocation candidate | #34 | [Recovery checkpoint CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391943) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391993) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) must cover the nullable-field follow-up |
+| #36 release preparation | release branch | #35 | [Recovery rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39993427654) passed (78 pass + existing TODO; unfiltered JS 103 / 3 retained findings, Python 50 / 0, Actions 23 / 0). [Final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after the nullable-field/evidence update |
 
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
 #28 → #29 → #30 → #31 → #32 → #34 → #35 → #36**. #33 is independent and its
@@ -87,11 +87,11 @@ not approval. No independent reviewer or publication authorization is recorded.
   descriptor reads and canonical private directories removed all seven. The
   remaining full-stack result includes operator bearer-key environment paths,
   documented with the fixture paths in PREAUTH_SECURITY.md. Stored alerts/Dependabot endpoints are unavailable to the connector;
-  current authoritative alert state is **not verified**.
+  current authoritative alert state is **not verified**. The latest recovery rehearsal also retains harness HTTP-route and private verified-receipt candidates; their bounded/authenticated data-flow assessments are in INTEGRATIONS.md and still require independent review. No exclusions or dismissals are used.
 
 Reviewer package: [threat model and checklist](TENANT_THREAT_MODEL.md),
 [role/grant/deployment model](DB_RUNTIME_ROLE.md), [CodeQL paths](PREAUTH_SECURITY.md),
-`db/007…013`, `db/runtime_privileges.psql`, and guarded PostgreSQL tests.
+`db/007…014`, `db/runtime_privileges.psql`, and guarded PostgreSQL tests.
 Automated implementer evidence does not replace independent human review.
 
 Migration 014 additionally prevents direct runtime failed/delivered-state resets:
@@ -105,22 +105,21 @@ review boundaries; no independent approval is inferred.
 
 | Scenario | Expected | Observed evidence | Status |
 | --- | --- | --- | --- |
-| Genuine Moland unpaid invoice | $15 due, $0 paid | Newly created run `agentmargin-qa-v09-20261023-001`; account/false mode checked before every write; exact invoice readback open/1500/0 | Provider observation verified; signed pipeline not verified |
-| Genuine $29/$99 paid, $6.25/$99 refunds, $12 credit | $128 gross, $117.25 reductions, $10.75 net | Connector lacks payment-method attach, invoice pay and credit-note create; no CLI test credential/listener available | **Not run**, no invented figures |
-| Synthetic supported lifecycle | Same exact amounts | Signed synthetic input, PostgreSQL ledger/API/reconciliation and desktop/mobile assertions | Automated evidence only |
-| Duplicate/out-of-order/crash/scope loss | One economic effect or atomic rollback | PostgreSQL concurrency/backoff/savepoint/credential-change tests | Automated evidence only |
-| EUR/mixed credits/reinstatement/cache-creation tier | Explicit unsupported/FX/incomplete | Parser/reconciliation regressions | External accounting/tier evidence pending |
+| Genuine signed Moland recovery (operator Mac run, reported 2026-10-24 Asia/Jakarta) | Eight signed events; seven accepted financial events; one EUR rejection | All eight receipts signature-verified, full pagination, existing fixtures replayed without new transactions | **PASS, operator-verified external sandbox evidence** |
+| Genuine USD financial totals | Gross $128.00; refunds $105.25; credits $12.00; net $10.75; variance $0.00 | Exact expected/actual results reported by operator; final `kind: stripe_sandbox_qa`, `status: pass`, `actualMicros: 10750000`, `varianceMicros: 0` | **PASS for the supported USD/platform-account acceptance scope** |
+| Nullable Stripe allocation | `out_of_band_amount: null` means no out-of-band allocation | Explicit null only becomes zero; required money/mixed allocations remain strict; current/legacy and restricted-PG regression | Implemented; [current CI](https://github.com/rzkarsyad/agentmargin/pull/35/checks) verifies the committed follow-up |
+| Duplicate/out-of-order/crash/scope loss | One economic effect or atomic rollback | PostgreSQL concurrency/backoff/savepoint/credential-change tests and signed synthetic harness | Automated evidence; no new claim of an externally observed crash |
+| EUR/mixed credits/reinstatement/cache-creation tier | Explicit unsupported/FX/incomplete | Genuine EUR rejection verified; other unsupported cases covered by parser/reconciliation regressions | Rejection is expected; no FX or unsupported feature implementation claimed |
 
-The connected account was confirmed test-only; only new labeled customer, product,
-price, item and unpaid invoice were created. No existing customer reads, unrelated
-modifications, deletes, paid-out-of-band simulation or live operations. Private API
-evidence is kept outside Git. Real event API-version/signature evidence remains
-unavailable. Sanitized invoice alias:
-`sha256:bec9af311407eabdc0e1bfe4ad983b83a68e75abc3a1c59befd1aea153698825`;
-private evidence bundle digest:
-`70011557a5137cda2e70b4bb043c3908c61e3e2e3261aa6cac2f318af4735193`.
-The tool schema is `2026-09-30.preview`; it does not reveal the actual event API
-version, so no event-version verification is claimed. [Harness and secure setup](INTEGRATIONS.md) describe the exact CLI path.
+The successful Mac run supersedes the earlier connector-only unpaid-invoice and
+webhook-delivery failure checkpoints. The operator retains private receipts and
+financial evidence. This repository records the supplied aggregate attestation,
+not raw events, object/customer identifiers, secrets or private evidence paths.
+The implementing agent did not independently inspect those files or repeat the
+external run. No additional Stripe transactions were created for this follow-up.
+See the [integration evidence and recovery contract](INTEGRATIONS.md#genuine-sandbox-qa-harness-and-recovery).
+Genuine sandbox success is distinct from independent provider billing, accounting
+approval, security approval, deployment validation and publication authorization.
 
 Official OpenAI/Anthropic exports and trusted pricing provenance are not supplied.
 The existing reconciliation input interface accepts explicit provider/account,
@@ -214,11 +213,11 @@ Remaining release actions, in order:
 
 1. Independent security review/acceptance of 007–014, residual authority and CodeQL
    triage; founder/accountant approval of recorded-revenue/credit/cross-period policy.
-2. Run the documented recovery mode against the existing Moland fixtures for real
-   signed paid/refund/credit delivery; corroborate reports with authentic exports.
-   The operator has successfully created the economic objects and confirmed all
-   eight expected events. CLI login isolation and EUR invoice currency are fixed;
-   fresh signed recovery/reconciliation remains unverified externally.
+2. Corroborate the now-passing genuine signed Moland recovery with independently
+   obtained provider billing exports and approved allocations/recognition policies.
+   The operator verified all eight signed events, seven financial acceptances and
+   expected EUR rejection, with $10.75 net and zero variance. Do not create another
+   transaction run merely to record this result; private evidence stays private.
 3. Approve and integrate the protected PR sequence. Re-run all checks and default
    CodeQL on **final main**, resolve critical regressions, regenerate artifacts from
    that exact commit; rehearsal commit evidence alone is insufficient.
@@ -242,8 +241,29 @@ Both key and login account are checked; listener/resend exclude STRIPE_API_KEY.
 Private verified receipts persist before ACK; allowlisted diagnostics distinguish
 forwarding, signatures, fixture matching, normalization and API failures. Exact
 invoice currency and the official Refund resource's missing livemode field are
-handled explicitly. A fictional-CLI/restricted-PG16 regression verifies the full
-$128 − $105.25 − $12 = $10.75 flow and a deliberate forwarding failure. This is
-automated synthetic evidence, not an externally verified signed sandbox run.
+handled explicitly. The operator has now passed the genuine signed Mac recovery
+with the exact $128 − $105.25 − $12 = $10.75 flow and zero variance. A separate
+fictional-CLI/restricted-PG16 regression uses the observed nullable optional field
+and continues to verify rejected/missing forwarding and financial consistency.
+Only explicit null for out_of_band_amount is normalized; signed inputs and all
+other allocation checks are preserved.
 Independent security/accounting review, approved integration, provider exports
 and explicit release authorization remain required.
+
+## Remaining v0.5–v0.9 alpha acceptance blockers
+
+A source/SDK alpha can document a restricted supported contract; it cannot turn
+missing required evidence into a pass. The matrix above still distinguishes tested
+implementation, operator external evidence, approved integration and production
+readiness. No criterion is weakened by the successful Stripe run.
+
+| Stage | Passed within supported alpha scope | Evidence/action still needed for all-green status |
+| --- | --- | --- |
+| v0.5 | Exact supported USD totals, pagination, effective pricing and unknown-cost reporting | Authentic provider billing/tier/cached-token comparisons, approved price provenance/allocations and founder/accountant policy sign-off; no automatic unverified price import |
+| v0.6 | Genuine signed single-platform USD invoice/refund/pure balance-credit recovery; explicit EUR rejection; adapter regressions | Independent account/routing/schema review and protected integration. Multi-account/FX/mixed/reinstatement support requires separate evidence if included; it remains explicitly unsupported in this alpha |
+| v0.7 | Credential-backed RLS and 007–014 adversarial/upgrade tests | Independent security approval of migrations, ownership/grants, cursor/in-flight revocation and runtime+ingest/inbox authority; CodeQL triage and required PR approvals |
+| v0.8 | Disposable encrypted/full restores, restart/pool recovery, metrics/readiness/shutdown, privacy and failure drills | Operator-owned external storage/key recovery, scheduled retention/restore and delivered alert evidence, agreed measured RPO/RTO/load, incident/privacy approval. Deployed TLS/shared quotas remain deployment gates; a source-only alpha must explicitly retain them |
+| v0.9 | Append-only ledger/replay/reconciliation plus genuine $10.75 net / zero-variance Stripe acceptance | Independent provider/Stripe billing corroboration and accounting approval; inherited security/operations gates; approved stack integration, final-main CI/CodeQL/artifact verification and explicit alpha tag/publication authorization |
+
+Unsupported features are not marked implemented, and production remains unapproved.
+Three independent developer trials remain the separate v1.0 adoption gate.
