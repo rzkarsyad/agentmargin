@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp, digest, type EventStore, type StoredEvent } from '../src/app.ts';
+import { createApp, digest, type EventStore, type StoredEvent, type SafeRequestLog } from '../src/app.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
 import {WorkspaceRateLimiter,InvalidCredentialLimiter} from '../src/rate-limit.ts';
 
@@ -108,4 +108,44 @@ test('each API request authenticates exactly once before route handling',async()
   assert.equal(store.authenticationQueries,3);
   assert.equal((await send(app,{events:[entry]},'am_'+'q'.repeat(40))).status,401);
   assert.equal(store.authenticationQueries,4);
+});
+
+test('request telemetry is opt-in, allowlisted and never logs customer details or secrets',async()=>{
+  const logs:SafeRequestLog[]=[];
+  const app=createApp(new MemoryStore(),new WorkspaceRateLimiter(50),new InvalidCredentialLimiter(),event=>logs.push(event));
+  const querySecret='private-query-customer-123';
+  const r=await app.request('/v1/events?customerId='+querySecret,{
+    method:'POST',headers:{authorization:'Bearer '+apiKey,'content-type':'application/json','x-secret-test':'private-header'},
+    body:JSON.stringify({events:[{...entry,customerId:'private-body-customer'}]})});
+  assert.equal(r.status,202);
+  assert.equal(logs.length,1);
+  assert.match(r.headers.get('x-request-id')??'',/^[0-9a-f-]{36}$/);
+  assert.equal(logs[0]?.requestId,r.headers.get('x-request-id'));
+  assert.equal(logs[0]?.route,'events');
+  assert.equal(logs[0]?.method,'POST');
+  assert.equal(logs[0]?.status,202);
+  assert.ok(logs[0]!.durationMs>=0);
+  assert.deepEqual(Object.keys(logs[0]!).sort(),
+    ['kind','requestId','timestamp','route','method','status','durationMs'].sort());
+  const text=JSON.stringify(logs);
+  for(const forbidden of [apiKey,querySecret,'private-body-customer','private-header','authorization','workspaceId'])
+    assert.ok(!text.includes(forbidden),'Sensitive value appeared in request telemetry');
+  const missing=await app.request('/private-path?token=very-private');
+  assert.equal(missing.status,404);
+  assert.equal(logs[1]?.route,'other');
+  assert.ok(!JSON.stringify(logs).includes('very-private'));
+});
+
+test('request telemetry preserves sanitised errors and remains non-blocking',async()=>{
+  const logs:SafeRequestLog[]=[];
+  const store=new MemoryStore();
+  store.ingest=async()=>{throw new Error('private-db-message');};
+  const app=createApp(store,new WorkspaceRateLimiter(50),new InvalidCredentialLimiter(),event=>logs.push(event));
+  const r=await send(app,{events:[entry]});
+  assert.equal(r.status,500);
+  assert.equal((await r.json()).error,'Internal server error');
+  assert.equal(logs[0]?.status,500);
+  assert.ok(!JSON.stringify(logs).includes('private-db-message'));
+  const explodingLogger=createApp(new MemoryStore(),new WorkspaceRateLimiter(50),new InvalidCredentialLimiter(),()=>{throw new Error('logger offline');});
+  assert.equal((await send(explodingLogger,{events:[entry]})).status,202);
 });
