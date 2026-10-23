@@ -44,6 +44,8 @@ test('seeded demo has known profitable, negative and unknown-cost customers and 
     const total = await db.query(`SELECT count(*)::integer AS n FROM revenue_records WHERE workspace_id=$1`,[DEMO_WORKSPACE]);
     assert.equal(total.rows[0]?.n,3);
     const moved = await db.query(`SELECT count(*)::integer AS n FROM usage_events WHERE workspace_id=$1 AND occurred_at=$2::timestamptz`,[DEMO_WORKSPACE,'2026-10-22T09:00:00Z']);
-    assert.equal(moved.rows[0]?.n,3);
+    assert.equal(moved.rows[0]?.n,0,'Restart must preserve immutable fixture timestamps');
+    const original=await db.query(`SELECT count(*)::integer AS n FROM revenue_records WHERE workspace_id=$1 AND occurred_at=$2::timestamptz`,[DEMO_WORKSPACE,'2026-10-21T09:00:00Z']);
+    assert.equal(original.rows[0]?.n,3);
   } finally {await pg.close();}
 });

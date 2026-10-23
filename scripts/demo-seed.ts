@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
 export const DEMO_WORKSPACE = '11111111-2222-4333-8444-555555555555';
-const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql', '008_revenue_deliveries.sql','009_credential_containment.sql'] as const;
+const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql', '008_revenue_deliveries.sql','009_credential_containment.sql','010_revenue_adjustments.sql'] as const;
 export interface Queryable {
   query(sql: string, params?: unknown[]): Promise<{rows: Record<string, unknown>[]}>;
 }
@@ -66,13 +66,13 @@ export async function provisionDemo(db: Queryable, apiKey: string, now = new Dat
     for (const [customer,revenue,cost,source] of entries) {
       await db.query(`INSERT INTO revenue_records
           (workspace_id,id,customer_id,occurred_at,amount_micros)
-          VALUES($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,id) DO UPDATE SET occurred_at=EXCLUDED.occurred_at`,
+          VALUES($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,id) DO NOTHING`,
         [DEMO_WORKSPACE,`demo-revenue-${customer}`,customer,time,revenue]);
       await db.query(`INSERT INTO usage_events
           (workspace_id,event_id,customer_id,model,occurred_at,input_tokens,output_tokens,
            cached_input_tokens,reported_cost_micros,calculated_cost_micros,cost_source)
           VALUES($1,$2,$3,$4,$5,$6,$7,0,$8,$8,$9)
-          ON CONFLICT (workspace_id,event_id) DO UPDATE SET occurred_at=EXCLUDED.occurred_at`,
+          ON CONFLICT (workspace_id,event_id) DO NOTHING`,
         [DEMO_WORKSPACE,`demo-usage-${customer}`,customer,'example-model',time,20000,15000,cost,source]);
     }
     // Rotate the demo key on every start. Keys remain scoped to the demo workspace.

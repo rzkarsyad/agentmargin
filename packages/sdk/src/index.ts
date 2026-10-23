@@ -14,6 +14,12 @@ export interface RevenueInput {
 export interface RevenueDeliveryInput {
   providerEventId:string;providerAccount:string;record:RevenueInput;
 }
+/** A positive reduction of an existing USD payment. Source identity is stable across webhook deliveries. */
+export interface AdjustmentInput {
+ originalPaymentId:string;customerId:string;kind:'refund'|'credit'|'payment_reversal';
+ amountMicros:string;currency:'USD';occurredAt:string;
+ provider:string;providerAccount:string;sourceObjectId:string;evidenceRef:string;
+}
 export interface AgentMarginOptions {
   endpoint:string; apiKey:string; fetchImpl?:typeof fetch;
 }
@@ -72,6 +78,14 @@ export class AgentMarginClient {
     },body:JSON.stringify(delivery),signal});
     if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
     return await response.json() as {duplicate:boolean;state:string};
+  }
+  async trackAdjustments(records:AdjustmentInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
+    if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 adjustments');
+    const response=await this.fetchImpl(new URL('/v1/revenue/adjustments',this.endpoint),{method:'POST',headers:{
+      authorization:`Bearer ${this.apiKey}`,'content-type':'application/json'
+    },body:JSON.stringify({records}),signal});
+    if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
+    return await response.json() as {inserted:number;duplicate:number;received:number};
   }
   async trackRevenue(records:RevenueInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 records');

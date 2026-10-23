@@ -62,3 +62,4 @@ For a different loopback PostgreSQL port, set `AGENTMARGIN_DEMO_DB_PORT=55433` o
 - `scripts/live-demo-smoke.py` — CI-only live end-to-end smoke test: launches `npm run demo` on an isolated GitHub runner, checks real HTTP authentication and seeded financial totals in Chromium (desktop + mobile), submits a synthetic event with the OpenAI SDK helper, verifies the updated dashboard, and stops the demo. The generated key is held in memory and redacted from diagnostics. This is not a production deployment or penetration test.
 
 These checks do **not** establish production security. Refer to [SECURITY.md](../SECURITY.md).
+After migration 010, restarting preserves the original fictional payment/usage timestamps instead of updating financial history. Select the original seed period, or use `npm run demo:reset` to recreate only the disposable demo database and refresh fictional fixtures. Never reset a database containing real records.
