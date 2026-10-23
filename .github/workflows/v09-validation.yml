@@ -129,7 +129,11 @@ jobs:
           retention-days: 30
 
   codeql:
-    name: Full combined-source CodeQL
+    name: Full combined-source CodeQL (${{ matrix.language }})
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python, actions]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -145,7 +149,7 @@ jobs:
           git merge --no-ff --no-edit ec812275ce4ba3a030f981942fe15d619a21820d
       - uses: github/codeql-action/init@v4
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
       - uses: github/codeql-action/analyze@v4
@@ -153,17 +157,23 @@ jobs:
           upload: false
           output: codeql-results
       - name: Preserve complete finding evidence
+        env:
+          AUDIT_LANGUAGE: ${{ matrix.language }}
         run: |
           git rev-parse HEAD > codeql-results/commit.txt
           git rev-parse HEAD^{tree} > codeql-results/tree.txt
           python3 - <<'PYCODE'
-          import pathlib,json
+          import pathlib,json,os
           summaries=[]
           for p in pathlib.Path('codeql-results').glob('*.sarif'):
             for r in json.loads(p.read_text())['runs']:
               assert 'diff-informed' not in r.get('properties',{}).get('incrementalMode','')
               rules={q['id']:q for c in [r['tool']['driver'],*r['tool'].get('extensions',[])] for q in c.get('rules',[])}
-              assert {'js/bad-tag-filter','js/incomplete-multi-character-sanitization','js/insufficient-password-hash'}<=rules.keys()
+              if os.environ['AUDIT_LANGUAGE']=='javascript-typescript':
+                assert {'js/bad-tag-filter','js/incomplete-multi-character-sanitization','js/insufficient-password-hash'}<=rules.keys()
+              else:
+                prefix='py/' if os.environ['AUDIT_LANGUAGE']=='python' else 'actions/'
+                assert any(q.startswith(prefix) for q in rules), 'Requested language queries absent'
               summaries.append({'rules':len(rules),'results':r.get('results',[])})
           assert summaries
           pathlib.Path('codeql-results/summary.json').write_text(json.dumps(summaries,indent=2))
@@ -172,6 +182,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: v09-combined-source-codeql
+          name: v09-combined-source-codeql-${{ matrix.language }}
           path: codeql-results/
           retention-days: 30
