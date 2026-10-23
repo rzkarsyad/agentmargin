@@ -2,6 +2,7 @@
  * never a key. Authentication stays in the environment and is never printed. */
 import {readCheckedFile} from './lib/private-files.ts';
 import pg from 'pg';
+async function main(){
 const url=process.env.DATABASE_URL,key=process.env.AGENTMARGIN_API_KEY,path=process.argv[2];
 if(!url||!key||!path||process.env.AGENTMARGIN_RECOVERY_ENV!=='disposable')throw new Error('Disposable recovery configuration required');
 const target=new URL(url);
@@ -19,3 +20,6 @@ try{
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }catch{process.stderr.write('{"kind":"delivery_recovery_failed"}\n');process.exitCode=1;}
 finally{await pool.end();}
+
+}
+await main().catch(()=>{process.stderr.write('{"kind":"delivery_recovery_failed"}\n');process.exitCode=1;});

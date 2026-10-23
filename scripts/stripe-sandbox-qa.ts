@@ -17,6 +17,7 @@ import {createApp,digest} from '../apps/api/src/app.ts';
 import {AgentMarginClient,stripeEventToFinancialDelivery,type StripeRefundLink} from '../packages/sdk/src/index.ts';
 import {reconcileLedgerRevenue} from '../packages/core/src/financial-ledger.ts';
 
+async function main(){
 const url=process.env.AGENTMARGIN_STANDALONE_DATABASE_URL,account=process.env.STRIPE_SANDBOX_ACCOUNT_ID,
  apiKey=process.env.STRIPE_API_KEY,output=process.env.AGENTMARGIN_SANDBOX_EVIDENCE;
 if(process.env.AGENTMARGIN_STRIPE_SANDBOX_QA!=='test-only'||!url||!account||!/^acct_[A-Za-z0-9]+$/.test(account)||
@@ -190,3 +191,6 @@ try{
  // Preserve only run-tagged sandbox objects/evidence for audit; never bulk-delete
  // account data. Dispose the isolated sandbox through an authorized operator.
 }
+
+}
+await main().catch(()=>{process.stderr.write('{"kind":"stripe_sandbox_qa_failed","reason":"Invalid private sandbox configuration"}\n');process.exitCode=1;});
