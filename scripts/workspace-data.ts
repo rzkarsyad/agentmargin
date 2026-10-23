@@ -4,13 +4,16 @@
  */
 import pg from 'pg';
 import {createHash} from 'node:crypto';
-import {readFileSync,writeFileSync,statSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
+import {readCheckedFile,requirePrivateDirectory} from './lib/private-files.ts';
+import {dirname,join,basename} from 'node:path';
 const tables=['customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries',
  'revenue_adjustments','revenue_payment_sources','adjustment_deliveries','delivery_history','delivery_requeues'] as const;
 const url=process.env.AGENTMARGIN_STANDALONE_DATABASE_URL,workspace=process.argv[2],output=process.argv[3],action=process.argv[4]??'export';
 if(!url||!workspace||! /^[a-f0-9-]{36}$/i.test(workspace)||!output||!['export','delete-after-export'].includes(action))throw new Error('Disposable workspace, private export path and action required');
 const target=new URL(url);
 if(target.hostname!=='127.0.0.1'||target.pathname!=='/agentmargin_ci'||target.username!=='agentmargin_ci')throw new Error('Refusing non-disposable privacy rehearsal');
+const outputFile=join(requirePrivateDirectory(dirname(output)),basename(output));
 const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:5000,statement_timeout:15000});
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 async function snapshot(c:pg.PoolClient){
@@ -30,15 +33,14 @@ try{
      // Locks and trigger toggles are transactional and affect this disposable DB
      // only. Every DELETE remains explicitly scoped; foreign keys stay enabled.
      await c.query('LOCK TABLE '+[...tables,'workspace_api_keys','workspaces'].map(t=>'public.'+t).join(',')+' IN ACCESS EXCLUSIVE MODE');
-     if(statSync(output).mode&0o077)throw new Error('Export must be private');
-     const original=readFileSync(output,'utf8'),current=await snapshot(c);
+     const original=readCheckedFile(outputFile,{privateFile:true}).contents,current=await snapshot(c);
      if(hash(original)!==hash(current))throw new Error('Export no longer matches workspace; export again for review');
      for(const t of ['delivery_history','delivery_requeues','revenue_adjustments','revenue_payment_sources','revenue_records'])await c.query('ALTER TABLE public.'+t+' DISABLE TRIGGER USER');
      for(const t of ['delivery_requeues','delivery_history','adjustment_deliveries','revenue_adjustments','revenue_payment_sources','revenue_deliveries','usage_events','revenue_records','workspace_price_versions','customers','workspace_api_keys'])await c.query('DELETE FROM public.'+t+' WHERE workspace_id=$1',[workspace]);
      await c.query('DELETE FROM workspaces WHERE id=$1',[workspace]);
      for(const t of ['delivery_history','delivery_requeues','revenue_adjustments','revenue_payment_sources','revenue_records'])await c.query('ALTER TABLE public.'+t+' ENABLE TRIGGER USER');
    }else{
-     const data=await snapshot(c);writeFileSync(output,data,{mode:0o600,flag:'wx'});
+     const data=await snapshot(c);writeFileSync(outputFile,data,{mode:0o600,flag:'wx'});
    }
    await c.query('COMMIT');process.stdout.write(JSON.stringify({kind:'disposable_workspace_'+action})+'\n');
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}

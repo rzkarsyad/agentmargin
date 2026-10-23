@@ -56,3 +56,10 @@ isolated restore cannot resurrect prohibited data before cutover. Validate repli
 and old-backup expiry, revoke relevant access and document completion. External
 Stripe/provider records require their own approved lifecycle. No such production
 procedure, retention decision or external expiry has been certified here.
+
+Financial/recovery/sandbox file tools now open evidence with O_NOFOLLOW, inspect
+permissions/type/size on that descriptor, and read the same descriptor with a hard
+byte bound. Private outputs require canonical private directories with trusted
+operator/filesystem-administrator ancestors; shared writable non-sticky parents
+are rejected. Same-UID/host compromise is outside this local filesystem boundary.
+Use a dedicated mode-0700 directory, not a shared output directory or symlink file.

@@ -1,4 +1,5 @@
 import pg from 'pg';
+import {readCheckedFile} from './lib/private-files.ts';
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {mkdtempSync,readFileSync,statSync,rmSync} from 'node:fs';
@@ -14,8 +15,8 @@ export async function testPrivacyLifecycle(pool:pg.Pool,url:string){
    await pool.query("INSERT INTO customers(workspace_id,id,name) VALUES($1,'privacy','Fictional customer')",[workspace]);
    await pool.query("INSERT INTO revenue_records(workspace_id,id,customer_id,occurred_at,amount_micros) VALUES($1,'privacy','privacy',now(),100)",[workspace]);
    const run=(action:string,guard?:string)=>execFileSync(process.execPath,['--experimental-strip-types','scripts/workspace-data.ts',workspace,output,action],{stdio:'pipe',env:{...process.env,AGENTMARGIN_STANDALONE_DATABASE_URL:url,AGENTMARGIN_PRIVACY_REHEARSAL:guard??''}});
-   run('export');assert.equal(statSync(output).mode&0o077,0);
-   const exported=readFileSync(output,'utf8');assert.ok(!exported.includes(key));assert.ok(!exported.includes('key_digest'));
+   run('export');assert.equal(readCheckedFile(output,{privateFile:true}).mode&0o077,0);
+   const exported=readCheckedFile(output,{privateFile:true}).contents;assert.ok(!exported.includes(key));assert.ok(!exported.includes('key_digest'));
    assert.equal(JSON.parse(exported).data.revenue_records.length,1);
    assert.throws(()=>run('delete-after-export'));
    await pool.query("INSERT INTO customers(workspace_id,id) VALUES($1,'changed-after-export')",[workspace]);
