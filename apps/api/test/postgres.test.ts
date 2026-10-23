@@ -17,6 +17,12 @@ test('real embedded Postgres migrations and tenant-scoped analytics SQL',async()
     await db.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[one,'One',two,'Two']);
     await db.query(`INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name)
       VALUES ($1,$2,$3,$4)`,['44444444-4444-4444-8444-444444444444',one,'a'.repeat(64),'test']);
+    // Prove a pre-existing full-access key survives migration 005 as admin.
+    await db.exec(readFileSync(new URL('../../../db/005_api_key_roles.sql',import.meta.url),'utf8'));
+    assert.equal((await db.query<{access_role:string}>(
+      'SELECT access_role FROM workspace_api_keys WHERE workspace_id=$1',[one])).rows[0]?.access_role,'admin');
+    await assert.rejects(db.query(`INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name,access_role)
+      VALUES ($1,$2,$3,$4,'superuser')`,['55555555-5555-4555-8555-555555555555',two,'b'.repeat(64),'invalid']),/check constraint/i);
     await db.query(`UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1`,[one]);
     assert.equal((await db.query<{n:number}>('SELECT count(*)::integer AS n FROM workspace_api_keys WHERE workspace_id=$1 AND revoked_at IS NULL',[one])).rows[0]?.n,0);
     await db.query('INSERT INTO customers(workspace_id,id) VALUES ($1,$2),($3,$4)',[one,'same',two,'same']);

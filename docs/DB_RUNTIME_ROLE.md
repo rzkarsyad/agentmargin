@@ -4,7 +4,7 @@
 
 ## Separation of duties
 
-- **Owner/migrator:** creates roles and databases, applies `db/001_initial.sql` through `db/004_workspace_pricing.sql`, and provisions/revokes workspace API keys. Never use its credentials in the API process.
+- **Owner/migrator:** creates roles and databases, applies `db/001_initial.sql` through `db/005_api_key_roles.sql`, and provisions/revokes workspace API keys. Never use its credentials in the API process.
 - **Runtime:** a separate `LOGIN` role with no elevated membership, superuser, database/role creation, replication or RLS-bypass rights. It receives only schema `USAGE`, table `SELECT` required for authenticated ingestion/pricing/analytics, and `INSERT` for customers, usage, revenue and append-only price versions.
 - **Operator:** reviews grants whenever migrations add or rename tables, functions, sequences or API SQL. The script does **not** install RLS policies or grant application key management.
 

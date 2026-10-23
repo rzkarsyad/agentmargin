@@ -43,6 +43,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/001_initial.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/002_ingestion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/003_revenue_ingestion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/004_workspace_pricing.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/005_api_key_roles.sql
 ```
 
 ## 3. Create a workspace and local API key
