@@ -46,7 +46,6 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #34 | `eff636a` | #32 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/34/checks) cover restore ACL and redaction follow-ups |
 | #35 | latest nullable-allocation candidate | #34 | [Recovery checkpoint CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391943) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391993) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) must cover the nullable-field follow-up |
 | #36 release preparation | release branch | #35 | [Recovery rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39993427654) passed (78 pass + existing TODO; unfiltered JS 103 / 3 retained findings, Python 50 / 0, Actions 23 / 0). [Final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after the nullable-field/evidence update |
-
 | #37 OpenAI billing evidence | `feat/openai-billing-evidence` | #36 | [Current source/combined/CodeQL checks](https://github.com/rzkarsyad/agentmargin/pull/37/checks); authentic private export replay passed locally, overall external gates INCONCLUSIVE |
 
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
