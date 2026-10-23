@@ -25,3 +25,27 @@ test('current refund-backed notes are ignored once; mixed and conflicting alloca
    {...note,refunds:[{refund:'re_current',amount_refunded:600},{refund:'re_current',amount_refunded:600}],customer_balance_transaction:null},
  ])assert.throws(()=>parse(value),/Unsupported Stripe/);
 });
+test('operator-observed Stripe nullable out-of-band allocation preserves exact balance credit and source shape',()=>{
+ // Provider-shaped synthetic regression, not a copy of private financial data.
+ const object={...note,object:'credit_note',out_of_band_amount:null};
+ const before=JSON.stringify(object),result=parse(object);
+ assert.deepEqual(result,parse({...object,out_of_band_amount:0}),'Null/zero must normalize to the same idempotent financial record');
+ assert.equal(result?.record.amountMicros,'12000000');
+ assert.equal(JSON.stringify(object),before,'Never rewrite the signed evidence');
+ assert.throws(()=>parse(object,'acct_other'),/platform endpoint/);
+});
+test('nullable optional allocation never permits mixed refunds, positive out-of-band or incomplete money',()=>{
+ const object={...note,out_of_band_amount:null};
+ assert.equal(parse({...object,customer_balance_transaction:null,refunds:[{refund:'re_current',amount_refunded:1200}]}),null,'Wholly refund-backed note must not double count');
+ for(const patch of [
+  {out_of_band_amount:1},{out_of_band_amount:-1},{out_of_band_amount:0.5},{out_of_band_amount:'0'},
+  {out_of_band_amount:false},{out_of_band_amount:undefined},
+  {amount:null},{pre_payment_amount:null},{post_payment_amount:null},{refunds:null},
+  {customer_balance_transaction:null},{pre_payment_amount:1},{amount:1201},
+  {refunds:[{refund:'re_current',amount_refunded:100}]},
+  {customer_balance_transaction:null,refunds:[{refund:'re_current',amount_refunded:100}]},
+  {refunds:[{refund:'re_current',amount_refunded:1200}]},
+  {customer_balance_transaction:null,refunds:[{refund:'re_current',amount_refunded:null}]},
+  {credit_amount:1200},
+ ])assert.throws(()=>parse({...object,...patch}),/Unsupported Stripe/);
+});

@@ -121,10 +121,14 @@ export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatu
  // Current Stripe schema (2026-09-30.endive): credit_amount is a CREATE
  // parameter, not a returned object field. Only a pure, evidenced balance credit
  // or a wholly refund-backed note is supported; never infer mixed allocations.
+ // Stripe returns null for an unused optional out-of-band allocation. Normalize
+ // only that explicit null; missing/malformed values and required amounts still
+ // fail validation. Keep the signed source object unchanged for provenance.
+ const outOfBandAmount=r.out_of_band_amount===null?0:r.out_of_band_amount;
  if(r.refunds!==undefined){
    const cents=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
    if(!stripeId(r.id,'cn')||!stripeId(r.invoice,'in')||!stripeId(r.customer,'cus')||r.status!=='issued'||r.type!=='post_payment')throw new Error('Invalid Stripe credit note');
-   if(![r.amount,r.pre_payment_amount,r.post_payment_amount,r.out_of_band_amount].every(cents)||r.pre_payment_amount!==0||r.out_of_band_amount!==0||r.amount!==r.post_payment_amount||!Array.isArray(r.refunds)||r.refunds.length>100)
+   if(![r.amount,r.pre_payment_amount,r.post_payment_amount,outOfBandAmount].every(cents)||r.pre_payment_amount!==0||outOfBandAmount!==0||r.amount!==r.post_payment_amount||!Array.isArray(r.refunds)||r.refunds.length>100)
      throw new Error('Unsupported Stripe credit allocation requires reconciliation');
    let refunded=0n;
    const seen=new Set<string>();
@@ -150,8 +154,8 @@ export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatu
  if(!stripeId(r.id,'cn')||!stripeId(r.invoice,'in')||!stripeId(r.customer,'cus')||r.status!=='issued'||r.type!=='post_payment')throw new Error('Invalid Stripe credit note');
  // Restrict to an explicitly allocated post-payment reduction. Mixed, pre-payment,
  // out-of-band and newer array allocation shapes are not silently interpreted.
- const values=[r.pre_payment_amount,r.post_payment_amount,r.credit_amount,r.refund_amount,r.out_of_band_amount];
- if(values.some(v=>typeof v!=='number'||!Number.isSafeInteger(v)||v<0)||r.pre_payment_amount!==0||r.out_of_band_amount!==0)
+ const values=[r.pre_payment_amount,r.post_payment_amount,r.credit_amount,r.refund_amount,outOfBandAmount];
+ if(values.some(v=>typeof v!=='number'||!Number.isSafeInteger(v)||v<0)||r.pre_payment_amount!==0||outOfBandAmount!==0)
    throw new Error('Unsupported Stripe credit allocation requires reconciliation');
  if(Number(r.refund_amount)>0){
    if(r.credit_amount!==0||r.post_payment_amount!==r.refund_amount||!stripeId(r.refund,'re'))throw new Error('Unsupported Stripe mixed credit allocation');

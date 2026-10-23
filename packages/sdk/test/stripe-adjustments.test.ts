@@ -29,3 +29,11 @@ test('pure balance credits are distinct; refund-linked credit notes do not doubl
    assert.throws(()=>convert('credit_note.created',{...credit,...patch}),/Unsupported|Invalid/);
  assert.throws(()=>convert('credit_note.voided',credit),/reinstatement/);
 });
+test('legacy nullable out-of-band allocation is narrow and preserves refund deduplication',()=>{
+ const nullable={...credit,out_of_band_amount:null};
+ assert.deepEqual(convert('credit_note.created',nullable),convert('credit_note.created',credit));
+ assert.equal(convert('credit_note.created',{...nullable,credit_amount:0,refund_amount:7,refund:'re_partial'}),null);
+ for(const patch of [{credit_amount:null},{refund_amount:null},{pre_payment_amount:null},{post_payment_amount:null},
+  {out_of_band_amount:undefined},{out_of_band_amount:'0'},{out_of_band_amount:1},{refund_amount:1},{customer_balance_transaction:null}])
+  assert.throws(()=>convert('credit_note.created',{...nullable,...patch}),/Unsupported Stripe/);
+});

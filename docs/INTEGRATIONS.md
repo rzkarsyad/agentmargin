@@ -186,7 +186,13 @@ Never derive a workspace/account from untrusted webhook metadata. The additive S
 `platformAccount` option binds this trusted routing configuration; a platform
 endpoint rejects connected-account envelopes. The legacy no-option SDK converter
 still uses `platform` for compatibility; new durable receivers require explicit
-routing. Signature verification still precedes normalization and durable acceptance.
+routing. Stripe may return `out_of_band_amount: null` for an unused optional allocation.
+Only explicit null in that field is normalized to zero, in both current and legacy
+shapes; the signed object is not mutated. Missing values, strings, positive or
+negative out-of-band amounts, null required monetary values, partial refund/balance
+mixtures and contradictory allocation shapes remain rejected. A wholly refund-backed
+note still returns no adjustment so succeeded refund events count the reduction once.
+Signature verification still precedes normalization and durable acceptance.
 
 ## Genuine sandbox QA harness and recovery
 
@@ -300,18 +306,40 @@ objects. An interrupted create run is recovered without automatic financial
 mutation; missing fixtures remain a blocker. Never reuse Stripe's expiring
 idempotency namespace to recreate an old run.
 
-**Evidence status:** the operator reports genuine Moland test-mode creation of
-three `invoice.paid`, two `refund.created`, two `refund.updated` and one
-`credit_note.created` events, with complete event pagination, payments, refunds and
-credit creation successful. This supersedes the earlier connector-only unpaid
-invoice check. The original harness stopped at `webhook-delivery`; end-to-end
-signed acceptance is still pending a successful run of this recovery path. The
-implementing agent's fictional CLI/real PostgreSQL regression is synthetic only.
-It verifies $128 gross − $105.25 refunds − $12 credits = $10.75 net, duplicate and
-out-of-order processing, signature/mapping rejection, missed forwarding and
-failure evidence. Unknown pricing keeps complete contribution null. Real signed
-sandbox recovery, independent billing-export corroboration/accountant approval,
-and independent security review remain release gates.
+**Genuine signed sandbox acceptance: PASS — operator-verified on macOS,
+reported 2026-10-24 (Asia/Jakarta).** The existing Moland test fixtures were
+recovered without creating additional transactions. Complete event pagination and
+all eight genuine signed receipts were verified: three `invoice.paid`, two
+`refund.created`, two `refund.updated`, and one `credit_note.created`. Seven
+financial deliveries were accepted; the EUR invoice was correctly rejected as
+unsupported FX. Ledger/API/reconciliation produced:
+
+| Measure | Expected | Actual |
+| --- | --- | --- |
+| Gross USD revenue | $128.00 | $128.00 |
+| Refunds | $105.25 | $105.25 |
+| Credits | $12.00 | $12.00 |
+| Net revenue | $10.75 | $10.75 |
+| Reconciliation variance | $0.00 | $0.00 |
+
+The operator reported final output `kind: stripe_sandbox_qa`, `status: pass`,
+`actualMicros: 10750000`, `varianceMicros: 0`. The final compatibility issue was an
+unused `out_of_band_amount: null` in the genuine credit-note shape; the narrow
+normalization above resolves it. Regression fixtures use fictional identifiers and
+test signatures, with null/zero equivalence, strict rejection and real restricted
+PostgreSQL coverage. They are separate from this operator's genuine Stripe run.
+Private receipts, object IDs, customer details and credentials remain with the
+operator; no private financial files are committed or published. This implementing
+agent has not independently inspected those files or repeated the external run.
+
+This clears the supported USD platform-account **genuine signed sandbox** acceptance
+check. EUR remains unsupported; unknown pricing keeps complete contribution null.
+It does not clear authentic independent provider billing-export corroboration,
+accountant policy approval, independent SQL/security/CodeQL review, multi-account
+or unsupported allocation/FX coverage, deployment-specific backup/monitoring/load
+validation, protected integration, or explicit release/publication authorization.
+No additional Stripe transactions are needed to record or regression-test this
+result. Any future recovery must use the existing private run directory as above.
 
 Static-analysis review of this harness is preliminary. Two intentional receiver
 patterns can produce CodeQL candidates: `js/user-controlled-bypass` identifies
