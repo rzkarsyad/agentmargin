@@ -9,7 +9,7 @@ import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot}
 const connectionString=process.env.AGENTMARGIN_STANDALONE_DATABASE_URL;
 if(!connectionString)throw new Error('AGENTMARGIN_STANDALONE_DATABASE_URL is required');
 const url=new URL(connectionString);
-if(!['postgresql:','postgres:'].includes(url.protocol)||url.pathname!=='/agentmargin_ci')
+if(!['postgresql:','postgres:'].includes(url.protocol)||url.pathname!=='/agentmargin_ci'||!['127.0.0.1','localhost'].includes(url.hostname))
   throw new Error('Refusing to test: database URL must target /agentmargin_ci exactly');
 const pool=new pg.Pool({connectionString,max:2});
 let store:PostgresEventStore|undefined;
@@ -38,6 +38,14 @@ try {
     await upgrade.query('ROLLBACK');
     assert.equal((await upgrade.query("SELECT count(*)::integer AS n FROM pg_namespace WHERE nspname='agentmargin_auth'")).rows[0].n,0);
     assert.equal((await upgrade.query("SELECT relrowsecurity FROM pg_class WHERE oid='customers'::regclass")).rows[0].relrowsecurity,false);
+    const blocker=await pool.connect();
+    try{
+      await blocker.query('BEGIN');await blocker.query('LOCK TABLE customers IN ACCESS EXCLUSIVE MODE');
+      await assert.rejects(upgrade.query(migration.replace("lock_timeout = '5s'","lock_timeout = '100ms'")),
+        (e:unknown)=>(e as {code?:string}).code==='55P03');
+      await upgrade.query('ROLLBACK');
+      assert.equal((await upgrade.query("SELECT count(*)::integer AS n FROM pg_namespace WHERE nspname='agentmargin_auth'")).rows[0].n,0);
+    }finally{await blocker.query('ROLLBACK');blocker.release();}
     await upgrade.query(migration);
     assert.equal((await upgrade.query('SELECT amount_micros::text FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].amount_micros,'1234567');
   }finally{upgrade.release();}
@@ -187,7 +195,25 @@ try {
   try{
     const grants=readFileSync(new URL('../db/runtime_privileges.psql',import.meta.url),'utf8')
       .replaceAll(':"runtime_role"','"'+runtimeRole+'"')
+      .replaceAll(":'runtime_role'","'"+runtimeRole+"'")
       .split('\n').filter(line=>!line.startsWith('--')).join('\n');
+    const refused=async()=>{
+      const setup=await pool.connect();
+      try{await assert.rejects(setup.query(grants),/Unsafe runtime/);}finally{await setup.query('ROLLBACK');setup.release();}
+    };
+    await pool.query('ALTER ROLE "'+runtimeRole+'" BYPASSRLS');
+    await refused();await pool.query('ALTER ROLE "'+runtimeRole+'" NOBYPASSRLS');
+    await pool.query('GRANT agentmargin_ci TO "'+runtimeRole+'"');
+    await refused();await pool.query('REVOKE agentmargin_ci FROM "'+runtimeRole+'"');
+    // PUBLIC privilege drift is effective even for NOINHERIT roles.
+    await pool.query('GRANT UPDATE(key_digest) ON workspace_api_keys TO PUBLIC');
+    // The template actively revokes PUBLIC auth-table grants, including columns.
+    await pool.query(grants);
+    assert.equal((await pool.query("SELECT has_column_privilege($1,'workspace_api_keys','key_digest','UPDATE') AS unsafe",[runtimeRole])).rows[0].unsafe,false);
+    await pool.query('ALTER TABLE customers OWNER TO "'+runtimeRole+'"');
+    await refused();await pool.query('ALTER TABLE customers OWNER TO agentmargin_ci');
+    await pool.query('GRANT CREATE ON SCHEMA public TO PUBLIC');
+    await refused();await pool.query('REVOKE CREATE ON SCHEMA public FROM PUBLIC');
     await pool.query(grants);
     const runtimeURL=new URL(connectionString);
     runtimeURL.username=runtimeRole;
@@ -225,7 +251,13 @@ try {
         await direct.query('ROLLBACK');
       }
       await direct.query('BEGIN');
+      await direct.query("SET LOCAL search_path=pg_temp,public,pg_catalog");
+      await direct.query('CREATE TEMP TABLE workspace_api_keys(key_digest text,workspace_id uuid,access_role text)');
+      await direct.query('INSERT INTO workspace_api_keys VALUES($1,$2,$3)',[createHash('sha256').update(key).digest('hex'),other,'admin']);
       await direct.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      assert.equal((await direct.query('SELECT workspace_id FROM agentmargin_auth.principal($1)',[key])).rows[0].workspace_id,workspace,
+        'SECURITY DEFINER resolved a shadow key table');
+      assert.equal((await direct.query('SELECT * FROM agentmargin_auth.principal($1)',["am_'; SET ROLE agentmargin_ci; --"])).rowCount,0);
       assert.deepEqual(await selectTenants(),[workspace]);
       await assert.rejects(direct.query('INSERT INTO customers(workspace_id,id) VALUES($1,$2)',[other,'cross-tenant']),
         (e:unknown)=>(e as {code?:string}).code==='42501');
@@ -277,6 +309,9 @@ try {
     const denied=[
       'SELECT * FROM workspaces',
       'SELECT * FROM workspace_api_keys',
+      'ALTER FUNCTION agentmargin_auth.principal(text) OWNER TO CURRENT_USER',
+      'CREATE OR REPLACE FUNCTION agentmargin_auth.workspace(text) RETURNS uuid LANGUAGE sql AS $$SELECT gen_random_uuid()$$',
+      'ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY',
       'SET ROLE agentmargin_ci',
       'INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES (gen_random_uuid(),gen_random_uuid(),repeat(\'a\',64),\'forbidden\')',
       'UPDATE revenue_records SET amount_micros=0',
