@@ -1,5 +1,5 @@
 import pg from 'pg';
-import type {StoredAdjustment} from '../../../packages/core/src/adjustments.ts';
+import {parseAdjustment,type StoredAdjustment} from '../../../packages/core/src/adjustments.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
 import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole, RevenueDelivery } from './app.ts';
 
@@ -101,10 +101,10 @@ export class PostgresEventStore implements EventStore {
       SELECT (
         (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname IN
-            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries','revenue_adjustments')
+            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries','revenue_adjustments','revenue_payment_sources','adjustment_deliveries')
             AND c.relrowsecurity
             AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
-              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname='revenue_deliveries' THEN 3 ELSE 2 END)=6
+              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname IN ('revenue_deliveries','adjustment_deliveries') THEN 3 ELSE 2 END)=8
         AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'),to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
@@ -321,8 +321,8 @@ export class PostgresEventStore implements EventStore {
   async processNextRevenueDelivery(workspaceId:string):Promise<{state:'empty'|'delivered'|'retry'|'failed';inserted?:number;duplicate?:number}>{
     const client=await this.begin();
     try{
-      const job=await client.query<{provider_event_id:string;record_id:string;customer_id:string;occurred_at:Date;amount_micros:string;payload_digest:string;attempts:number}>(`
-        SELECT provider_event_id,record_id,customer_id,occurred_at,amount_micros::text,payload_digest,attempts
+      const job=await client.query<{provider_event_id:string;provider_account:string;record_id:string;customer_id:string;occurred_at:Date;amount_micros:string;payload_digest:string;attempts:number}>(`
+        SELECT provider_event_id,provider_account,record_id,customer_id,occurred_at,amount_micros::text,payload_digest,attempts
         FROM revenue_deliveries WHERE workspace_id=$1 AND state='pending' AND available_at<=statement_timestamp()
         ORDER BY available_at,received_at,provider_event_id FOR UPDATE SKIP LOCKED LIMIT 1`,[workspaceId]);
       const row=job.rows[0];
@@ -334,11 +334,21 @@ export class PostgresEventStore implements EventStore {
       try{
         result=await this.writeRevenue(client,workspaceId,[{id:row.record_id,customerId:row.customer_id,
           occurredAt:row.occurred_at.toISOString(),amountMicros:row.amount_micros,payloadDigest:row.payload_digest}]);
+        const source=await client.query<{provider_account:string}>('SELECT provider_account FROM revenue_payment_sources WHERE workspace_id=$1 AND record_id=$2',[workspaceId,row.record_id]);
+        if(source.rowCount){
+          if(source.rows[0]?.provider_account!==row.provider_account)throw new Error('Idempotency conflict');
+        }else{
+          if(!result.inserted)throw new Error('Payment provenance missing');
+          await client.query(`INSERT INTO revenue_payment_sources(workspace_id,record_id,provider_account,provider_event_id)
+            VALUES($1,$2,$3,$4)`,[workspaceId,row.record_id,row.provider_account,row.provider_event_id]);
+        }
       }catch(error){
+        result=undefined;
         await client.query('ROLLBACK TO SAVEPOINT delivery_write');
         const code=(error as {code?:string}).code;
+        if(code==='42501')throw new Error('Delivery authorization changed');
         errorClass=error instanceof Error&&error.message==='Idempotency conflict'?'idempotency_conflict':
-          code==='23514'||code==='23503'?'invalid_record':'database_retry';
+          code==='23514'||code==='23503'||(error instanceof Error&&error.message==='Payment provenance missing')?'invalid_record':'database_retry';
       }
       await client.query('RELEASE SAVEPOINT delivery_write');
       const state=result?'delivered':errorClass!=='database_retry'||attempts>=8?'failed':'pending';
@@ -352,6 +362,63 @@ export class PostgresEventStore implements EventStore {
       // the row claim and rolls back both, so no processing lease can get stuck.
       await client.query('COMMIT');
       return {state:state==='pending'?'retry':state,...result};
+    }catch(error){await this.rollback(client);throw error;}
+    finally{client.release(this.brokenClients.has(client));}
+  }
+  async enqueueAdjustmentDelivery(workspaceId:string,delivery:{providerEventId:string;providerAccount:string;record:StoredAdjustment}):Promise<{duplicate:boolean;state:string}>{
+    const client=await this.begin();
+    try{
+      const r=delivery.record;
+      const inserted=await client.query(`INSERT INTO adjustment_deliveries(workspace_id,provider_event_id,provider_account,record,payload_digest)
+        VALUES($1,$2,$3,$4::jsonb,$5) ON CONFLICT(workspace_id,provider_event_id) DO NOTHING`,
+        [workspaceId,delivery.providerEventId,delivery.providerAccount,JSON.stringify(r),r.payloadDigest]);
+      const q=await client.query<{provider_account:string;payload_digest:string;state:string}>(
+        'SELECT provider_account,payload_digest,state FROM adjustment_deliveries WHERE workspace_id=$1 AND provider_event_id=$2',[workspaceId,delivery.providerEventId]);
+      const row=q.rows[0];
+      if(!row||row.provider_account!==delivery.providerAccount||row.payload_digest!==r.payloadDigest)throw new Error('Idempotency conflict');
+      await client.query('COMMIT');return {duplicate:inserted.rowCount===0,state:row.state};
+    }catch(error){await this.rollback(client);throw error;}
+    finally{client.release(this.brokenClients.has(client));}
+  }
+  async adjustmentDeliveryStatus(workspaceId:string){
+    const result=await this.query(`SELECT count(*) FILTER(WHERE state='pending')::text AS pending,
+      count(*) FILTER(WHERE state='failed')::text AS failed,count(*) FILTER(WHERE state='delivered')::text AS delivered,
+      count(*) FILTER(WHERE state<>'delivered' AND error_class='unmatched_payment')::text AS unmatched,
+      extract(epoch FROM statement_timestamp()-min(received_at) FILTER(WHERE state='pending'))::text AS oldest_pending_seconds
+      FROM adjustment_deliveries WHERE workspace_id=$1`,[workspaceId]);
+    return result.rows[0]!;
+  }
+  async processNextAdjustmentDelivery(workspaceId:string):Promise<{state:'empty'|'delivered'|'retry'|'failed';inserted?:number;duplicate?:number}>{
+    const client=await this.begin();
+    try{
+      const job=await client.query<{provider_event_id:string;record:unknown;payload_digest:string;attempts:number}>(`
+        SELECT provider_event_id,record,payload_digest,attempts FROM adjustment_deliveries
+        WHERE workspace_id=$1 AND state='pending' AND available_at<=statement_timestamp()
+        ORDER BY available_at,received_at,provider_event_id FOR UPDATE SKIP LOCKED LIMIT 1`,[workspaceId]);
+      const row=job.rows[0];if(!row){await client.query('COMMIT');return {state:'empty'};}
+      await client.query('SAVEPOINT adjustment_write');
+      let result:{inserted:number;duplicate:number}|undefined,errorClass:string|null=null;
+      try{
+        const record=parseAdjustment(row.record);
+        if(record.payloadDigest!==row.payload_digest)throw new Error('Invalid adjustment');
+        result=await this.writeAdjustments(client,workspaceId,[record]);
+      }catch(error){
+        result=undefined;await client.query('ROLLBACK TO SAVEPOINT adjustment_write');
+        const code=(error as {code?:string}).code;
+        if(code==='42501')throw new Error('Delivery authorization changed');
+        errorClass=error instanceof Error&&error.message==='Idempotency conflict'?'idempotency_conflict':
+          code==='23503'?'unmatched_payment':code==='23514'||(error instanceof Error&&error.message==='Invalid adjustment')?'invalid_record':'database_retry';
+      }
+      await client.query('RELEASE SAVEPOINT adjustment_write');
+      const attempts=row.attempts+1;
+      const retryable=errorClass==='database_retry'||errorClass==='unmatched_payment';
+      const state=result?'delivered':retryable&&attempts<8?'pending':'failed';
+      const update=await client.query(`UPDATE adjustment_deliveries SET state=$3,attempts=$4,error_class=$5,
+        delivered_at=CASE WHEN $3='delivered' THEN statement_timestamp() ELSE NULL END,
+        available_at=statement_timestamp()+make_interval(secs=>$6) WHERE workspace_id=$1 AND provider_event_id=$2`,
+        [workspaceId,row.provider_event_id,state,attempts,errorClass,Math.min(300,2**attempts)]);
+      if(update.rowCount!==1)throw new Error('Delivery authorization changed');
+      await client.query('COMMIT');return {state:state==='pending'?'retry':state,...result};
     }catch(error){await this.rollback(client);throw error;}
     finally{client.release(this.brokenClients.has(client));}
   }

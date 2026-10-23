@@ -19,6 +19,9 @@ GRANT INSERT ON TABLE
   customers, usage_events, revenue_records, workspace_price_versions TO :"runtime_role";
 REVOKE ALL ON TABLE revenue_adjustments FROM :"runtime_role";
 GRANT SELECT,INSERT ON revenue_adjustments TO :"runtime_role";
+REVOKE ALL ON TABLE revenue_payment_sources,adjustment_deliveries FROM :"runtime_role";
+GRANT SELECT,INSERT ON revenue_payment_sources,adjustment_deliveries TO :"runtime_role";
+GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON adjustment_deliveries TO :"runtime_role";
 REVOKE ALL ON TABLE revenue_deliveries FROM :"runtime_role";
 GRANT SELECT, INSERT ON TABLE revenue_deliveries TO :"runtime_role";
 GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON revenue_deliveries TO :"runtime_role";
@@ -52,11 +55,17 @@ BEGIN
      OR has_table_privilege(runtime.oid,'public.workspaces','DELETE,TRUNCATE,TRIGGER')
      OR EXISTS (
        SELECT 1 FROM pg_class WHERE oid IN ('public.customers'::regclass,'public.usage_events'::regclass,
-         'public.revenue_records'::regclass,'public.revenue_adjustments'::regclass,'public.workspace_price_versions'::regclass,'public.price_versions'::regclass)
+         'public.revenue_records'::regclass,'public.revenue_adjustments'::regclass,'public.revenue_payment_sources'::regclass,'public.workspace_price_versions'::regclass,'public.price_versions'::regclass)
        AND (has_table_privilege(runtime.oid,oid,'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
          OR has_any_column_privilege(runtime.oid,oid,'UPDATE,REFERENCES'))
      ) OR has_any_column_privilege(runtime.oid,'public.price_versions','INSERT') THEN
     RAISE EXCEPTION 'Unsafe runtime grants: effective PUBLIC or column privileges exceed the supported runtime boundary';
+  END IF;
+  IF has_table_privilege(runtime.oid,'public.adjustment_deliveries','DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.adjustment_deliveries'::regclass
+      AND attnum>0 AND NOT attisdropped AND attname NOT IN ('state','attempts','available_at','delivered_at','error_class')
+      AND has_column_privilege(runtime.oid,attrelid,attnum,'UPDATE')) THEN
+    RAISE EXCEPTION 'Unsafe runtime grants: adjustment delivery payload must remain immutable';
   END IF;
   IF has_table_privilege(runtime.oid,'public.revenue_deliveries','DELETE,TRUNCATE,REFERENCES,TRIGGER')
     OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.revenue_deliveries'::regclass

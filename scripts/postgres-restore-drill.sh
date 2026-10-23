@@ -56,7 +56,7 @@ pg_restore --exit-on-error --no-owner --no-acl --dbname="$restore_db" "$backup_f
 # Check exact restored logical rows (including hashed API-key records) without
 # printing values, plus integrity-related schema objects such as constraints.
 for table in workspaces workspace_api_keys customers price_versions \
-             workspace_price_versions usage_events revenue_records revenue_deliveries revenue_adjustments; do
+             workspace_price_versions usage_events revenue_records revenue_deliveries revenue_adjustments revenue_payment_sources adjustment_deliveries; do
   query="SELECT count(*)::text || ':' || md5(coalesce(string_agg(to_jsonb(t)::text, E'\\n' ORDER BY to_jsonb(t)::text), '')) FROM public.\"$table\" t"
   original=$(sql "$source_db" "$query")
   restored=$(sql "$restore_db" "$query")

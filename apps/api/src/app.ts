@@ -32,6 +32,7 @@ export interface EventStore {
   listPriceVersions?(workspaceId:string):Promise<{items:WorkspacePrice[]; truncated:boolean}>;
   ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{ inserted: number; duplicate: number }>;
   enqueueRevenueDelivery?(workspaceId:string,delivery:RevenueDelivery):Promise<{duplicate:boolean;state:string}>;
+  enqueueAdjustmentDelivery?(workspaceId:string,delivery:{providerEventId:string;providerAccount:string;record:StoredAdjustment}):Promise<{duplicate:boolean;state:string}>;
   ingestAdjustments?(workspaceId:string,records:readonly StoredAdjustment[]):Promise<{inserted:number;duplicate:number}>;
   ingestRevenue?(workspaceId:string, records: readonly StoredRevenue[]): Promise<{inserted:number;duplicate:number}>;
   analytics?(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>;
@@ -92,7 +93,7 @@ function safeRoute(path:string):SafeRequestLog['route']{
     case '/v1/events':return 'events';
     case '/v1/revenue':return 'revenue';
     case '/v1/revenue/deliveries':return 'revenue_deliveries';
-    case '/v1/revenue/adjustments':return 'adjustments';
+    case '/v1/revenue/adjustments':case '/v1/revenue/adjustments/deliveries':return 'adjustments';
     case '/v1/prices':return 'prices';
     case '/v1/analytics':return 'analytics';
     case '/v1/analytics/page':return 'analytics_page';
@@ -104,7 +105,7 @@ function safeMethod(value:string):SafeRequestLog['method']{
 }
 function requiredKeyRole(method:string,path:string):WorkspaceKeyRole{
   if(method==='GET'&&['/v1/prices','/v1/analytics','/v1/analytics/page'].includes(path))return 'read';
-  if(method==='POST'&&['/v1/events','/v1/revenue','/v1/revenue/deliveries','/v1/revenue/adjustments'].includes(path))return 'ingest';
+  if(method==='POST'&&['/v1/events','/v1/revenue','/v1/revenue/deliveries','/v1/revenue/adjustments','/v1/revenue/adjustments/deliveries'].includes(path))return 'ingest';
   // Price changes, unknown future endpoints and other methods are admin-only by default.
   return 'admin';
 }
@@ -344,6 +345,26 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }catch(error){
       if(error instanceof Error&&error.message==='Idempotency conflict')return c.json({error:'Delivery ID reused with different payload'},409);
       if(error instanceof Error&&error.message==='Invalid revenue record')return c.json({error:error.message},400);
+      throw error;
+    }
+  });
+  app.post('/v1/revenue/adjustments/deliveries',async c=>{
+    const store=c.get('store'),workspaceId=c.get('workspaceId');
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    if(!store.enqueueAdjustmentDelivery)return c.json({error:'Adjustment delivery unavailable'},503);
+    let payload:unknown;
+    try{payload=await c.req.json();}catch{return c.json({error:'Invalid JSON'},400);}
+    if(!payload||typeof payload!=='object'||Array.isArray(payload))return c.json({error:'Invalid delivery'},400);
+    const raw=payload as Record<string,unknown>;
+    if(typeof raw.providerEventId!=='string'||!/^evt_[A-Za-z0-9_]{1,196}$/.test(raw.providerEventId)||!validId(raw.providerAccount))
+      return c.json({error:'Invalid delivery'},400);
+    try{
+      const record=parseAdjustment(raw.record);
+      if(record.provider!=='stripe'||record.providerAccount!==raw.providerAccount)return c.json({error:'Invalid delivery account'},400);
+      return c.json(await store.enqueueAdjustmentDelivery(workspaceId,{providerEventId:raw.providerEventId,providerAccount:raw.providerAccount,record}),202);
+    }catch(error){
+      if(error instanceof Error&&error.message==='Invalid adjustment')return c.json({error:error.message},400);
+      if(error instanceof Error&&error.message==='Idempotency conflict')return c.json({error:'Delivery ID reused with different payload'},409);
       throw error;
     }
   });
