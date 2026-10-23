@@ -1,0 +1,177 @@
+name: v0.9 integration rehearsal (no release)
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agentmargin_ci
+          POSTGRES_USER: agentmargin_ci
+          POSTGRES_PASSWORD: ci-only-disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentmargin_ci -d agentmargin_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AGENTMARGIN_STANDALONE_DATABASE_URL: postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:5432/agentmargin_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rehearse integration of independent CodeQL PR 33
+        run: |
+          git config user.name 'AgentMargin integration rehearsal'
+          git config user.email 'rehearsal@localhost'
+          git merge --no-ff --no-edit ec812275ce4ba3a030f981942fe15d619a21820d
+          git rev-parse HEAD > "$RUNNER_TEMP/combined-commit.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/combined-tree.txt"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Validate demo shell and Docker Compose config
+        run: |
+          bash -n scripts/demo-local.sh
+          docker compose -f compose.demo.yml config --quiet
+      - name: Verify newcomer quickstart example
+        run: node --experimental-strip-types examples/calculate-margin.ts
+      - run: npm run test:postgres
+      - name: PostgreSQL service restart and financial fingerprint recovery (synthetic only)
+        env:
+          AGENTMARGIN_RESTART_DRILL: ci-only
+          AGENTMARGIN_CI_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: node --experimental-strip-types scripts/database-restart-ci.ts
+      - name: Signed Stripe durable delivery E2E (synthetic only)
+        run: node --experimental-strip-types scripts/stripe-delivery-local-test.ts
+      - name: API lifecycle (synthetic database)
+        run: node --experimental-strip-types scripts/server-lifecycle-test.ts
+      - name: API key rotation and revocation drill (synthetic CI only)
+        run: AGENTMARGIN_KEY_ROTATION_DRILL=ci-only node --experimental-strip-types scripts/key-rotation-ci.ts
+      - name: PostgreSQL backup/restore drill (synthetic CI database only)
+        run: |
+          docker run --rm --network host \
+            -e GITHUB_ACTIONS=true \
+            -e AGENTMARGIN_RESTORE_DRILL=ci-only \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGDATABASE=agentmargin_ci \
+            -e PGUSER=agentmargin_ci \
+            -e PGPASSWORD=ci-only-disposable \
+            -v "$PWD:/src:ro" -w /src \
+            postgres:16 bash scripts/postgres-restore-drill.sh
+      - name: Encrypted backup automation drill (synthetic only)
+        run: |
+          docker run --rm --network host \
+            -e GITHUB_ACTIONS=true -e AGENTMARGIN_BACKUP_DRILL=ci-only \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=agentmargin_ci \
+            -e PGUSER=agentmargin_ci -e PGPASSWORD=ci-only-disposable \
+            -v "$PWD:/src:ro" -w /src postgres:16 bash scripts/backup-automation-ci.sh
+      - run: python3 scripts/check-release-files.py
+      # npm's advisory endpoint can transiently return HTTP 503. Retry briefly,
+      # but NEVER treat an unsuccessful audit as a pass.
+      - name: Audit dependencies (fail closed, bounded retries)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm_config_fetch_retries=0 npm_config_fetch_timeout=20000 npm audit --audit-level=low; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Dependency audit did not pass after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+      # Browser uses a mocked analytics response; this is not a deployed-service E2E.
+      - name: Browser smoke test (Chromium desktop + mobile)
+        run: |
+          python3 -m venv .browser-venv
+          .browser-venv/bin/python -m pip install --disable-pip-version-check playwright==1.56.0
+          .browser-venv/bin/python -m playwright install --with-deps chromium
+          .browser-venv/bin/python scripts/browser-smoke.py
+      - name: Live demo E2E (Docker PostgreSQL, authenticated API, SDK, Chromium)
+        run: .browser-venv/bin/python scripts/live-demo-smoke.py
+      - name: Upload Arc UI review screenshots (synthetic data only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentmargin-arc-v03-review
+          path: ci-artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent registry consumer and source starter
+        run: |
+          node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
+          npm --prefix examples/nextjs-starter ci --no-audit --no-fund
+          npm --prefix examples/nextjs-starter run build
+          npm --prefix examples/nextjs-starter audit --audit-level=high
+      - name: Prepare candidate artifact with integrity metadata (no publish)
+        run: node scripts/prepare-release.mjs "$RUNNER_TEMP/release-package"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v09-rehearsal-release-package
+          path: |
+            ${{ runner.temp }}/release-package/
+            ${{ runner.temp }}/combined-commit.txt
+            ${{ runner.temp }}/combined-tree.txt
+          retention-days: 30
+
+  codeql:
+    name: Full combined-source CodeQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rehearse integration of PR 33
+        run: |
+          git config user.name 'AgentMargin integration rehearsal'
+          git config user.email 'rehearsal@localhost'
+          git merge --no-ff --no-edit ec812275ce4ba3a030f981942fe15d619a21820d
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+        with:
+          upload: false
+          output: codeql-results
+      - name: Preserve complete finding evidence
+        run: |
+          git rev-parse HEAD > codeql-results/commit.txt
+          git rev-parse HEAD^{tree} > codeql-results/tree.txt
+          python3 - <<'PYCODE'
+          import pathlib,json
+          summaries=[]
+          for p in pathlib.Path('codeql-results').glob('*.sarif'):
+            for r in json.loads(p.read_text())['runs']:
+              assert 'diff-informed' not in r.get('properties',{}).get('incrementalMode','')
+              rules={q['id']:q for c in [r['tool']['driver'],*r['tool'].get('extensions',[])] for q in c.get('rules',[])}
+              assert {'js/bad-tag-filter','js/incomplete-multi-character-sanitization','js/insufficient-password-hash'}<=rules.keys()
+              summaries.append({'rules':len(rules),'results':r.get('results',[])})
+          assert summaries
+          pathlib.Path('codeql-results/summary.json').write_text(json.dumps(summaries,indent=2))
+          print(json.dumps([{'rules':s['rules'],'findings':len(s['results'])} for s in summaries]))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v09-combined-source-codeql
+          path: codeql-results/
+          retention-days: 30

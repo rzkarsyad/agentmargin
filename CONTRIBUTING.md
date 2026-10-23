@@ -34,3 +34,14 @@ For full PostgreSQL concurrency tests, follow [the local quickstart](docs/QUICKS
 GitHub Actions provides additional PostgreSQL, source-file, dependency, and Chromium checks. Passing CI is necessary but is **not** an independent security certification.
 
 For sensitive reports, use the private reporting route in [SECURITY.md](SECURITY.md), not a public issue.
+
+## v0.9 candidate verification
+
+The complete disposable PostgreSQL 16 commands, protected merge order, security
+review checklist and release blockers live in [ROADMAP](docs/ROADMAP.md). Run
+`npm ci`, `npm run check`, `npm audit --audit-level=low`, the guarded
+`npm run test:postgres` on a new empty `agentmargin_ci`, signed synthetic delivery
+and lifecycle scripts before submitting. GitHub CI adds real Chromium desktop/mobile,
+backup/restore, rotation and integrated rehearsal checks. Never publish the candidate
+SDK or create tags without explicit authorization. Genuine Stripe tests use only a
+selected sandbox and run-tagged synthetic fixtures; see [INTEGRATIONS](docs/INTEGRATIONS.md).

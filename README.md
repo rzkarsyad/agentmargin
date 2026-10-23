@@ -2,13 +2,13 @@
 
 **Know your margin. Not just your tokens.**
 
-**Current source release: v0.3.0-alpha.** This preview is intentionally localhost-only and should be tested with synthetic data.
+**Latest tagged platform release: v0.3.0-alpha. Published SDK: `@makinohq/agentmargin@0.4.0-alpha.2`.** The v0.9 alpha candidate is under review; use synthetic data on localhost.
 
 [![CI](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml/badge.svg)](https://github.com/rzkarsyad/agentmargin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-experimental%20alpha-orange.svg)](docs/releases/v0.3.0-alpha.md)
 
-> **Source vs release:** The tagged public prerelease is `v0.3.0-alpha`. The `main` branch also contains **unreleased experimental code** for SDK packaging/Next.js, opt-in model price import, whole-workspace paginated analytics and Anthropic/Stripe adapters (PRs #5–#7). The npm SDK has **not** been published, and no production deployment is certified. See the [live roadmap](docs/ROADMAP.md).
+> **Candidate vs release:** v0.9 source changes remain in unmerged PRs #24–#36. They add credential-backed RLS, recovery tooling, durable deliveries, immutable adjustments and net reconciliation. The candidate prepares platform `v0.9.0-alpha.1` and SDK `0.5.0-alpha.1`; neither is tagged/published. The [roadmap](docs/ROADMAP.md) is the authoritative release dashboard. Independent security/accounting review and protected integration are pending.
 
 AgentMargin is an **open-source, self-hosted TypeScript toolkit** for understanding AI inference costs and *customer-level contribution margins*. Attribute usage and revenue to the same customer, distinguish known from unknown costs, and investigate customers whose AI usage outweighs what they pay.
 
@@ -36,7 +36,7 @@ AgentMargin brings these records together:
 - **OpenAI helpers:** manually map completed Responses or Chat Completions usage to AgentMargin events.
 - **Local React dashboard:** compact dark customer economics, real-data cost comparison, coverage and unknown-cost diagnostics, with a dedicated pricing editor. Results warn when truncated.
 
-**Not yet available:** automatic instrumentation, an official provider price catalog, Stripe synchronization, publicly hosted service, or production-hardening. The SDK is **source-first** and is not published to npm.
+**Not yet available:** automatic instrumentation, an official provider price catalog, Stripe synchronization, publicly hosted service, or production-hardening. Install the verified published SDK with `npm install @makinohq/agentmargin@0.4.0-alpha.2`. Durable deliveries/adjustments and current-schema credit handling remain source candidate features.
 
 ## One-command local demo (v0.3 alpha)
 
@@ -52,7 +52,7 @@ See [Local demo instructions](docs/DEMO.md) for stopping and intentionally reset
 
 ## Track a completed OpenAI request (v0.3 alpha)
 
-The source-first SDK now accepts a completed OpenAI Responses or Chat Completions result in one call:
+The published SDK accepts a completed OpenAI Responses or Chat Completions result in one call:
 
 ```ts
 await margin.trackOpenAIResponse(response, trustedCustomerId);
@@ -80,7 +80,7 @@ The helpers send **usage metadata only**—no prompts or generated text—and re
 
 ## Unreleased experimental source on `main` (v0.4–v0.6 foundations)
 
-- [Compiled distributable SDK package](packages/sdk/README.md) with npm trusted-publishing workflow; **not yet published** ([publisher gate](https://github.com/rzkarsyad/agentmargin/issues/8)).
+- [Compiled distributable SDK package](packages/sdk/README.md) with npm Trusted Publishing; **alpha.2 published** ([publisher evidence](https://github.com/rzkarsyad/agentmargin/issues/8)).
 - [Runnable Next.js starter](examples/nextjs-starter/README.md) including synthetic usage/revenue and optional OpenAI call.
 - [Reviewed LiteLLM price importer](docs/PRICING_IMPORT.md): preview by default, `--apply` optional, not a provider-verified invoice feed.
 - [Paginated analytics & whole-workspace totals](docs/ANALYTICS_PAGINATION.md); customer charts show a page preview, not fabricated history.

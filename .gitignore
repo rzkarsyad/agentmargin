@@ -10,3 +10,6 @@ coverage/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Generated synthetic browser evidence (uploaded by CI, never source)
+ci-artifacts/
