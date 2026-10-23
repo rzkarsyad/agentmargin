@@ -65,6 +65,31 @@ export interface AnalyticsPage{
   unknownModelsTruncated?:boolean;
 }
 
+/** An allowlisted operational event. Raw paths, queries, headers, payloads and tenant identifiers are intentionally absent. */
+export interface SafeRequestLog {
+  kind:'http_request'; requestId:string; timestamp:string;
+  route:'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'prices'|'analytics'|'analytics_page'|'other';
+  method:'GET'|'POST'|'HEAD'|'OPTIONS'|'OTHER';
+  status:number; durationMs:number;
+}
+export type RequestLogSink=(entry:SafeRequestLog)=>void;
+
+function safeRoute(path:string):SafeRequestLog['route']{
+  switch(path){
+    case '/health':return 'health';
+    case '/dashboard':return 'dashboard';
+    case '/v1/events':return 'events';
+    case '/v1/revenue':return 'revenue';
+    case '/v1/prices':return 'prices';
+    case '/v1/analytics':return 'analytics';
+    case '/v1/analytics/page':return 'analytics_page';
+    default:return path.startsWith('/dashboard/assets/')?'dashboard_asset':'other';
+  }
+}
+function safeMethod(value:string):SafeRequestLog['method']{
+  return value==='GET'||value==='POST'||value==='HEAD'||value==='OPTIONS'?value:'OTHER';
+}
+
 const validId = (s: unknown): s is string => typeof s === 'string' && s.length >= 1 && s.length <= 200;
 const validCount = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
 // Require explicit timezone and complete timestamp; ambiguous local dates are unsafe for billing windows.
@@ -125,7 +150,7 @@ function parsePriceInput(x:unknown):PriceInput {
     cachedInputMicrosPerMillion:rate(raw.cachedInputMicrosPerMillion,true),sourceNote:raw.sourceNote.trim()};
 }
 
-export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter()) {
+export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink) {
   const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
@@ -133,6 +158,20 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
   const inlineScript=hasReactBuild?null:dashboard.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   if(!hasReactBuild&&!inlineScript)throw new Error('Legacy dashboard script missing');
   const scriptHash=inlineScript?createHash('sha256').update(inlineScript).digest('base64'):null;
+  app.use('*',async(c,next)=>{
+    const requestId=randomUUID();
+    const started=performance.now();
+    try{await next();}finally{
+      c.header('X-Request-ID',requestId);
+      if(logSink){
+        const event:SafeRequestLog={kind:'http_request',requestId,timestamp:new Date().toISOString(),
+          route:safeRoute(c.req.path),method:safeMethod(c.req.method),status:c.res.status,
+          durationMs:Math.max(0,Math.round((performance.now()-started)*10)/10)};
+        // Telemetry sink failure must never change API billing/ingestion responses.
+        try{logSink(event);}catch{/* Operator should monitor its external logging pipeline. */}
+      }
+    }
+  });
   app.use('*',async(c,next)=>{
     await next();
     c.header('Cache-Control','no-store');
