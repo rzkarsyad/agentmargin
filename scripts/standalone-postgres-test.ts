@@ -21,6 +21,7 @@ try {
   await pool.query(readFileSync(new URL('../db/002_ingestion.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/003_revenue_ingestion.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/004_workspace_pricing.sql',import.meta.url),'utf8'));
+  await pool.query(readFileSync(new URL('../db/005_api_key_roles.sql',import.meta.url),'utf8'));
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
@@ -128,6 +129,26 @@ try {
   assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&cursor=!',
     {headers:{authorization:'Bearer '+key}})).status,400);
   assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z')).status,401);
+  // v0.8: real database key roles restrict API operations without changing
+  // existing pre-migration keys (which migrate to admin for compatibility).
+  assert.deepEqual(await store.authenticate(createHash('sha256').update(key).digest('hex')),
+    {workspaceId:workspace,accessRole:'admin'});
+  const readKey='am_'+randomBytes(32).toString('base64url');
+  const ingestKey='am_'+randomBytes(32).toString('base64url');
+  for(const [newKey,accessRole] of [[readKey,'read'],[ingestKey,'ingest']] as const){
+    await pool.query(`INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name,access_role)
+      VALUES($1,$2,$3,$4,$5)`,[randomUUID(),workspace,createHash('sha256').update(newKey).digest('hex'),accessRole+'-key',accessRole]);
+  }
+  const period='/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z';
+  assert.equal((await api.request(period,{headers:{authorization:'Bearer '+readKey}})).status,200);
+  assert.equal((await api.request('/v1/events',{method:'POST',headers:{authorization:'Bearer '+readKey}})).status,403);
+  assert.equal((await api.request('/v1/prices',{method:'POST',headers:{authorization:'Bearer '+readKey}})).status,403);
+  assert.equal((await api.request(period,{headers:{authorization:'Bearer '+ingestKey}})).status,403);
+  assert.equal((await api.request('/v1/prices',{headers:{authorization:'Bearer '+ingestKey}})).status,403);
+  const ingestByRole=await api.request('/v1/events',{method:'POST',headers:{
+    authorization:'Bearer '+ingestKey,'content-type':'application/json'},
+    body:JSON.stringify({events:[{...event,id:'role-restricted-event',reportedCostMicros:'100'}]})});
+  assert.equal(ingestByRole.status,202);
   // v0.7: prove the documented runtime grants support API queries while blocking
   // schema/accounting mutations. The role exists only for this isolated CI run.
   const runtimeRole='agentmargin_ci_runtime_'+randomBytes(6).toString('hex');
@@ -146,7 +167,8 @@ try {
     runtimeURL.username=runtimeRole;
     runtimeURL.password=runtimePassword;
     runtimeStore=new PostgresEventStore(runtimeURL.toString());
-    assert.equal(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),workspace);
+    assert.deepEqual(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),
+      {workspaceId:workspace,accessRole:'admin'});
     const runtimeEvent:StoredEvent={...stored,event:{...event,id:'runtime-role-usage',customerId:'runtime-customer'},
       payloadDigest:'runtime-role-usage'};
     assert.equal((await runtimeStore.ingest(workspace,[runtimeEvent])).inserted,1);
