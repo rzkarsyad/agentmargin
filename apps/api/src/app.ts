@@ -19,8 +19,10 @@ export interface PriceInput {
   cachedInputMicrosPerMillion:string|null; sourceNote:string;
 }
 export interface WorkspacePrice extends PriceInput {createdAt:string}
+export type WorkspaceKeyRole='admin'|'ingest'|'read';
+export interface AuthenticatedWorkspace {workspaceId:string; accessRole:WorkspaceKeyRole}
 export interface EventStore {
-  authenticate(keyDigest: string): Promise<string | null>;
+  authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null>;
   prices(workspaceId: string, model: string, timestamp: string): Promise<ScopedPriceVersion[]>;
   createPriceVersion?(workspaceId:string, creatorDigest:string, input:PriceInput):Promise<WorkspacePrice>;
   listPriceVersions?(workspaceId:string):Promise<{items:WorkspacePrice[]; truncated:boolean}>;
@@ -89,6 +91,15 @@ function safeRoute(path:string):SafeRequestLog['route']{
 function safeMethod(value:string):SafeRequestLog['method']{
   return value==='GET'||value==='POST'||value==='HEAD'||value==='OPTIONS'?value:'OTHER';
 }
+function requiredKeyRole(method:string,path:string):WorkspaceKeyRole{
+  if(method==='GET'&&['/v1/prices','/v1/analytics','/v1/analytics/page'].includes(path))return 'read';
+  if(method==='POST'&&['/v1/events','/v1/revenue'].includes(path))return 'ingest';
+  // Price changes, unknown future endpoints and other methods are admin-only by default.
+  return 'admin';
+}
+function keyRoleAllowed(actual:WorkspaceKeyRole,required:WorkspaceKeyRole):boolean{
+  return actual==='admin'||actual===required;
+}
 
 const validId = (s: unknown): s is string => typeof s === 'string' && s.length >= 1 && s.length <= 200;
 const validCount = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
@@ -151,7 +162,7 @@ function parsePriceInput(x:unknown):PriceInput {
 }
 
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink) {
-  const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string } }>();
+  const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
   const dashboard=readFileSync(hasReactBuild?builtDashboard:new URL('./dashboard.html',import.meta.url),'utf8');
@@ -210,12 +221,15 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
       return c.json({error:'Unauthorized'},401);
     }
     const keyDigest=digest(auth.slice(7));
-    const workspace=await store.authenticate(keyDigest);
-    if(!workspace){
+    const principal=await store.authenticate(keyDigest);
+    if(!principal){
       if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
       return c.json({error:'Unauthorized'},401);
     }
-    c.set('workspaceId',workspace);
+    if(!keyRoleAllowed(principal.accessRole,requiredKeyRole(c.req.method,c.req.path)))
+      return c.json({error:'Forbidden for this API key role'},403);
+    c.set('workspaceId',principal.workspaceId);
+    c.set('keyRole',principal.accessRole);
     c.set('keyDigest',keyDigest);
     await next();
   });
