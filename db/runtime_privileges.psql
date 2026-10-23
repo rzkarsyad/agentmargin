@@ -12,9 +12,13 @@ REVOKE ALL ON TABLE
   workspaces, workspace_api_keys, customers, usage_events, revenue_records,
   price_versions, workspace_price_versions FROM :"runtime_role";
 GRANT SELECT ON TABLE
-  workspace_api_keys, customers, usage_events, revenue_records,
+  customers, usage_events, revenue_records,
   price_versions, workspace_price_versions TO :"runtime_role";
 GRANT INSERT ON TABLE
   customers, usage_events, revenue_records, workspace_price_versions TO :"runtime_role";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
+REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
+GRANT USAGE ON SCHEMA agentmargin_auth TO :"runtime_role";
+GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text),
+  agentmargin_auth.workspace(text) TO :"runtime_role";
 COMMIT;

@@ -13,7 +13,7 @@
 | v0.2 alpha | One-command local demo, OpenAI usage helpers, unknown-cost diagnostics, live local E2E | [Release](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.2.0-alpha) |
 | v0.3 alpha | Workspace pricing with effective dates/immutable history, React+Arc compact dark dashboard, local integration testing | [Release](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.3.0-alpha) |
 
-## Implemented on main — not yet tagged/published
+## Implementation and verification status
 
 ### v0.4 — developer adoption foundation (PR #5 merged)
 
@@ -22,7 +22,8 @@
 - [x] Document security and onboarding, verify Next.js production build and dependency audit in CI.
 - [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
 - [x] Add a **weekly, read-only provider pricing candidate scan** and review artifact; not automatic price application or invoice reconciliation.
-- [x] **First public SDK release:** `@makinohq/agentmargin@0.4.0-alpha.1` published to npm under the `alpha` tag; npm GitHub Actions Trusted Publisher configured by the owner. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).\n- [ ] **OIDC release verification:** publish `0.4.0-alpha.2` through GitHub Actions, verify registry dist-tag, provenance and clean third-party install.
+- [x] **First public SDK release:** `@makinohq/agentmargin@0.4.0-alpha.1` published to npm under the `alpha` tag; npm GitHub Actions Trusted Publisher configured by the owner. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
+- [x] **OIDC publication:** `0.4.0-alpha.2` published successfully by [Actions run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098). Registry artifact/provenance inspection and clean external consumer checks remain separate evidence.
 - [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 
 **Important:** catalog import is not an unattended official provider feed. An operator must review and explicitly apply the rates. Official invoice reconciliation is not shipped.
@@ -47,9 +48,21 @@
 
 The following work is **mandatory before** any production internet deployment. Track detailed evidence and acceptance checks in [Security & reliability gate #10](https://github.com/rzkarsyad/agentmargin/issues/10).
 
-- **v0.7:** independent tenant threat model; PostgreSQL least-privilege role/RLS assessment; authenticated gateway, TLS, unauthenticated and distributed abuse controls. A [preliminary tenant threat model](TENANT_THREAT_MODEL.md), [runtime role grant template](DB_RUNTIME_ROLE.md), [workspace key roles and expiry](KEY_PERMISSIONS.md), and disposable CI permission tests exist; **independent review**, managed key rotation, deployment-specific application and RLS remain unverified.
+- **v0.7:** independent tenant threat model; PostgreSQL least-privilege role/RLS assessment; authenticated gateway, TLS, unauthenticated and distributed abuse controls. A [preliminary tenant threat model](TENANT_THREAT_MODEL.md), [runtime role grant template](DB_RUNTIME_ROLE.md), [workspace key roles and expiry](KEY_PERMISSIONS.md), and disposable CI permission tests exist; **independent review**, managed key rotation, deployment-specific application remain unverified. [Credential-backed RLS](DB_RUNTIME_ROLE.md) is implemented as a review candidate, with direct PostgreSQL 16 SQL tests; independent review remains open.
 - **v0.8:** monitored, encrypted backups and **restore drills**; privacy lifecycle, export/deletion policy, structured redacted logging, alerts, incident handling. A [synthetic PostgreSQL 16 backup/restore CI drill](BACKUP_RESTORE.md) and [opt-in redacted request telemetry](OBSERVABILITY.md) are implemented; real scheduled backups, encryption/retention, restore timing, alerting, and operational monitoring remain **unverified**.
 - **v0.9:** pricing/provider bill reconciliation, refunds and revenue adjustments, data migrations with rollback tests, resilience/load and recovery scenarios.
+
+## Status matrix (implemented ≠ externally verified ≠ production-ready)
+
+| Stage | Implemented and automated evidence | Externally verified | Production-ready |
+| --- | --- | --- | --- |
+| v0.4 | ESM/declarations, package contents, Next.js starter, onboarding | OIDC publication run succeeded; three independent developers and registry consumer/provenance checks remain open | No |
+| v0.5 | Exact workspace totals, pagination, effective pricing, unknown-cost diagnostics | Real provider invoice/tier validation and pricing approval policy open | No |
+| v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
+| v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |
+| v0.8 | Synthetic restore CI drill, privacy-safe request telemetry, DB operation time bounds | Scheduled encrypted external backups, measured RPO/RTO, alerts and incident drills open | No |
+| v0.9 | Ingestion concurrency/idempotency and atomic isolation migration failure/retry tests | Provider/revenue reconciliation, adjustments and failure/load evidence open | No |
+| v1.0 | Release gates tracked below | No independent release approval | No |
 
 ## v1.0 — stable release (NOT DONE)
 
