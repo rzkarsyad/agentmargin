@@ -133,7 +133,7 @@ try {
   const runtimeRole='agentmargin_ci_runtime_'+randomBytes(6).toString('hex');
   const runtimePassword=randomBytes(24).toString('base64url');
   const roleDDL=await pool.query<{sql:string}>(
-    `SELECT format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', $1, $2) AS sql`,
+    `SELECT format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', $1::text, $2::text) AS sql`,
     [runtimeRole,runtimePassword]);
   await pool.query(roleDDL.rows[0]!.sql);
   let runtimeStore:PostgresEventStore|undefined;
