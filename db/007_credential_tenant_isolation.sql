@@ -1,6 +1,9 @@
 -- Additive PostgreSQL 16 tenant boundary. Apply after 006 as the trusted owner.
 -- Deploy the matching API and reapply runtime_privileges.psql before resuming traffic.
 BEGIN;
+-- Abort cleanly rather than wait indefinitely behind active application writers.
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
 CREATE SCHEMA agentmargin_auth;
 REVOKE ALL ON SCHEMA agentmargin_auth FROM PUBLIC;
 
