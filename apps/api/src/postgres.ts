@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
-import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole } from './app.ts';
+import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole, RevenueDelivery } from './app.ts';
 
 const { Pool } = pg;
 export const ANALYTICS_SQL = `WITH revenue AS (
@@ -100,10 +100,10 @@ export class PostgresEventStore implements EventStore {
       SELECT (
         (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname IN
-            ('customers','usage_events','revenue_records','workspace_price_versions')
+            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries')
             AND c.relrowsecurity
             AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
-              AND p.polname IN ('tenant_read','tenant_insert'))=2)=4
+              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname='revenue_deliveries' THEN 3 ELSE 2 END)=5
         AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
@@ -238,10 +238,8 @@ export class PostgresEventStore implements EventStore {
       await this.rollback(client); throw err;
     } finally {client.release(this.brokenClients.has(client));}
   }
-  async ingestRevenue(workspaceId:string,records:readonly StoredRevenue[]):Promise<{inserted:number;duplicate:number}>{
-    const client=await this.begin();
+  private async writeRevenue(client:pg.PoolClient,workspaceId:string,records:readonly StoredRevenue[]):Promise<{inserted:number;duplicate:number}>{
     let inserted=0,duplicate=0;
-    try{
       for(const record of [...records].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[`${workspaceId}:revenue:${record.id}`]);
         const old=await client.query<{payload_digest:string|null}>(
@@ -257,9 +255,77 @@ export class PostgresEventStore implements EventStore {
           record.amountMicros,record.payloadDigest]);
         inserted++;
       }
+    return {inserted,duplicate};
+  }
+  async ingestRevenue(workspaceId:string,records:readonly StoredRevenue[]):Promise<{inserted:number;duplicate:number}>{
+    const client=await this.begin();
+    try{
+      const result=await this.writeRevenue(client,workspaceId,records);
+      await client.query('COMMIT');return result;
+    }catch(error){await this.rollback(client);throw error;}
+    finally{client.release(this.brokenClients.has(client));}
+  }
+  async enqueueRevenueDelivery(workspaceId:string,delivery:RevenueDelivery):Promise<{duplicate:boolean;state:string}>{
+    const client=await this.begin();
+    try{
+      const r=delivery.record;
+      const inserted=await client.query(`INSERT INTO revenue_deliveries
+        (workspace_id,provider_event_id,provider_account,record_id,customer_id,occurred_at,amount_micros,payload_digest)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(workspace_id,provider_event_id) DO NOTHING`,
+        [workspaceId,delivery.providerEventId,delivery.providerAccount,r.id,r.customerId,r.occurredAt,r.amountMicros,r.payloadDigest]);
+      const result=await client.query<{payload_digest:string;provider_account:string;state:string}>(
+        'SELECT payload_digest,provider_account,state FROM revenue_deliveries WHERE workspace_id=$1 AND provider_event_id=$2',
+        [workspaceId,delivery.providerEventId]);
+      const row=result.rows[0];
+      if(!row||row.payload_digest!==r.payloadDigest||row.provider_account!==delivery.providerAccount)throw new Error('Idempotency conflict');
+      await client.query('COMMIT');return {duplicate:inserted.rowCount===0,state:row.state};
+    }catch(error){await this.rollback(client);throw error;}
+    finally{client.release(this.brokenClients.has(client));}
+  }
+  async revenueDeliveryStatus(workspaceId:string):Promise<{pending:string;failed:string;delivered:string;oldestPendingSeconds:string|null}>{
+    const result=await this.query<{pending:string;failed:string;delivered:string;oldest_pending_seconds:string|null}>(`
+      SELECT count(*) FILTER (WHERE state='pending')::text AS pending,
+        count(*) FILTER (WHERE state='failed')::text AS failed,
+        count(*) FILTER (WHERE state='delivered')::text AS delivered,
+        extract(epoch FROM statement_timestamp()-min(received_at) FILTER (WHERE state='pending'))::text AS oldest_pending_seconds
+      FROM revenue_deliveries WHERE workspace_id=$1`,[workspaceId]);
+    const row=result.rows[0]!;
+    return {pending:row.pending,failed:row.failed,delivered:row.delivered,oldestPendingSeconds:row.oldest_pending_seconds};
+  }
+  async processNextRevenueDelivery(workspaceId:string):Promise<{state:'empty'|'delivered'|'retry'|'failed';inserted?:number;duplicate?:number}>{
+    const client=await this.begin();
+    try{
+      const job=await client.query<{provider_event_id:string;record_id:string;customer_id:string;occurred_at:Date;amount_micros:string;payload_digest:string;attempts:number}>(`
+        SELECT provider_event_id,record_id,customer_id,occurred_at,amount_micros::text,payload_digest,attempts
+        FROM revenue_deliveries WHERE workspace_id=$1 AND state='pending' AND available_at<=statement_timestamp()
+        ORDER BY available_at,received_at,provider_event_id FOR UPDATE SKIP LOCKED LIMIT 1`,[workspaceId]);
+      const row=job.rows[0];
+      if(!row){await client.query('COMMIT');return {state:'empty'};}
+      const attempts=row.attempts+1;
+      await client.query('SAVEPOINT delivery_write');
+      let result:{inserted:number;duplicate:number}|undefined;
+      let errorClass:string|null=null;
+      try{
+        result=await this.writeRevenue(client,workspaceId,[{id:row.record_id,customerId:row.customer_id,
+          occurredAt:row.occurred_at.toISOString(),amountMicros:row.amount_micros,payloadDigest:row.payload_digest}]);
+      }catch(error){
+        await client.query('ROLLBACK TO SAVEPOINT delivery_write');
+        const code=(error as {code?:string}).code;
+        errorClass=error instanceof Error&&error.message==='Idempotency conflict'?'idempotency_conflict':
+          code==='23514'||code==='23503'?'invalid_record':'database_retry';
+      }
+      await client.query('RELEASE SAVEPOINT delivery_write');
+      const state=result?'delivered':errorClass!=='database_retry'||attempts>=8?'failed':'pending';
+      await client.query(`UPDATE revenue_deliveries SET state=$3,attempts=$4,error_class=$5,
+        delivered_at=CASE WHEN $3='delivered' THEN statement_timestamp() ELSE NULL END,
+        available_at=statement_timestamp()+make_interval(secs=>$6)
+        WHERE workspace_id=$1 AND provider_event_id=$2`,
+        [workspaceId,row.provider_event_id,state,attempts,errorClass,Math.min(300,2**attempts)]);
+      // Ledger insertion and completion share the same commit. A crash releases
+      // the row claim and rolls back both, so no processing lease can get stuck.
       await client.query('COMMIT');
-      return {inserted,duplicate};
-    }catch(err){await this.rollback(client);throw err;}
+      return {state:state==='pending'?'retry':state,...result};
+    }catch(error){await this.rollback(client);throw error;}
     finally{client.release(this.brokenClients.has(client));}
   }
   async analyticsPage(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>{

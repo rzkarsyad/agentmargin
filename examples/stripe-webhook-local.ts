@@ -8,6 +8,8 @@ const key=process.env.AGENTMARGIN_API_KEY;
 if(!secret||!key)throw new Error('Set STRIPE_WEBHOOK_SECRET and AGENTMARGIN_API_KEY in the local shell');
 const client=new AgentMarginClient({endpoint:process.env.AGENTMARGIN_ENDPOINT??'http://127.0.0.1:8787',apiKey:key});
 const expectedAccount=process.env.STRIPE_ACCOUNT_ID;
+const port=Number(process.env.STRIPE_LOCAL_PORT??8788);
+if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid local Stripe port');
 http.createServer(async(req,res)=>{
  if(req.method!=='POST'||req.url!=='/stripe/webhook'){res.writeHead(404).end();return;}
  const header=req.headers['stripe-signature'];
@@ -24,10 +26,16 @@ http.createServer(async(req,res)=>{
   try{record=stripeInvoicePaidToRevenue(data,header,secret!,Math.floor(Date.now()/1000),expectedAccount);}
   catch{res.writeHead(400).end();return;}
   if(!record){res.writeHead(200,{'content-type':'application/json'}).end('{"ignored":true}');return;}
-  await client.trackRevenue([record]);
+  if(process.env.AGENTMARGIN_DURABLE_REVENUE==='true'){
+    // Parsing occurs only after raw-body verification above. A connected account
+    // must have an explicit trusted mapping to this receiver's one workspace.
+    const event=JSON.parse(data.toString('utf8')) as {id:string;account?:string};
+    if(event.account&&!expectedAccount){res.writeHead(400).end();return;}
+    await client.enqueueRevenueDelivery({providerEventId:event.id,providerAccount:expectedAccount??'platform',record},AbortSignal.timeout(5000));
+  }else await client.trackRevenue([record]);
   res.writeHead(200,{'content-type':'application/json'}).end('{"accepted":true}');
  }catch{
   // A 5xx allows Stripe to retry; AgentMargin uses stable invoice IDs for idempotency.
   res.writeHead(503).end();
  }
-}).listen(8788,'127.0.0.1',()=>console.log('Stripe LOCAL test receiver on 127.0.0.1:8788'));
+}).listen(port,'127.0.0.1',()=>console.log('Stripe LOCAL test receiver listening on loopback'));

@@ -11,6 +11,9 @@ export interface RevenueInput {
   /** USD microdollars, serialized as a nonnegative decimal integer string. */
   amountMicros:string;
 }
+export interface RevenueDeliveryInput {
+  providerEventId:string;providerAccount:string;record:RevenueInput;
+}
 export interface AgentMarginOptions {
   endpoint:string; apiKey:string; fetchImpl?:typeof fetch;
 }
@@ -59,6 +62,16 @@ export class AgentMarginClient {
   async trackAnthropicMessage(message:AnthropicMessageUsage,customerId:string,occurredAt:string,
     signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     return this.track([fromAnthropicMessage(message,customerId,occurredAt)],signal);
+  }
+  /** Persist verified, normalized Stripe invoice evidence before acknowledging delivery.
+   * Completion is asynchronous; the deployment must run a scoped replay worker.
+   */
+  async enqueueRevenueDelivery(delivery:RevenueDeliveryInput,signal?:AbortSignal):Promise<{duplicate:boolean;state:string}>{
+    const response=await this.fetchImpl(new URL('/v1/revenue/deliveries',this.endpoint),{method:'POST',headers:{
+      authorization:`Bearer ${this.apiKey}`,'content-type':'application/json'
+    },body:JSON.stringify(delivery),signal});
+    if(!response.ok)throw new Error(`AgentMargin HTTP ${response.status}: ${(await response.text()).slice(0,300)}`);
+    return await response.json() as {duplicate:boolean;state:string};
   }
   async trackRevenue(records:RevenueInput[],signal?:AbortSignal):Promise<{inserted:number;duplicate:number;received:number}>{
     if(records.length<1||records.length>100)throw new Error('Batch must contain 1-100 records');
