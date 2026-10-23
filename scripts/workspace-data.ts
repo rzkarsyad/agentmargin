@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {readCheckedFile,requirePrivateDirectory} from './lib/private-files.ts';
 import {dirname,join,basename} from 'node:path';
+async function main(){
 const tables=['customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries',
  'revenue_adjustments','revenue_payment_sources','adjustment_deliveries','delivery_history','delivery_requeues'] as const;
 const url=process.env.AGENTMARGIN_STANDALONE_DATABASE_URL,workspace=process.argv[2],output=process.argv[3],action=process.argv[4]??'export';
@@ -22,7 +23,9 @@ async function snapshot(c:pg.PoolClient){
  const result=await c.query('SELECT '+tables.map((table,i)=>`(SELECT coalesce(jsonb_agg(t), '[]'::jsonb) FROM (SELECT * FROM public.${table} WHERE workspace_id=$1 ORDER BY to_jsonb(${table})::text LIMIT 10001) t) AS data_${i}`).join(','),[workspace]);
  const data=Object.fromEntries(tables.map((table,i)=>[table,result.rows[0]['data_'+i]]));
  if(Object.values(data).some(rows=>rows.length>10000))throw new Error('Export bound exceeded; do not truncate');
- return JSON.stringify({format:'agentmargin-disposable-workspace-v1',workspaceId:workspace,data})+'\n';
+ const serialized=JSON.stringify({format:'agentmargin-disposable-workspace-v1',workspaceId:workspace,data})+'\n';
+ if(Buffer.byteLength(serialized)>10_000_000)throw new Error('Export byte bound exceeded');
+ return serialized;
 }
 try{
  const c=await pool.connect();
@@ -46,3 +49,6 @@ try{
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }catch{process.stderr.write('{"kind":"disposable_workspace_lifecycle_failed"}\n');process.exitCode=1;}
 finally{await pool.end();}
+
+}
+await main().catch(()=>{process.stderr.write('{"kind":"disposable_workspace_lifecycle_failed"}\n');process.exitCode=1;});

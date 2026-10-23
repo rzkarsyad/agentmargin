@@ -6,6 +6,7 @@ import {resolve,join} from 'node:path';
 import {reconcileLedgerRevenue,serializeLedgerReconciliation,type FinancialLedgerInput} from '../packages/core/src/financial-ledger.ts';
 import type {ReconciliationInput} from '../packages/core/src/reconciliation.ts';
 import {reconcileFinancialRecords,serializeReconciliationReport} from '../packages/core/src/reconciliation.ts';
+async function main(){
 const [inputPath,outputPath]=process.argv.slice(2);
 if(!inputPath||!outputPath)throw new Error('Usage: node --experimental-strip-types scripts/reconcile.ts input.json private-report-directory');
 const input=JSON.parse(readCheckedFile(inputPath).contents) as ReconciliationInput&{ledger?:FinancialLedgerInput;billing?:Omit<ReconciliationInput,'records'|'recordedExportRef'>};
@@ -25,3 +26,6 @@ try{
 }finally{unlinkSync(temporary);}
 // Never print financial rows, customer IDs or source references.
 process.stdout.write(JSON.stringify({kind:'reconciliation_report',inputDigest:report.inputDigest,complete:report.summary.complete})+'\n');
+
+}
+await main().catch(()=>{process.stderr.write('{"kind":"reconciliation_failed"}\n');process.exitCode=1;});

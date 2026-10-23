@@ -63,3 +63,8 @@ byte bound. Private outputs require canonical private directories with trusted
 operator/filesystem-administrator ancestors; shared writable non-sticky parents
 are rejected. Same-UID/host compromise is outside this local filesystem boundary.
 Use a dedicated mode-0700 directory, not a shared output directory or symlink file.
+
+CLI evidence reads/exports are capped at 10 MB (requeue review JSON: 100 KB),
+with additional row-count bounds. Partition larger inputs before export; no
+truncation is performed. CLI configuration/JSON failures emit fixed events rather
+than raw payload snippets or credential-bearing connection URLs.
