@@ -214,8 +214,11 @@ Remaining release actions, in order:
 
 1. Independent security review/acceptance of 007–014, residual authority and CodeQL
    triage; founder/accountant approval of recorded-revenue/credit/cross-period policy.
-2. Supply sandbox-scoped CLI/API access for real signed paid/refund/credit delivery;
-   execute the harness and corroborate reports with authentic provider exports.
+2. Run the documented recovery mode against the existing Moland fixtures for real
+   signed paid/refund/credit delivery; corroborate reports with authentic exports.
+   The operator has successfully created the economic objects and confirmed all
+   eight expected events. CLI login isolation and EUR invoice currency are fixed;
+   fresh signed recovery/reconciliation remains unverified externally.
 3. Approve and integrate the protected PR sequence. Re-run all checks and default
    CodeQL on **final main**, resolve critical regressions, regenerate artifacts from
    that exact commit; rehearsal commit evidence alone is insufficient.
@@ -229,3 +232,18 @@ Deployment-specific TLS/shared abuse controls, scheduled encrypted external back
 separate key recovery, delivered alerts, scale/RPO/RTO and approved financial-data
 retention/erasure remain production gates. Three independent developers remain a
 v1.0 adoption gate. No production certification or v1.0 completion is implied.
+
+
+Stripe QA recovery follow-up (#35 propagated to #36): run-scoped discovery fully
+paginates events; API retrieval never counts as delivery. Recovery forbids
+financial writes and uses CLI v1.55.1 `events resend` without an endpoint flag,
+requesting fresh signed HTTP delivery to the login-authenticated loopback listener.
+Both key and login account are checked; listener/resend exclude STRIPE_API_KEY.
+Private verified receipts persist before ACK; allowlisted diagnostics distinguish
+forwarding, signatures, fixture matching, normalization and API failures. Exact
+invoice currency and the official Refund resource's missing livemode field are
+handled explicitly. A fictional-CLI/restricted-PG16 regression verifies the full
+$128 − $105.25 − $12 = $10.75 flow and a deliberate forwarding failure. This is
+automated synthetic evidence, not an externally verified signed sandbox run.
+Independent security/accounting review, approved integration, provider exports
+and explicit release authorization remain required.

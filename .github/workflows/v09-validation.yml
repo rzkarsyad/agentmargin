@@ -48,6 +48,8 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: QA recovery harness (fictional CLI, restricted PostgreSQL; no Stripe access)
+        run: node --experimental-strip-types scripts/stripe-sandbox-harness-test.ts
       - name: PostgreSQL service restart and financial fingerprint recovery (synthetic only)
         env:
           AGENTMARGIN_RESTART_DRILL: ci-only
