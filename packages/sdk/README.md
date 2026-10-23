@@ -2,7 +2,7 @@
 
 Lightweight, server-side TypeScript SDK for sending AI inference usage and attributed revenue to an AgentMargin instance. No OpenAI SDK dependency; the OpenAI post-call helpers accept structural responses.
 
-**Experimental prerelease:** API is subject to change. Publishing to npm is a separate release step; do not assume the package exists on npm just because it appears in this repository.
+**Experimental prerelease:** API is subject to change. The SDK is published on npm under the `alpha` dist-tag; do not install it expecting a stable API.
 
 ## Build locally
 
@@ -35,6 +35,12 @@ An idempotent stable event ID is required for direct `track`. Reported provider 
 
 [Local quickstart](../../docs/QUICKSTART.md) · [OpenAI tracking semantics](../../docs/OPENAI_INTEGRATION.md) · [Security limitations](../../SECURITY.md).
 
-## npm publication gate
+## Publishing and provenance
 
-The first release requires a one-time manual publish by an owner of the `@makinohq` npm organization. From a clean, tested release commit, run `npm publish --workspace @makinohq/agentmargin --access public --tag alpha`; do not use the `latest` dist-tag. Only after the package exists on npm can the owner configure a trusted publisher for the GitHub repository's `publish-sdk.yml` workflow, using the GitHub Actions environment `npm-publish` and **publish** permission. Future versions are published through the manually dispatched workflow, which checks the exact package version and tag. GitHub repository ownership alone does **not** grant npm scope ownership.
+Install the public prerelease with `npm install @makinohq/agentmargin@alpha`.
+
+The initial `0.4.0-alpha.1` version was published manually. Subsequent tested versions are released through [`publish-sdk.yml`](../../.github/workflows/publish-sdk.yml), using npm Trusted Publishing (GitHub OIDC) with the `npm-publish` environment; no long-lived npm publishing token is required.
+
+For a new prerelease, bump the SDK and lockfile versions in one reviewed commit, merge after CI is green, create an immutable `sdk-vX.Y.Z-alpha.N` tag **on that tested commit**, then manually dispatch the workflow from GitHub Actions with the same tag. It checks that the tag and package version match before publishing to the `alpha` dist-tag. After a successful publish, confirm the registry version, tag and provenance on npm.
+
+Do not rerun publishing for an existing version: npm versions are immutable. Do not use the `latest` dist-tag for an alpha release.
