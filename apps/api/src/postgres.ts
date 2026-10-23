@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
-import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion } from './app.ts';
+import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole } from './app.ts';
 
 const { Pool } = pg;
 export const ANALYTICS_SQL = `WITH revenue AS (
@@ -89,10 +89,11 @@ export class PostgresEventStore implements EventStore {
     this.pool = new Pool({ connectionString, max:10, connectionTimeoutMillis:5000,
       ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized:true } : undefined });
   }
-  async authenticate(keyDigest: string): Promise<string | null> {
-    const q = await this.pool.query<{workspace_id:string}>(
-      'SELECT workspace_id FROM workspace_api_keys WHERE key_digest=$1 AND revoked_at IS NULL',[keyDigest]);
-    return q.rows[0]?.workspace_id ?? null;
+  async authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null> {
+    const q = await this.pool.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
+      'SELECT workspace_id,access_role FROM workspace_api_keys WHERE key_digest=$1 AND revoked_at IS NULL',[keyDigest]);
+    const row=q.rows[0];
+    return row?{workspaceId:row.workspace_id,accessRole:row.access_role}:null;
   }
   async prices(workspaceId:string,model:string,timestamp:string):Promise<ScopedPriceVersion[]> {
     const scoped=await this.pool.query<{
