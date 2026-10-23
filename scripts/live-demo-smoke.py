@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "http://127.0.0.1:8787"
@@ -161,7 +161,7 @@ occurredAt:now.toISOString(),provider:'import',providerAccount:'synthetic',sourc
             page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
             page.locator("#key").fill(key)
             page.locator("#load").click()
-            page.wait_for_function("document.querySelector('#count').textContent === '5 customers'", timeout=15000)
+            expect(page.locator("#count")).to_have_text("5 customers", timeout=15000)
             assert page.locator("#revenue").inner_text() == "$125.92"
             row = page.locator("#rows tr").filter(has_text="refund-period-demo")
             assert "−$0.08" in row.inner_text(), "Prior-period refund was dropped or treated as positive"
