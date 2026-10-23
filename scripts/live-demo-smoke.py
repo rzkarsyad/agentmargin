@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "http://127.0.0.1:8787"
@@ -142,6 +142,38 @@ def live_pricing_browser(browser, key: str):
         page.close()
 
 
+def live_adjustment_browser(browser, key: str):
+    """A real prior-period payment/refund must remain negative in the current UI."""
+    code = """
+import {AgentMarginClient} from './packages/sdk/src/index.ts';
+const client=new AgentMarginClient({endpoint:'http://127.0.0.1:8787',apiKey:process.env.AGENTMARGIN_API_KEY});
+const now=new Date(),old=new Date(now.getTime()-400*86400000);
+await client.trackRevenue([{id:'prior-period-demo',customerId:'refund-period-demo',occurredAt:old.toISOString(),amountMicros:'500000'}]);
+await client.trackAdjustments([{originalPaymentId:'prior-period-demo',customerId:'refund-period-demo',kind:'refund',amountMicros:'80000',currency:'USD',
+occurredAt:now.toISOString(),provider:'import',providerAccount:'synthetic',sourceObjectId:'partial_refund_demo',evidenceRef:'synthetic:refund:demo'}]);
+"""
+    result = subprocess.run(["node", "--experimental-strip-types", "--input-type=module", "-e", code], cwd=ROOT,
+                            env={**os.environ, "AGENTMARGIN_API_KEY": key}, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, "Synthetic adjustment SDK ingestion failed"
+    for width in (1280, 390):
+        page = browser.new_page(viewport={"width": width, "height": 850})
+        try:
+            page.goto(BASE + "/dashboard", wait_until="domcontentloaded")
+            page.locator("#key").fill(key)
+            page.locator("#load").click()
+            expect(page.locator("#count")).to_have_text("5 customers", timeout=15000)
+            assert page.locator("#revenue").inner_text() == "$125.92"
+            row = page.locator("#rows tr").filter(has_text="refund-period-demo")
+            assert "−$0.08" in row.inner_text(), "Prior-period refund was dropped or treated as positive"
+            assert row.locator("td").nth(4).inner_text() == "—", "Nonpositive revenue must not have a percentage margin"
+            bar = page.locator(".chartCustomer").filter(has_text="refund-period-demo").locator(".chartRevenue")
+            assert bar.evaluate("el => el.style.height") == "0%", "Negative revenue generated an invalid bar height"
+            assert "Net of recorded adjustments" in page.locator(".metrics").inner_text()
+        finally:
+            page.close()
+    print("PASS: live SDK partial refund, original payment preserved, adjusted net totals and negative-period UI")
+
+
 def main():
     if not (os.environ.get("CI") == "true" and os.environ.get("GITHUB_ACTIONS") == "true"):
         raise SystemExit("This disposable Docker demo smoke test is restricted to GitHub Actions CI.")
@@ -217,6 +249,7 @@ def main():
                 for width in (1280, 390):
                     live_browser(browser, key, width, 4, 2)
                 live_pricing_browser(browser, key)
+                live_adjustment_browser(browser, key)
             finally:
                 browser.close()
         print("PASS: full live demo E2E — Docker PostgreSQL, API auth, SDK metering, and Chromium")

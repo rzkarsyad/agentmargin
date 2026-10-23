@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
+import {testFinancialReports} from './financial-report-tests.ts';
 import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
@@ -555,6 +556,7 @@ try {
     }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
     assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
     await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
+    await testFinancialReports(pool,runtimeURL.toString());
     const queuedApi=createApp(runtimeStore);
     const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};
     const submit=(token:string,payload:unknown=wire)=>queuedApi.request('/v1/revenue/deliveries',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)});

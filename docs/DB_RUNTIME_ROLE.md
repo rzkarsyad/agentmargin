@@ -25,7 +25,7 @@ All valid key roles can read their own tenant rows at the SQL boundary: ingestio
 Use a dedicated empty local database, **never production**:
 
 ```bash
-for migration in db/00*.sql; do
+for migration in db/[0-9][0-9][0-9]_*.sql; do
   psql "$AGENTMARGIN_ADMIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
 done
 ```
@@ -75,3 +75,5 @@ READ COMMITTED does **not** revoke a statement's existing snapshot. A hostile st
 `db/contain_runtime_sessions.psql` is an operator-only incident tool, not automatic key revocation. Under separately authorized incident response, stop ingress/workers, disable new logins for the dedicated shared runtime role, terminate **all** its database sessions, and confirm no sessions remain before any credential recovery/re-enable. Do not select victims using caller-controlled workspace GUCs or application names. The tool commits NOLOGIN before termination to stop reconnects; test it only against a generated disposable role. It interrupts all tenants sharing the role. Termination races, alternate credentials, privileged sessions and replica snapshots require operator investigation. Never automatically restore LOGIN as part of this tool.
 
 **Gate remains open:** independent review must approve migrations 007–009, helper ownership/ACLs, the residual inbox/digest authority, in-flight statement behavior, credential separation and the incident containment procedure. Synthetic tests do not establish production readiness or a hard revocation deadline.
+
+The adjustment/delivery follow-ups (010–011) preserve the same unapproved boundary. Ingest SQL credentials can read their tenant's normalized inbox financial payloads and payment-source metadata. The payment validation trigger also permits an own-tenant remaining-amount oracle through attempted writes/rollbacks. Narrowing original-table SELECT does not eliminate these capabilities. Strong separation requires different API enqueue and replay database identities plus reviewed restricted procedures (or isolated tenant credentials/infrastructure); it is not achieved by HTTP scopes or a session variable. Independent review must assess these authorities and every new fixed-search-path definer trigger before rollout.

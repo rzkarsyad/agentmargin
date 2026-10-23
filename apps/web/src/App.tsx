@@ -15,7 +15,7 @@ type Analytics = {
   summary:{customerCount:string;verifiedCustomerCount:string;profitableCustomerCount:string;
     lossMakingCustomerCount:string;unknownCustomerCount:string;usageEventCount:string;
     unknownUsageEventCount:string;totalRevenueMicros:string;totalKnownAiCostMicros:string;
-    verifiedCustomerContributionMicros:string;completeContributionMicros:string|null};
+    verifiedCustomerContributionMicros:string;completeContributionMicros:string|null;revenueBasis?:'net_adjusted';unresolvedRevenueDeliveries?:string};
   unknownModels?:{model:string;eventCount:number}[];
   unknownModelsTruncated?:boolean;
 };
@@ -167,6 +167,7 @@ export function App(){
   const cost=BigInt(totals?.totalKnownAiCostMicros??'0');
   const partial=BigInt(totals?.verifiedCustomerContributionMicros??'0');
   const unknown=Number(totals?.unknownCustomerCount??'0');
+  const unresolvedRevenue=BigInt(totals?.unresolvedRevenueDeliveries??'0');
   const totalCustomers=Number(totals?.customerCount??'0');
   const knownCount=Number(totals?.verifiedCustomerCount??'0');
   const profitableCount=Number(totals?.profitableCustomerCount??'0');
@@ -192,7 +193,7 @@ export function App(){
     const r=BigInt(c.revenueMicros),cost=BigInt(c.knownAiCostMicros);
     return r>m?r:cost>m?cost:m;
   },0n);
-  const percent=(amount:string)=>maxAmount===0n?'0%':Number(BigInt(amount)*100n/maxAmount)+'%';
+  const percent=(amount:string)=>maxAmount===0n||BigInt(amount)<=0n?'0%':Number(BigInt(amount)*100n/maxAmount)+'%';
   return <div className="shell">
     <aside className="rail" aria-label="Primary navigation">
       <a href="/dashboard" className="brand" aria-label="AgentMargin home"><span className="brandMark"><UIIcon name="arrow"/></span><span>AgentMargin</span></a>
@@ -240,11 +241,12 @@ export function App(){
       {error&&<div className="alert error" role="alert">{error}</div>}
       {message&&<div className="alert info" role="status" aria-live="polite">{message}</div>}
 
+      {view==='overview'&&unresolvedRevenue>0n&&<div className="alert info" role="status">Revenue processing is incomplete: {unresolvedRevenue.toString()} unresolved deliveries. Recorded totals may change after reconciliation.</div>}
       {view==='overview'?<>
         <section className="metrics" aria-label="Customer economics summary">
-          <div className="metric"><div className="metricTop"><span>Customer revenue</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>All workspace customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Customer revenue</span></div><strong id="revenue">{analytics?money(revenue.toString()):'—'}</strong><small>{totals?.revenueBasis==='net_adjusted'?'Net of recorded adjustments':'All workspace customers'}</small></div>
           <div className="metric"><div className="metricTop"><span>Known AI cost</span></div><strong id="cost">{analytics?money(cost.toString()):'—'}</strong><small>Reported + priced usage</small></div>
-          <div className="metric"><div className="metricTop"><span>Verified contribution</span></div><strong id="contribution">{analytics?(unknown?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
+          <div className="metric"><div className="metricTop"><span>Verified contribution</span></div><strong id="contribution">{analytics?(unknown||unresolvedRevenue>0n?'Partial · ':'')+money(partial.toString()):'—'}</strong><small>Excludes unknown-cost customers</small></div>
           <div className="metric"><div className="metricTop"><span>Unknown-cost customers</span></div><strong id="unknown">{analytics?unknown:'—'}</strong><small>Require pricing review</small></div>
         </section>
 
@@ -261,7 +263,7 @@ export function App(){
               </div>
             </div>
             {(!analytics||customers.length===0)&&<div className="panelEmpty">{analytics?'No customers in this period.':'Load analysis to show a real customer cost comparison.'}</div>}
-            <div className="panelFoot">Current page preview · Up to 8 customers · Unknown is never $0</div>
+            <div className="panelFoot">Current page preview · Up to 8 customers · Unknown is never $0{customers.some(c=>BigInt(c.revenueMicros)<0n)?' · Negative revenue appears in the table':''}</div>
           </section>
           <section className="surface coveragePanel" aria-labelledby="coverage-title">
             <div className="panelHeading"><div><h2 id="coverage-title">Cost coverage</h2><p>Share of customers with known costs</p></div><span className="countLabel">{coverage===null?'—':coverage+'%'}</span></div>

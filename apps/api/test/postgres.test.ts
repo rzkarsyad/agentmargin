@@ -29,6 +29,8 @@ test('real embedded Postgres migrations and tenant-scoped analytics SQL',async()
       VALUES ($1,$2,$3,$4,'superuser')`,['55555555-5555-4555-8555-555555555555',two,'b'.repeat(64),'invalid']),/check constraint/i);
     await db.query(`UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1`,[one]);
     assert.equal((await db.query<{n:number}>('SELECT count(*)::integer AS n FROM workspace_api_keys WHERE workspace_id=$1 AND revoked_at IS NULL',[one])).rows[0]?.n,0);
+    for(const file of ['007_credential_tenant_isolation.sql','008_revenue_deliveries.sql','009_credential_containment.sql','010_revenue_adjustments.sql','011_adjustment_deliveries.sql'])
+      await db.exec(readFileSync(new URL('../../../db/'+file,import.meta.url),'utf8'));
     await db.query('INSERT INTO customers(workspace_id,id) VALUES ($1,$2),($3,$4)',[one,'same',two,'same']);
     await db.query(`INSERT INTO price_versions(id,model,effective_from,input_micros_per_million,output_micros_per_million)
       VALUES ($1,'m','2026-01-01T00:00:00Z',1000000,2000000)`,[priceId]);

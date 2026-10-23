@@ -16,12 +16,18 @@ export interface BilledFinancialEntry {
   /** Explicit attribution supplied by an audited importer; never fuzzy matched. */
   recordIds:string[]; tokens?:TokenEvidence;
 }
+export interface UnresolvedFinancialEvidence {
+ id:string;sourceRef:string;reason:'unknown_fx'|'unsupported_billing_tier'|'unmatched_transaction';
+ /** Original-currency amount only; never included in USD sums without conversion evidence. */
+ currency?:string;amountMicros?:string;billingTier?:string;
+}
 export interface ReconciliationInput {
   scope:ReconciliationScope;
   /** Immutable export/invoice evidence references; do not put credentials here. */
   recordedExportRef:string; billingExportRef:string;
   records:RecordedFinancialEntry[]; billed:BilledFinancialEntry[];
   tolerance:{absoluteMicros:string;basisPoints:number};
+  unresolvedEvidence?:UnresolvedFinancialEvidence[];
 }
 const id=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=500;
 const amount=(value:unknown):bigint=>{
@@ -69,7 +75,16 @@ export function reconcileFinancialRecords(input:ReconciliationInput){
     allocations+=line.recordIds.length;
     if(allocations>20000)throw new Error('Too many billing allocations');
   }
+  if(input.unresolvedEvidence!==undefined&&(!Array.isArray(input.unresolvedEvidence)||input.unresolvedEvidence.length>10000))throw new Error('Invalid unresolved evidence');
   input=structuredClone(input);
+  const unresolvedEvidence=unique(input.unresolvedEvidence??[]);
+  for(const row of unresolvedEvidence){
+    if(!id(row.sourceRef)||!['unknown_fx','unsupported_billing_tier','unmatched_transaction'].includes(row.reason)||
+      (row.currency!==undefined&&!/^[A-Z]{3}$/.test(row.currency))||
+      (row.billingTier!==undefined&&!id(row.billingTier)))throw new Error('Invalid unresolved evidence');
+    if(row.amountMicros!==undefined)amount(row.amountMicros);
+  }
+
   const {scope}=input;
   if(![scope.workspaceId,scope.provider,scope.accountId,input.recordedExportRef,input.billingExportRef].every(id)||
     !['cost','revenue'].includes(scope.kind)||! /^[A-Z]{3}$/.test(scope.currency))throw new Error('Invalid reconciliation scope');
@@ -132,12 +147,12 @@ export function reconcileFinancialRecords(input:ReconciliationInput){
   });
   const unmatchedRecordIds=records.filter(r=>!allocated.has(r.id)).map(r=>r.id);
   const unknownRecordIds=records.filter(r=>r.amountMicros===null).map(r=>r.id);
-  const inputs={...input,records,billed};
+  const inputs={...input,records,billed,...(input.unresolvedEvidence===undefined?{}:{unresolvedEvidence})};
   const inputDigest=createHash('sha256').update(canonical(inputs)).digest('hex');
-  const complete=billed.length>0&&unknownRecordIds.length===0&&unmatchedRecordIds.length===0&&lines.every(line=>line.status==='within_tolerance');
-  return {schemaVersion:1,inputDigest,scope,inputs,lines,unmatchedRecordIds,unknownRecordIds,
+  const complete=unresolvedEvidence.length===0&&billed.length>0&&unknownRecordIds.length===0&&unmatchedRecordIds.length===0&&lines.every(line=>line.status==='within_tolerance');
+  return {schemaVersion:1,inputDigest,scope,inputs,lines,unmatchedRecordIds,unknownRecordIds,unresolvedEvidence,
     summary:{complete,recordedKnownMicros:recordedKnown.toString(),externalNetMicros:externalNet.toString(),
-      varianceMicros:unknownRecordIds.length?null:(externalNet-recordedKnown).toString()}};
+      varianceMicros:unknownRecordIds.length||unresolvedEvidence.length?null:(externalNet-recordedKnown).toString()}};
 }
 
 /** Stable bytes for immutable report storage and retry comparison. */
