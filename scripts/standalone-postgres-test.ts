@@ -5,6 +5,7 @@ import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import {testV09FinancialFixture} from './v09-financial-fixture.ts';
 import {testFinancialReports} from './financial-report-tests.ts';
+import {testDefinerCatalogShadow} from './definer-shadow-tests.ts';
 import {testDeliveryRecovery} from './delivery-recovery-tests.ts';
 import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
@@ -110,6 +111,7 @@ try {
     await auditUpgrade.query(sql);
     assert.equal((await auditUpgrade.query("SELECT operation FROM delivery_history WHERE provider_event_id='evt_upgrade_checkpoint'")).rows[0].operation,'checkpoint');
   }finally{auditUpgrade.release();}
+  await testDefinerCatalogShadow(pool,connectionString);
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
