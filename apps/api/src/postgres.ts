@@ -108,16 +108,36 @@ export class PostgresEventStore implements EventStore {
       SELECT (
         (SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname IN
-            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries','revenue_adjustments','revenue_payment_sources','adjustment_deliveries')
+            ('customers','usage_events','revenue_records','workspace_price_versions','revenue_deliveries','revenue_adjustments','revenue_payment_sources','adjustment_deliveries','delivery_history','delivery_requeues')
             AND c.relrowsecurity
             AND (SELECT count(*) FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid
-              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname IN ('revenue_deliveries','adjustment_deliveries') THEN 3 ELSE 2 END)=8
+              AND p.polname IN ('tenant_read','tenant_insert','tenant_update'))=CASE WHEN c.relname IN ('revenue_deliveries','adjustment_deliveries') THEN 3 WHEN c.relname IN ('delivery_history','delivery_requeues') THEN 1 ELSE 2 END
+            AND (SELECT count(*) FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid)=CASE WHEN c.relname IN ('revenue_deliveries','adjustment_deliveries') THEN 3 WHEN c.relname IN ('delivery_history','delivery_requeues') THEN 1 ELSE 2 END)=10
         AND (SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgname='enforce_delivery_transition'
           AND tgrelid IN (to_regclass('public.revenue_deliveries'),to_regclass('public.adjustment_deliveries'))
           AND tgfoid=to_regprocedure('agentmargin_auth.enforce_delivery_transition()') AND tgenabled='O')=2
-        AND to_regclass('public.delivery_history') IS NOT NULL
-        AND to_regclass('public.delivery_requeues') IS NOT NULL
-        AND to_regprocedure('agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid)') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM (VALUES
+            ('workspace_price_versions','workspace_prices_immutable','public.reject_workspace_price_mutation()'),
+            ('revenue_records','immutable_payment','agentmargin_auth.immutable_financial_record()'),
+            ('revenue_adjustments','immutable_adjustment','agentmargin_auth.immutable_financial_record()'),
+            ('revenue_adjustments','validate_adjustment','agentmargin_auth.validate_adjustment()'),
+            ('revenue_adjustments','validate_stripe_adjustment_source','agentmargin_auth.validate_stripe_adjustment_source()'),
+            ('revenue_payment_sources','immutable_payment_source','agentmargin_auth.immutable_financial_record()'),
+            ('delivery_history','immutable_delivery_history','agentmargin_auth.immutable_financial_record()'),
+            ('delivery_requeues','immutable_delivery_requeue','agentmargin_auth.immutable_financial_record()'),
+            ('revenue_deliveries','delivery_history','agentmargin_auth.record_delivery_transition()'),
+            ('adjustment_deliveries','delivery_history','agentmargin_auth.record_delivery_transition()')
+          ) AS expected(table_name,trigger_name,function_name)
+          WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
+            WHERE t.tgrelid=to_regclass('public.'||expected.table_name)
+              AND t.tgname=expected.trigger_name AND t.tgfoid=to_regprocedure(expected.function_name)
+              AND t.tgenabled='O' AND NOT t.tgisinternal)
+        )
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+          WHERE p.oid=to_regprocedure('agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid)')
+            AND p.prosecdef AND p.provolatile='v' AND p.proconfig @> ARRAY['search_path=pg_catalog']
+            AND has_function_privilege(current_user,p.oid,'EXECUTE'))
         AND (SELECT count(*) FROM pg_catalog.pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.validate_adjustment()'),to_regprocedure('agentmargin_auth.validate_stripe_adjustment_source()'),to_regprocedure('agentmargin_auth.record_delivery_transition()'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp'])=3

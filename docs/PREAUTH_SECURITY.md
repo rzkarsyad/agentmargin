@@ -35,15 +35,15 @@ SHA-256 agreement with SQL RLS and existing keys; no KDF migration or suppressio
 is justified by these paths. A maintainer must formally triage the alert and an
 independent reviewer must verify the complete credential boundary.
 
-The database evaluation below records the historical pre-007 baseline. The current
+The database evaluation below records the historical pre-007 baseline. See the current [gate-closure risk register](TENANT_THREAT_MODEL.md) and independent reviewer checklist. The current
 candidate boundary and fixes through 013 are in DB_RUNTIME_ROLE.md and ROADMAP.md.
 
-## Database least-privilege evaluation
+## Historical pre-007 database least-privilege evaluation
 
 PostgreSQL app credentials currently can view multiple workspaces if compromised because RLS is not enabled. The optional [runtime role grants](DB_RUNTIME_ROLE.md) now narrow database operations to specific SELECT/INSERT privileges and are exercised with a throwaway, non-owner role in CI. An authorized DBA must provision that role separately from the owner/migrator for each deployment. The local demo still uses a privileged synthetic database account by default; this is not evidence of secure production configuration.
 
 Do not enable RLS solely from a copied SQL snippet: RLS requires a trusted tenant session identity, transaction ownership rules, no bypass privilege, a separate migration role, and denial-by-default tests. Until verified, the API must remain localhost-only.
 
-## v0.7–v1.0 outstanding gates
+## Historical gate notes (superseded by the current ROADMAP)
 
 See [GitHub security gate #10](https://github.com/rzkarsyad/agentmargin/issues/10). Production controls, encrypted backups/restore drills, retention/export/delete, incident response, and independent penetration review remain **NOT DONE**.

@@ -34,7 +34,7 @@ The `@makinohq/agentmargin` npm SDK and example integrations must be treated as 
 
 This table is not exhaustive. It deliberately includes attacker access to a **valid workspace key**, a **runtime database password**, CI credentials, and a malicious upstream price source; passing HTTP-only cross-tenant tests does not cover all of those actors.
 
-See [credential-backed isolation design, migration and limitations](DB_RUNTIME_ROLE.md). In particular, SQL tenant reads are available to every valid key role for replay-safe ingestion; HTTP route capabilities remain distinct.
+See [credential-backed isolation design, migration and limitations](DB_RUNTIME_ROLE.md). In particular, SQL bulk financial reads require read/admin after 009. Ingest retains own-tenant inbox/pricing/source reads and exact-ID replay oracles; HTTP capabilities remain distinct.
 
 ## Mandatory release gates and reviewer evidence
 
@@ -108,3 +108,85 @@ session/resource identity and can disrupt same-role work; review cancellation,
 termination, connection/resource limits and incident blast radius independently.
 The data-scope tests do not claim availability containment. Separate identities
 or infrastructure may be required by the deployment's accepted threat model.
+
+
+## v0.7 gate-closure audit — 2026-10-24 Asia/Jakarta
+
+This is an implementer assessment, not independent approval. Audit base is #37
+`ed2bf7586c060a440d24e75d93920ee3b1a2c524` plus independent #33
+`ec812275ce4ba3a030f981942fe15d619a21820d`. The follow-up branches after #37;
+no parent PR is rewritten or merged. CI's combined-source job merges #33 exactly
+once in an isolated checkout. Match the final PR head, combined tree and unfiltered
+SARIF before using evidence from a later run. Historical F-01/F-02 in the phase-13
+audit describe the pre-007 implementation, not the current candidate.
+
+| ID / preliminary severity | Reproduction and impact | Implemented containment / remaining decision | Gate |
+| --- | --- | --- | --- |
+| S-01 / Medium configuration detection | PG16: disabling delivery_history RLS left ready=true. A misconfigured runtime could read other tenants' audit rows without proof; a runtime alone cannot disable RLS | Readiness now includes all ten RLS tables, exact policy counts, expected recovery definer settings and financial/audit trigger bindings. Regression disables both audit RLS flags and nine critical triggers, and adds a permissive policy, restoring each afterward | Fix tested; independent review BLOCKED |
+| S-02 / High, credential compromise required | READ COMMITTED admitted cursor and in-flight statement can finish after key revocation. WITH HOLD materializes rows at commit and permits later fetch with revoked proof. New SELECT rejects that proof | 009 denies RR/SERIALIZABLE; transaction-local proof and pool reuse tested. Existing separate-owner NOLOGIN + session termination drill interrupts the disposable shared role and denies reconnect. Already returned/materialized data cannot be recalled. Timeouts are not a hard transaction lifetime | Residual INCONCLUSIVE; reviewer must accept or require separate identities/procedures |
+| S-03 / High, runtime password plus tenant ingest key | Ingest cannot bulk-read customers/usage/payments/adjustments or cross tenants. It can read own inbox, source and price metadata, use narrow digest/allowance oracles and act as the worker | 014 prevents direct failed/delivered resets; reviewed admin RPC has immutable receipts, bounded cycles and replay. Pending state and initial inbox values remain part of shared worker authority; raw SQL ingestion is not independently signed provider proof | Residual INCONCLUSIVE; review enqueue/worker identity separation |
+| S-04 / High confidentiality, pre-013 only | Temporary pg_roles/pg_class shadowed unqualified owner checks and exposed hidden-payment validation errors; final RLS still denied INSERT | Exact same session is denied 42501 after additive 013; qualified catalogs, pg_temp-last, rollback/retry verified. 012 bytes preserved | Automated regression PASS; independent migration review BLOCKED |
+| S-05 / High financial integrity, valid writer compromise | An ingest holder is authorized to append its tenant's financial data. Stripe signatures are verified by the receiver, not by PostgreSQL RLS or normalized inbox endpoints | Immutable rows/provenance, source-account linkage, cumulative locked reductions, deterministic IDs, rollback/replay tests constrain effects. They cannot certify authenticity of data submitted directly by an authorized writer | Boundary acceptance BLOCKED; assess separate receiver/worker capabilities |
+| S-06 / High availability, shared password compromise | RLS does not isolate shared-login resources, same-role cancellation, locks, pool or storage exhaustion | Fixed connection/query/idle bounds and bounded concurrency tests; local limiter only. Ingress/shared atomic quotas and possibly separate identities need deployment evidence | Operator/reviewer BLOCKED |
+| S-07 / CodeQL 8.1/7.8/6.3 candidates | SHA-256 bearer digest; QA webhook route condition; verified private receipt HTTP-to-file path | See PREAUTH_SECURITY.md and INTEGRATIONS.md: 256 random bits, unconditional signature check on handled route, bounded private verified evidence. No confirmed remote bypass from these paths. No suppressions/dismissals | Preliminary classification INCONCLUSIVE until independent triage; authoritative main alerts unavailable through connector |
+| S-08 / High operational/privacy | Owner, function owner, host, backups and deployment extensions can bypass the supported runtime boundary; restored --no-acl defaults need quarantine | Trusted owners separated; template rejects elevated attributes, memberships, ownership, CREATE and excess effective/column grants. Restore quarantines private function defaults before runtime provisioning | Deployment/independent review BLOCKED |
+
+The readiness fix detects expected schema drift; it is not an authorization
+mechanism or a proof of arbitrary policy expressions, ownership, ACLs, trigger
+bodies, extra definer functions or installed extensions. A trusted owner can change
+both controls and their checks. Review those installed definitions independently.
+No new schema migration, key digest, key issuance, financial amount, SDK API or UI
+contract is introduced by this security follow-up.
+
+### Immutable migration identity
+
+Compare these candidate checksums with the prepared release manifest, the approved
+review and the installed migration ledger. Never rerun/edit an applied migration.
+An installed hash mismatch is a stop condition, not permission to overwrite it.
+
+| Migration | SHA-256 |
+| --- | --- |
+| `007_credential_tenant_isolation.sql` | `a57538e3d571c6483215523194203de3f003bbe68b83818cb5c9533463db84aa` |
+| `008_revenue_deliveries.sql` | `c4c64296f5796d0c35049efc51652ea8923ffd779f989d02c27ea13c574f174d` |
+| `009_credential_containment.sql` | `4c4c4ec1a5dcecc47b0c73c14e805f10d14ba81dbc88d957b9a4908136813183` |
+| `010_revenue_adjustments.sql` | `d2382b3d2d30c44c5594f6bbb26321662d7108f93807ac92bead7ff599cb5f0c` |
+| `011_adjustment_deliveries.sql` | `2e7c010893fe58e24980ae48f12f7f9ed7a4d5c11b909451934eb5a754222c7d` |
+| `012_delivery_audit.sql` | `718942452c62691b9f69c0f4970a396533ef38148fe14c5db53c67228a2feba6` |
+| `013_definer_catalog_path.sql` | `5b9f9685211fdf6d264ae58554457ec5b239371d641c07cd6ec534d8d6b9469c` |
+| `014_delivery_transition_guard.sql` | `63304dd1307cbe5651206b7a3e490e35596d10636edf800c4bfcc844eaf101b8` |
+
+### Reviewer execution and decision record
+
+Use the isolated macOS/Docker procedure in BACKUP_RESTORE.md. The guarded PG16
+suite requires an empty literal agentmargin_ci and performs destructive fictional
+fixtures only. It tests 007–014 upgrade/rollback/lock failure, baseline RR and
+catalog-shadow reproductions, missing/forged/expired/revoked keys, scope/tenant
+SELECT and INSERT, SQL injection-shaped proof, pooling, held/in-flight results,
+separate session containment, immutable ledger/recovery, concurrency and privacy.
+Full combined CI additionally exercises signed synthetic delivery, API lifecycle,
+restart, browser/API/SDK, both restore drills and dependency auditing.
+
+Before approval, a reviewer who did not implement these changes must:
+
+- Pin the final combined tree and migration hashes; inspect all RLS expressions,
+  policy roles/commands, security-definer owners/search paths/volatility and PUBLIC
+  defaults, effective table/column/function privileges and unrelated extensions.
+- Reproduce negative cases and confirm the expected legacy failures precede the
+  fixes. Inspect new readiness drift regressions; do not infer semantic policy
+  verification merely from its expected object/count checks.
+- Decide S-02/S-03/S-05/S-06 boundaries explicitly. Record whether held results,
+  in-flight admission, raw credential context and shared worker/session authority
+  are acceptable or require separate login/capability architecture. Include a
+  containment owner and blast-radius decision; no timeout guarantees hard expiry.
+- Review inbox inserts/state transitions and recovery authorization independently
+  of signed-webhook tests. A review_ref is recorded evidence, not proof that a
+  separate person approved an operation.
+- Inspect all unfiltered CodeQL paths and decide false-positive dispositions
+  independently. Main alert closure needs approved integration/rescan and an
+  authorized maintainer; workflow success is not absence of findings.
+- Record reviewer identity, date, source tree, reproduced commands/results,
+  remaining findings and a signed approve/block decision in the review process.
+  Do not put credentials, raw events or customer evidence in the public PR.
+
+**Independent reviewer identity/decision: none recorded. Security gate BLOCKED.**
+Operator ingress, privacy, storage/recovery and release approvals remain separate.
