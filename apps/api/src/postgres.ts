@@ -93,6 +93,24 @@ export class PostgresEventStore implements EventStore {
       statement_timeout:15000, idle_in_transaction_session_timeout:15000,
       ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized:true } : undefined });
   }
+  async ready():Promise<boolean>{
+    // Connectivity alone can be healthy while every authenticated request fails.
+    // Check the migration contract without reading tenant or authentication rows.
+    const result=await this.pool.query<{ready:boolean}>(`
+      SELECT (
+        (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relname IN
+            ('customers','usage_events','revenue_records','workspace_price_versions')
+            AND c.relrowsecurity
+            AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid
+              AND p.polname IN ('tenant_read','tenant_insert'))=2)=4
+        AND (SELECT count(*) FROM pg_proc p WHERE p.oid IN
+          (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'))
+          AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
+          AND has_function_privilege(current_user,p.oid,'EXECUTE'))=2
+      ) AS ready`);
+    return result.rows[0]?.ready===true;
+  }
   forCredential(credential:string):PostgresEventStore {
     return new PostgresEventStore('',{pool:this.pool,credential});
   }
