@@ -183,3 +183,7 @@ A separate `feat/durable-revenue-deliveries` candidate now implements backlog it
 | [#28](https://github.com/rzkarsyad/agentmargin/pull/28) | Separate durable-delivery candidate | Local checks passed (58 tests plus one pre-existing TODO, PostgreSQL 16, signed local receiver, migration/role/retry/race tests); [current PR checks](https://github.com/rzkarsyad/agentmargin/pull/28/checks) must pass on its final reviewed head |
 
 Passing CI is technical evidence only. No reviewer approval has been inferred from CI or this preliminary audit; all candidates remain blocked from merge until the requested security/critical-finding review and explicit approval.
+
+### PostgreSQL 16 containment candidate after #28
+
+Migration 009 rejects authentication in reusable snapshots and narrows ingest financial SELECTs to an exact-ID digest helper. Single-statement analytics retains coherent totals under READ COMMITTED. Synthetic PostgreSQL 16 tests reproduce the original stale-revocation risk, enforce the new boundary, and exercise an operator-only NOLOGIN/session termination tool against a disposable role. Implemented/tested locally; externally verified: **no**; production-ready: **no**. Independent review of migrations 007–009 and residual in-flight/cursor/inbox access remains mandatory. Preserve #24 → #25 → #26 → #27 → #28 → containment order; no merge is authorized. See [the database containment assessment](DB_RUNTIME_ROLE.md#postgresql-16-containment-follow-up-migration-009).

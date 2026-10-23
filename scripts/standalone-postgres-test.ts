@@ -60,6 +60,39 @@ try {
     await inboxUpgrade.query(inboxMigration);
     assert.equal((await inboxUpgrade.query('SELECT amount_micros::text FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].amount_micros,'1234567');
   }finally{inboxUpgrade.release();}
+  // Reproduce 007's pre-revocation snapshot risk before applying containment.
+  const stale=await pool.connect();
+  try{
+    await stale.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    assert.equal((await stale.query('SELECT * FROM agentmargin_auth.principal($1)',[upgradeKey])).rowCount,1);
+    await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1',[upgradeWorkspace]);
+    assert.equal((await stale.query('SELECT * FROM agentmargin_auth.principal($1)',[upgradeKey])).rowCount,1,
+      'Baseline must demonstrate stale authorization rather than assume immediate revocation');
+  }finally{await stale.query('ROLLBACK');stale.release();}
+  await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE workspace_id=$1',[upgradeWorkspace]);
+  const containment=readFileSync(new URL('../db/009_credential_containment.sql',import.meta.url),'utf8');
+  const containmentUpgrade=await pool.connect();
+  try{
+    await assert.rejects(containmentUpgrade.query(containment.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await containmentUpgrade.query('ROLLBACK');
+    assert.equal((await containmentUpgrade.query("SELECT to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)') AS name")).rows[0].name,null);
+    await containmentUpgrade.query(containment);
+  }finally{containmentUpgrade.release();}
+  const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
+  const incidentPassword=randomBytes(24).toString('hex');
+  await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
+  const incidentUrl=new URL(connectionString);incidentUrl.username=incidentRole;incidentUrl.password=incidentPassword;
+  const incidentClient=new pg.Client(incidentUrl.toString());incidentClient.on('error',()=>{});
+  try{
+    await incidentClient.connect();
+    const stopped=assert.rejects(incidentClient.query('SELECT pg_sleep(10)'),(e:unknown)=>(e as {code?:string}).code==='57P01');
+    const sql=readFileSync(new URL('../db/contain_runtime_sessions.psql',import.meta.url),'utf8')
+      .replaceAll(":'runtime_role'","'"+incidentRole+"'");
+    await pool.query(sql);await stopped;
+    const reconnect=new pg.Client(incidentUrl.toString());
+    try{await assert.rejects(reconnect.connect(),(e:unknown)=>(e as {code?:string}).code==='28000');}
+    finally{await reconnect.end();}
+  }finally{await incidentClient.end();await pool.query('DROP ROLE "'+incidentRole+'"');}
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
@@ -284,6 +317,44 @@ try {
       await direct.query('COMMIT');
       assert.deepEqual(await selectTenants(),[],'Commit leaked tenant context');
     }finally{await direct.query('ROLLBACK');direct.release();}
+    // A client cannot disguise a reusable snapshot by changing default isolation.
+    const adversary=await runtimeStore.pool.connect();
+    try{
+      for(const isolation of ['REPEATABLE READ','SERIALIZABLE']){
+        await adversary.query('BEGIN ISOLATION LEVEL '+isolation);
+        await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+        await adversary.query("SET LOCAL default_transaction_isolation='read committed'");
+        assert.equal((await adversary.query('SELECT * FROM agentmargin_auth.principal($1)',[key])).rowCount,0);
+        assert.equal((await adversary.query('SELECT * FROM revenue_records')).rowCount,0);
+        await assert.rejects(adversary.query("SELECT set_config('transaction_isolation','read committed',true)"),
+          (e:unknown)=>(e as {code?:string}).code==='25001');
+        await adversary.query('ROLLBACK');
+      }
+      // Residual risk: a cursor's already-started statement retains its snapshot
+      // even under READ COMMITTED. Do not claim the gate is fully cleared.
+      await adversary.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      await adversary.query('DECLARE retained CURSOR FOR SELECT id FROM revenue_records ORDER BY id');
+      assert.equal((await adversary.query('FETCH 1 FROM retained')).rowCount,1);
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      assert.equal((await adversary.query('FETCH 1 FROM retained')).rowCount,1,'Document the residual cursor snapshot');
+      assert.equal((await adversary.query('SELECT * FROM agentmargin_auth.principal($1)',[key])).rowCount,0);
+      await adversary.query('ROLLBACK');
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      await adversary.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[ingestKey]);
+      for(const table of ['customers','usage_events','revenue_records'])
+        assert.equal((await adversary.query('SELECT * FROM '+table)).rowCount,0,'Ingest key exposed bulk '+table);
+      assert.equal((await adversary.query("SELECT * FROM agentmargin_auth.event_digest($1,'revenue',$2)",[workspace,runtimeRevenue.id])).rows[0].payload_digest,runtimeRevenue.payloadDigest);
+      assert.equal((await adversary.query("SELECT * FROM agentmargin_auth.event_digest($1,'revenue',$2)",[other,runtimeRevenue.id])).rowCount,0);
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',[createHash('sha256').update(ingestKey).digest('hex')]);
+      assert.equal((await adversary.query('SELECT * FROM agentmargin_auth.principal($1)',[ingestKey])).rowCount,0,
+        'Next READ COMMITTED statement retained revoked authentication');
+      await adversary.query('COMMIT');
+    }finally{await adversary.query('ROLLBACK');adversary.release();}
+    await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE key_digest=$1',[createHash('sha256').update(ingestKey).digest('hex')]);
+    assert.equal((await runtimeStore.forCredential(ingestKey).ingest(workspace,[runtimeEvent])).duplicate,1);
+    assert.equal((await runtimeStore.forCredential(ingestKey).ingestRevenue(workspace,[runtimeRevenue])).duplicate,1);
     // Pooled adapter queries cannot assert another workspace even with a valid A key.
     assert.equal((await runtimeStore.analytics(other,'2026-10-01T00:00:00Z','2026-11-01T00:00:00Z')).customers.length,0);
     await assert.rejects(runtimeStore.ingest(other,[otherEvent]),(e:unknown)=>(e as {code?:string}).code==='42501');
