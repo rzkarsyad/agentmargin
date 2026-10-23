@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
+import {setTimeout as delay} from 'node:timers/promises';
 import {testPrivacyLifecycle} from './privacy-lifecycle-tests.ts';
 import {testV09FinancialFixture} from './v09-financial-fixture.ts';
 import {testFinancialReports} from './financial-report-tests.ts';
@@ -308,10 +309,33 @@ try {
     runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
       connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
     assert.equal(await runtimeStore.ready(),true);
+    // Readiness must cover the private recovery/audit boundary as well as money.
+    for(const table of ['delivery_history','delivery_requeues']){
+      await pool.query('ALTER TABLE '+table+' DISABLE ROW LEVEL SECURITY');
+      try{assert.equal(await runtimeStore.ready(),false,'Disabled '+table+' RLS must fail readiness');}
+      finally{await pool.query('ALTER TABLE '+table+' ENABLE ROW LEVEL SECURITY');}
+    }
     assert.equal((await pool.query("SELECT has_function_privilege($1,'agentmargin_auth.validate_adjustment()','EXECUTE') AS allowed",[runtimeRole])).rows[0].allowed,false,'Runtime must not directly execute definer triggers');
     await pool.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
     try{assert.equal(await runtimeStore.ready(),false,'Disabled RLS must fail readiness');}
     finally{await pool.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');}
+    for(const [table,trigger] of [
+      ['revenue_adjustments','validate_adjustment'],['revenue_adjustments','validate_stripe_adjustment_source'],
+      ['revenue_records','immutable_payment'],['revenue_payment_sources','immutable_payment_source'],
+      ['revenue_deliveries','delivery_history'],['adjustment_deliveries','delivery_history'],
+      ['delivery_history','immutable_delivery_history'],['delivery_requeues','immutable_delivery_requeue'],
+      ['workspace_price_versions','workspace_prices_immutable'],
+    ]){
+      await pool.query('ALTER TABLE '+table+' DISABLE TRIGGER '+trigger);
+      try{assert.equal(await runtimeStore.ready(),false,'Disabled '+table+'.'+trigger+' must fail readiness');}
+      finally{await pool.query('ALTER TABLE '+table+' ENABLE TRIGGER '+trigger);}
+    }
+    // Extra permissive policies OR with existing policies: do not accept an
+    // installation merely because the expected policy names also exist.
+    await pool.query('CREATE POLICY unexpected_allow ON delivery_history FOR SELECT USING (true)');
+    try{assert.equal(await runtimeStore.ready(),false,'Unexpected RLS policy must fail readiness');}
+    finally{await pool.query('DROP POLICY unexpected_allow ON delivery_history');}
+    assert.equal(await runtimeStore.ready(),true,'Restored contract must recover readiness');
     assert.deepEqual(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),
       {workspaceId:workspace,accessRole:'admin'});
     const runtimeEvent:StoredEvent={...stored,event:{...event,id:'runtime-role-usage',customerId:'runtime-customer'},
@@ -386,6 +410,37 @@ try {
       await adversary.query('ROLLBACK');
       await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
       await adversary.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      // WITH HOLD materializes authorized rows at COMMIT and remains readable
+      // after revocation. This is a retained result, not a new authorized read.
+      await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      await adversary.query('DECLARE held CURSOR WITH HOLD FOR SELECT id FROM revenue_records ORDER BY id');
+      assert.equal((await adversary.query('FETCH 1 FROM held')).rowCount,1);
+      await adversary.query('COMMIT');
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      assert.equal((await adversary.query('SELECT * FROM agentmargin_auth.principal($1)',[key])).rowCount,0);
+      assert.equal((await adversary.query('FETCH 1 FROM held')).rowCount,1,'Document held-result revocation limit');
+      await adversary.query('CLOSE held');
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      await adversary.query('BEGIN');
+      await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      const pid=(await adversary.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const admitted=adversary.query('SELECT pg_sleep(0.5), (SELECT count(*)::integer FROM revenue_records) AS n');
+      // Observe admission before revoking instead of relying on a race/sleep.
+      let admittedBeforeRevocation=false;
+      for(let attempt=0;attempt<50;attempt++){
+        const state=await pool.query("SELECT wait_event FROM pg_catalog.pg_stat_activity WHERE pid=$1",[pid]);
+        if(state.rows[0]?.wait_event==='PgSleep'){admittedBeforeRevocation=true;break;}
+        await delay(5);
+      }
+      // Always consume the query even if the observation fails.
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      const result=await admitted;
+      assert.equal(admittedBeforeRevocation,true,'Could not observe the in-flight statement');
+      assert.ok(result.rows[0].n>0,'Document already-admitted snapshot completion');
+      assert.equal((await adversary.query('SELECT * FROM revenue_records')).rowCount,0,'A new read must reject revoked proof');
+      await adversary.query('ROLLBACK');
+      await pool.query('UPDATE workspace_api_keys SET revoked_at=NULL WHERE key_digest=$1',[createHash('sha256').update(key).digest('hex')]);
+      await adversary.query('BEGIN');
       await adversary.query("SELECT set_config('agentmargin.api_key',$1,true)",[ingestKey]);
       for(const table of ['customers','usage_events','revenue_records'])
         assert.equal((await adversary.query('SELECT * FROM '+table)).rowCount,0,'Ingest key exposed bulk '+table);

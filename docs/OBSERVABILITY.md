@@ -15,7 +15,7 @@ The automated unit tests exercise successful ingestion, a 404 containing a secre
 
 ## Readiness, metrics and shutdown
 
-`/health` is process liveness. `/ready` checks DB connectivity, final RLS/policy/helper contracts through migration 014, delivery audit/recovery objects and the three fixed catalog-safe trigger paths, and returns 503 while draining. Pre-014 schemas or disabled financial RLS fail readiness. This checks deployment compatibility, not independent security approval or the safety of arbitrary additional grants/extensions. Do not use a liveness probe to decide whether the database is healthy. SIGTERM/SIGINT fail readiness, stop new connections, drain HTTP and then close the pool; a 30-second deadline exits with failure. Configure ingress drain/grace periods accordingly. Database sockets have 5-second connection and 15-second statement/idle-transaction bounds. Idle pool errors emit a fixed, secret-free event and replacement connections can be acquired. Transient DB errors return a sanitized 503; other failures return 500. No automatic write replay occurs after uncertain commits: clients retry the same immutable event/record IDs.
+`/health` is process liveness. `/ready` checks DB connectivity, all ten RLS tables, expected policy counts, financial/audit trigger bindings and helper contracts through migration 014, delivery audit/recovery objects and the three fixed catalog-safe trigger paths, and returns 503 while draining. Pre-014 schemas or disabled financial RLS fail readiness. This checks deployment compatibility, not independent security approval or the safety of arbitrary additional grants/extensions. Do not use a liveness probe to decide whether the database is healthy. SIGTERM/SIGINT fail readiness, stop new connections, drain HTTP and then close the pool; a 30-second deadline exits with failure. Configure ingress drain/grace periods accordingly. Database sockets have 5-second connection and 15-second statement/idle-transaction bounds. Idle pool errors emit a fixed, secret-free event and replacement connections can be acquired. Transient DB errors return a sanitized 503; other failures return 500. No automatic write replay occurs after uncertain commits: clients retry the same immutable event/record IDs.
 
 `errorClass` is derived solely from HTTP status: none, authentication, authorization, rate_limit, client, dependency or internal. Set a separate high-entropy `AGENTMARGIN_METRICS_TOKEN` to enable `/metrics`; scrape using an Authorization bearer header on a private network. Tenant API keys do not grant monitoring access. Prometheus counters and latency histograms use fixed route names and status codes, with no IDs, paths or payload labels. Scrape each process; counters reset on restart. They are operational metrics, never financial accounting totals.
 
@@ -65,3 +65,11 @@ multiple ingress instances and quota-store partition/recovery before public expo
 TLS ingress examples must enforce body/time/connection bounds, trusted proxy
 headers and private metrics/DB reachability under that operator's approved config;
 no untested deployment file is represented as a certified ingress.
+
+
+The readiness contract now rejects disabled audit/requeue RLS, unexpected extra
+policies and disabled or misbound expected financial/audit triggers. PG16 regressions
+reproduce the pre-fix false-ready result. These catalog checks do not prove policy
+expressions or function bodies/ownership/ACLs correct; installed-definition review
+and cross-tenant negative probes remain mandatory. Liveness still says only that
+the process can respond. Monitor readiness separately and keep metrics private.

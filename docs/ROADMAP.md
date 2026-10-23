@@ -318,3 +318,24 @@ authorized by this follow-up. Remaining v0.5 blockers are dated official pricing
 account modifiers, project/key bill allocation and complete cohort/product/cache/
 provider evidence, financial rounding/materiality/policy approval, plus protected
 integration and inherited independent security/release gates.
+
+
+## v0.7/v0.8 gate closure follow-up
+
+The security follow-up branches from #37; preserve the entire parent order and
+include #33 once in the isolated combined-source rehearsal. No merge is authorized.
+The [updated risk register/reviewer packet](TENANT_THREAT_MODEL.md)
+records exact immutable 007–014 checksums and decisions still requiring a reviewer.
+
+| Gate | Implemented / tested | External verification | Overall result |
+| --- | --- | --- | --- |
+| Expected security-schema readiness | PG16 reproduced false ready with audit RLS disabled; fix/tests cover both audit tables, nine disabled financial/audit triggers and extra permissive policies | No deployment verification | Local PASS; independent approval BLOCKED |
+| Tenant/role/auth/ledger/migration regressions | PG16 001–014 clean/upgrade/rollback, shadow guard, key expiry/revocation, pool reuse, scopes, concurrency, financial/privacy suite PASS | No independent reproduction | Automated PASS; security gate BLOCKED |
+| Cursor/in-flight revocation | New PG16 tests demonstrate retained WITH HOLD results and admitted statements; next SELECT denies revoked proof. Existing separate-owner session containment tested | No operator incident drill or accepted boundary | Residual INCONCLUSIVE; approval BLOCKED |
+| Shared runtime/ingest/inbox/recovery authority | Negative cross-tenant and direct failed-reset tests PASS; own-tenant worker/oracle/initial-inbox authority remains | No independent capability review | INCONCLUSIVE; required architectural decision BLOCKED |
+| CodeQL original/candidate triage | No suppression or dismissal; complete final combined scan required on follow-up | Authoritative alert state and independent triage unavailable | INCONCLUSIVE |
+| v0.8 operator controls | Synthetic restore/restart/privacy controls exist; authenticated backup integrity, separate recovery-key failure drills and operator evidence follow-up in progress | External storage, delivered alerts, scale, RPO/RTO and privacy approvals absent | BLOCKED; no operational PASS inferred |
+
+There is no accounting, key hashing, SDK, UI or migration contract change in the
+security follow-up. Existing genuine financial acceptance evidence stays scoped
+as recorded above. All candidate production-ready statuses remain NO.
