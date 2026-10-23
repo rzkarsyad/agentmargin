@@ -1,4 +1,4 @@
-# AgentMargin v0.3 workspace pricing (experimental alpha)
+# AgentMargin workspace pricing (v0.5 alpha contract)
 
 **Status:** experimental source-first alpha, localhost-only. Do not use actual customer or financial records in an unreviewed deployment.
 
@@ -53,24 +53,35 @@ An inserted later version implicitly supersedes the earlier version for new inge
 
 ## Installation and migration
 
-The disposable `npm run demo` applies `db/004_workspace_pricing.sql` after migrations 001–003, then builds/starts the React/Arc frontend and seeded API. No network deployment.
+The disposable `npm run demo` applies the current 001–014 migration chain, then builds/starts the React/Arc frontend and seeded API. No network deployment.
 
-For a manually managed, disposable PostgreSQL database that already has 001–003:
+For a clean disposable PostgreSQL 16 instance, use the [OpenAI local verification
+commands](OPENAI_INTEGRATION.md#macos-disposable-postgresql--sdk--api--analytics-replay).
+For an existing-schema upgrade, follow [database isolation and runtime ownership](DB_RUNTIME_ROLE.md)
+and the numbered additive migration chain; never reapply or rewrite an already
+applied migration. This documentation does not authorize a production migration.
 
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/004_workspace_pricing.sql
-npm ci
-npm run build:web
-npm run start -w @agentmargin/api
-```
+## Exact event rounding and provider evidence
 
-Review database access and take a disposable backup first. **Do not apply this migration to production.** The previous v0.2 release does not include it. The migration is not reversible through a shipped automated down-migration.
+The engine sums the uncached-input, cached-input and output rational components
+**before rounding once per event** to integer USD micros (half-up). At input
+100000/output 500000 micros per million tokens, 25 input and 13 output tokens
+produce 2.5 + 6.5 = **9 micros**, not 10. Aggregates sum recorded event costs;
+provider aggregate rounding may differ and must remain a reported variance.
+
+The [private OpenAI export workflow](OPENAI_INTEGRATION.md#private-openai-billing-validation-v05)
+compares authentic exports using this engine and can replay supported quantities
+through SDK/API/PostgreSQL/analytics. It records conditional rate provenance and
+keeps historical dates, org-to-project attribution, complete product coverage and
+policy approval separate. Current official pages and community catalogs cannot
+silently establish historical customer prices. Provider-reported costs retain
+source `reported`; CSV comparison does not turn an estimate into a reported cost.
 
 ## Security / verification
 
-- Only the authenticated workspace can create and list prices, enforced by SQL workspace filters and a composite foreign key on linked usage.
-- The `created_by_key_digest` records which workspace key introduced a price but is **not** an independent user/role system. Any valid workspace bearer key can currently change the *future* price history by adding new versions.
-- Database role compromise bypasses application authorization. No RLS, RBAC, public TLS ingress, backups or incident-response processes are supplied.
+- Reading prices requires read/admin authority; adding versions requires admin. Credential-backed RLS, scoped keys and composite references contain restricted runtime access; apply the complete 007–014 chain and runtime grants together.
+- The `created_by_key_digest` is immutable provenance, not an independent human approval. An admin key can affect future ingestion through added versions.
+- Review [database isolation](DB_RUNTIME_ROLE.md) for ownership, direct-SQL/ingest authority and in-flight revocation limitations. Independent security approval remains open. TLS/shared deployment quotas and operational verification remain separate gates.
 - The UI uses same-origin requests, no key persistence, native input labels, Arc keyboard-ready components and reduced-motion styles.
 - CI checks TypeScript, migrations, PostgreSQL tenant isolation and immutability, Chromium overview, and SDK tracking. These checks are not a penetration test.
 

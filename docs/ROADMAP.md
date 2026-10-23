@@ -15,7 +15,7 @@ methods; platform and SDK milestones deliberately differ). Neither is published.
 | Milestone | Implementation | Integration | Test evidence | External verification | Security | Release gate / exact next action |
 | --- | --- | --- | --- | --- | --- | --- |
 | v0.4 developer adoption | Complete foundation | Existing SDK/starter on main; source additions PR only | Published ESM/TypeScript consumer, signatures/provenance and Next.js CI [39953502998](https://github.com/rzkarsyad/agentmargin/actions/runs/39953502998) | Alpha.2 OIDC/registry verified; independent users pending | Release integrity review open for candidate | Foundation passed; three real developer trials remain a **v1.0 adoption gate**, not a sole blocker for v0.9 engineering |
-| v0.5 analytics/pricing | Complete for supported USD/token contract | Baseline on main; net adjustments PR only | Whole-workspace/pagination/effective pricing/unknown costs; [#32 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) | Official provider bills and accountant review pending | Candidate review open | Blocked: supply authentic exports, approved allocations/prices and accounting policy |
+| v0.5 analytics/pricing | Supported contract plus private CSV validation and actual SDK/API/PG replay implemented | Baseline on main; billing follow-up stacked after #36 | Exact event rounding, effective prices, unknown costs, duplicates, pagination and tenant boundaries; synthetic replay in CI | **Operator PASS: second genuine 10/5/0 request, identity preserved, local cost 4 micros; org delta 3.5**. Reported total 13 vs 12.5, +0.5 event-rounding variance; org allocation unproven | Candidate review open | INCONCLUSIVE: historical price authority, project/key billing allocation, wider tier/cache/product coverage, rounding materiality and financial policy sign-off |
 | v0.6 integrations | Supported USD platform-account flow implemented and sandbox-validated | Original adapters on main; durable/current-schema fixes PR only | SDK/signature/current+legacy nullable allocation regressions; restricted PostgreSQL signed-delivery tests | **PASS: operator-verified Moland signed recovery**, eight receipts / seven accepted / EUR rejected; [aggregate evidence](INTEGRATIONS.md#genuine-sandbox-qa-harness-and-recovery) | Independent account/routing and CodeQL review open | Signed sandbox acceptance passed; account-bound integration review and approved protected integration remain. FX/mixed/multi-account extensions are not claimed |
 | v0.7 security | Implemented candidate boundary; residual powers remain | PR only | PostgreSQL 16 007–014 attacks, RLS, scopes, pooling; [013 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) | **No independent security approval** | Catalog error oracle fixed in 013; cursor/in-flight and inbox authority open | Blocked: independently review/accept boundary and migrations, approve protected PRs |
 | v0.8 reliability/privacy | Partial deployment validation | PR only | Encrypted/full restores, key rotation, readiness, lifecycle and bounded concurrency CI; disposable privacy/restart follow-up in release candidate | External storage/key recovery, delivered alerts, scale/RPO/RTO and privacy approval pending | Operations review open | Blocked: deployment-specific storage, ingress/shared quotas, scheduled drills and operator sign-off |
@@ -46,9 +46,10 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #34 | `eff636a` | #32 | [Earlier full checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39969459723) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/34/checks) cover restore ACL and redaction follow-ups |
 | #35 | latest nullable-allocation candidate | #34 | [Recovery checkpoint CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391943) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391993) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) must cover the nullable-field follow-up |
 | #36 release preparation | release branch | #35 | [Recovery rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39993427654) passed (78 pass + existing TODO; unfiltered JS 103 / 3 retained findings, Python 50 / 0, Actions 23 / 0). [Final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after the nullable-field/evidence update |
+| #37 OpenAI billing evidence | `feat/openai-billing-evidence` | #36 | [Current source/combined/CodeQL checks](https://github.com/rzkarsyad/agentmargin/pull/37/checks); authentic private export replay passed locally, overall external gates INCONCLUSIVE |
 
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
-#28 → #29 → #30 → #31 → #32 → #34 → #35 → #36**. #33 is independent and its
+#28 → #29 → #30 → #31 → #32 → #34 → #35 → #36 → #37**. #33 is independent and its
 changes are merged once in an isolated rehearsal, not duplicated into stack PRs.
 Retain parent branches. After each approved parent merge, retarget its immediate
 child to main, merge updated main into the child without rewriting reviewed history,
@@ -121,7 +122,14 @@ See the [integration evidence and recovery contract](INTEGRATIONS.md#genuine-san
 Genuine sandbox success is distinct from independent provider billing, accounting
 approval, security approval, deployment validation and publication authorization.
 
-Official OpenAI/Anthropic exports and trusted pricing provenance are not supplied.
+Authentic OpenAI Usage/Cost exports are now locally inspected with a conditional
+9-micro production-engine/SDK/API/PostgreSQL match and zero variance. The charge is
+organization-level; historical rate authority and project/key allocation remain inconclusive. The founder
+subsequently verified second-response identity and local cost 4, versus org billing
+delta 3.5; reported aggregate 13 vs 12.5 has +0.5 event-rounding variance. New
+before/after files and receipt remain founder-held, not independently inspected. [OpenAI evidence](OPENAI_INTEGRATION.md#private-openai-billing-validation-v05)
+records current official pricing observations and private reproducibility commands.
+Anthropic and broader OpenAI tier/cache/product/adjustment evidence remain missing.
 The existing reconciliation input interface accepts explicit provider/account,
 period, source references, allocations, signed credits and tolerances; unknown FX,
 unsupported tiers and unmatched evidence keep complete variance unknown. Run
@@ -259,7 +267,7 @@ readiness. No criterion is weakened by the successful Stripe run.
 
 | Stage | Passed within supported alpha scope | Evidence/action still needed for all-green status |
 | --- | --- | --- |
-| v0.5 | Exact supported USD totals, pagination, effective pricing and unknown-cost reporting | Authentic provider billing/tier/cached-token comparisons, approved price provenance/allocations and founder/accountant policy sign-off; no automatic unverified price import |
+| v0.5 | Exact USD/event rounding, pagination/effective pricing/unknown reporting; first authentic 25/13/0 -> 9/9 micros; operator second 10/5/0 -> 4 ledger vs 3.5 org delta, aggregate 13/12.5 with +0.5 rounding variance | Historical rate authority, project/key billing allocation, cached/tier/product/other-provider coverage, rounding materiality and founder/accountant policy sign-off; no automatic unverified price import |
 | v0.6 | Genuine signed single-platform USD invoice/refund/pure balance-credit recovery; explicit EUR rejection; adapter regressions | Independent account/routing/schema review and protected integration. Multi-account/FX/mixed/reinstatement support requires separate evidence if included; it remains explicitly unsupported in this alpha |
 | v0.7 | Credential-backed RLS and 007–014 adversarial/upgrade tests | Independent security approval of migrations, ownership/grants, cursor/in-flight revocation and runtime+ingest/inbox authority; CodeQL triage and required PR approvals |
 | v0.8 | Disposable encrypted/full restores, restart/pool recovery, metrics/readiness/shutdown, privacy and failure drills | Operator-owned external storage/key recovery, scheduled retention/restore and delivered alert evidence, agreed measured RPO/RTO/load, incident/privacy approval. Deployed TLS/shared quotas remain deployment gates; a source-only alpha must explicitly retain them |
@@ -267,3 +275,46 @@ readiness. No criterion is weakened by the successful Stripe run.
 
 Unsupported features are not marked implemented, and production remains unapproved.
 Three independent developer trials remain the separate v1.0 adoption gate.
+
+## v0.5 acceptance evidence — 2026-10-24 Asia/Jakarta
+
+The existing production cost engine already rounded correctly; no calculation,
+authentication, SDK API, schema, RLS, migration or UI changes were needed. The
+[#37 billing follow-up](https://github.com/rzkarsyad/agentmargin/pull/37) branches from `release/v0.9.0-alpha.1` after #36; no inherited PR
+is rewritten or merged. Stripe's genuine QA is unchanged and was not repeated.
+
+| Acceptance gate | Current result | Evidence / remaining action |
+| --- | --- | --- |
+| Original export ingestion and precision | PASS | Authentic files read-only; 31 buckets / 30 blank each, exact decimal quantities/money, SHA-256/row/byte references in private local report |
+| Exact model / current official standard text rates | PASS, current observation | Official model/pricing pages observed 2026-10-23 UTC; $0.10 input / $0.50 output / $0.01 cached per million; no community-rate substitution |
+| Historical rate effective date / account modifiers | INCONCLUSIVE | Obtain dated official notice/provider attestation for the sample instant and account/region; QA window is explicitly conditional |
+| Actual production event rounding | PASS, conditional rates | First 2.5 + 6.5 = 9; second 1 + 2.5 = 3.5 rounds to 4. Actual restricted-PG synthetic two-event replay stores/aggregates 13; ledger policy unchanged |
+| SDK / HTTP / restricted PostgreSQL / analytics | PASS, local aggregate replay | Cost 9, immutable price UUID, duplicate replay, late unknown retention, customer pagination/workspace totals, auth and tenant checks; no original response ID is invented |
+| Official export amount consistency | Conditional precision PASS; ledger acceptance INCONCLUSIVE | First 9/9; operator after 12.5 exact token estimate/provider vs 13 reported ledger, +0.5 rounding difference. Never auto-accept that difference or infer project/key allocation |
+| Project/key billing allocation | INCONCLUSIVE | Export populated billing dimensions or obtain official allocation evidence; amount agreement alone is insufficient |
+| Original response-to-event identity | PASS, operator-verified second request | Genuine second response retained its real identity through local SDK/API/PG/analytics. Private receipt not inspected by agent; first response remains unidentified. No further paid call is requested |
+| Fractional precision / daily aggregate / snapshot delta | Implemented; synthetic tests PASS | Decimal provider costs stay exact; multi-request bucket has no event ID/rounded ledger total. Optional private receipt checks one net increment; real before/after hashes are retained only when founder runs locally |
+| Rounding drift/materiality | Risk demonstrated; approval pending | Half ties add +$0.50 per million identical 3.5-micro events; other workloads drift down. Bounds are not automatic tolerances; higher-precision sidecar is proposed, not a ledger migration |
+| Effective/unknown/cache/tier/batch/duplicates/history regressions | PASS, automated | Exact decimals, cache rate/missing cache, effective boundaries, community disagreement, unsupported dimensions, missing lines, duplicate rows, UTC/scoped variance; no guessed tiers/FX |
+| Genuine cached/other supported provider coverage | INCONCLUSIVE | Collect authentic scoped usage/billing evidence for the intended alpha support matrix, including cached reads and other providers; explicitly unsupported tiers remain rejected |
+| Full billing products/adjustments/period coverage | INCONCLUSIVE | Review provider export completeness, account/regional/product charges and signed credit/discount allocation; blank rows are not proof no activity was missed |
+| Founder/accountant financial policy approval | INCONCLUSIVE | Dated approval of event half-up rounding, recorded-USD cost attribution, prepaid balances, adjustments, coverage and tolerances |
+| Reviewed integration / final release / production | Pending; production NO | Required independent security/accounting review, protected stack approvals, final-main CI/CodeQL/artifacts and separate release authorization |
+
+**v0.5 is not fully green.** No external evidence or human approval is manufactured.
+The [operator README](OPENAI_INTEGRATION.md#macos-read-only-audit-no-provider-key-or-spending)
+provides exact safe macOS commands and a separately guarded future paid experiment.
+The CSV tool's overall status deliberately stays INCONCLUSIVE for external gates;
+it is an audit aid, not an automated accounting certification.
+
+
+The founder-reported second-request acceptance does not close strict billing
+allocation or coverage. The [fractional-variance report and safe snapshot command](OPENAI_INTEGRATION.md#second-genuine-request-and-fractional-micro-variance)
+separate first files actually inspected by the agent, the new operator attestation,
+and new synthetic regression evidence. The two-request export is never treated
+as one real request; exact 12.5 and unknown rounded ledger remain distinct.
+No paid API request, accounting-policy change or historical ledger rewrite is
+authorized by this follow-up. Remaining v0.5 blockers are dated official pricing/
+account modifiers, project/key bill allocation and complete cohort/product/cache/
+provider evidence, financial rounding/materiality/policy approval, plus protected
+integration and inherited independent security/release gates.

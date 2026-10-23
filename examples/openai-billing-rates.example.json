@@ -1,0 +1,17 @@
+{
+  "rates": [{
+    "id": "qa-openai-gpt-6-luna-20261023",
+    "model": "gpt-6-luna",
+    "effectiveFrom": "2026-10-23T00:00:00Z",
+    "effectiveTo": "2026-10-24T00:00:00Z",
+    "inputMicrosPerMillion": "100000",
+    "outputMicrosPerMillion": "500000",
+    "cachedInputMicrosPerMillion": "10000",
+    "source": {
+      "kind": "official_current",
+      "url": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+      "observedAt": "2026-10-23T18:48:54Z"
+    }
+  }],
+  "expected": {"model":"gpt-6-luna","requests":1,"inputTokens":25,"outputTokens":13,"cachedInputTokens":0}
+}
