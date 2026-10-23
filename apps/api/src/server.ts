@@ -18,7 +18,7 @@ const metrics=new OperationalMetrics();
 store.pool.on('error',()=>{process.stderr.write('{"kind":"database_pool_error"}\n');});
 const app=createApp(store,undefined,undefined,logSink,{
   metrics,metricsToken:process.env.AGENTMARGIN_METRICS_TOKEN,isDraining:()=>draining,
-  ready:async()=>{await store.pool.query('SELECT 1');return true;},
+  ready:()=>store.ready(),
 });
 const server=serve({fetch:app.fetch,port,hostname:'127.0.0.1'},()=>{
   process.stdout.write(`AgentMargin API listening on 127.0.0.1:${port}\n`);
