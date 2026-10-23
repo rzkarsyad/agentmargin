@@ -312,3 +312,18 @@ out-of-order processing, signature/mapping rejection, missed forwarding and
 failure evidence. Unknown pricing keeps complete contribution null. Real signed
 sandbox recovery, independent billing-export corroboration/accountant approval,
 and independent security review remain release gates.
+
+Static-analysis review of this harness is preliminary. Two intentional receiver
+patterns can produce CodeQL candidates: `js/user-controlled-bypass` identifies
+HTTP path selection, which only selects a route and cannot bypass the subsequent
+HMAC/mode/run checks; `js/http-to-file-access` identifies the receipt signature
+header written into the private audit JSON after those checks. The latter is
+intentional evidence capture, with a 3000-character signature bound, 256 KB body
+bound, 200-receipt attempt bound, generated filenames, JSON encoding, exclusive
+no-follow writes and trusted private ancestors; files are never evaluated or
+served. Invalid/unsigned/unrelated payloads are not persisted. Tests verify both
+rejection and unchanged financial totals. No rule/query/path exclusion or alert
+dismissal is used. An independent reviewer must assess these data flows along
+with the existing high-entropy bearer-digest classification. The fictional CLI
+now generates its payloads from source constants and limits HTTP destinations to
+loopback, rather than sending arbitrary JSON read from a configuration file.
