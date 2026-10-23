@@ -1,13 +1,12 @@
 /** Local disposable operator tool. The private JSON file contains review evidence,
  * never a key. Authentication stays in the environment and is never printed. */
-import {readFileSync,statSync} from 'node:fs';
+import {readCheckedFile} from './lib/private-files.ts';
 import pg from 'pg';
 const url=process.env.DATABASE_URL,key=process.env.AGENTMARGIN_API_KEY,path=process.argv[2];
 if(!url||!key||!path||process.env.AGENTMARGIN_RECOVERY_ENV!=='disposable')throw new Error('Disposable recovery configuration required');
 const target=new URL(url);
 if(!['localhost','127.0.0.1'].includes(target.hostname)||target.pathname!=='/agentmargin_ci')throw new Error('Disposable loopback database required');
-if((statSync(path).mode&0o077)!==0)throw new Error('Review evidence must be a private file (mode 0600)');
-const input=JSON.parse(readFileSync(path,'utf8')) as Record<string,unknown>;
+const input=JSON.parse(readCheckedFile(path,{privateFile:true,maxBytes:100000}).contents) as Record<string,unknown>;
 const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:5000,statement_timeout:15000});
 pool.on('error',()=>{process.stderr.write('{"kind":"delivery_recovery_pool_error"}\n');});
 try{
