@@ -3,7 +3,7 @@
 **Vision:** give builders trustworthy, attributable customer-level AI inference and revenue economics—not just a total token bill.
 
 **Latest tagged release:** [v0.3.0-alpha](https://github.com/rzkarsyad/agentmargin/releases/tag/v0.3.0-alpha).
-**Current main branch:** contains later experimental source commits (v0.4–v0.6 foundations) that are **not** tagged as npm/production/stable releases.
+**Current source status:** SDK `0.4.0-alpha.2` is a published prerelease. The v0.7–v0.9 continuation below is a stack of unmerged review candidates; no stable or production release is claimed.
 
 ## Delivered and released
 
@@ -23,7 +23,7 @@
 - [x] Build **opt-in**, operator-reviewed LiteLLM community pricing import with exact units, provenance digest and source note.
 - [x] Add a **weekly, read-only provider pricing candidate scan** and review artifact; not automatic price application or invoice reconciliation.
 - [x] **First public SDK release:** `@makinohq/agentmargin@0.4.0-alpha.1` published to npm under the `alpha` tag; npm GitHub Actions Trusted Publisher configured by the owner. [Gate #8](https://github.com/rzkarsyad/agentmargin/issues/8).
-- [x] **OIDC publication:** `0.4.0-alpha.2` published successfully by [Actions run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098). Clean registry artifact consumption and integrity/provenance metadata inspection passed; full cryptographic verification is a separate CI check. See [consumer evidence](V04_DEV_ADOPTION.md).
+- [x] **OIDC publication:** `0.4.0-alpha.2` published successfully by [Actions run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098). Clean registry artifact consumption and integrity/provenance metadata inspection passed; [Cryptographic verification passed in CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39908019043). See [consumer evidence](V04_DEV_ADOPTION.md).
 - [ ] Validate installation/integration with **three independent developers**; [feedback issue #1](https://github.com/rzkarsyad/agentmargin/issues/1).
 
 **Important:** catalog import is not an unattended official provider feed. An operator must review and explicitly apply the rates. Official invoice reconciliation is not shipped.
@@ -56,7 +56,7 @@ The following work is **mandatory before** any production internet deployment. T
 
 | Stage | Implemented and automated evidence | Externally verified | Production-ready |
 | --- | --- | --- | --- |
-| v0.4 | ESM/declarations, package contents, Next.js starter, onboarding | OIDC publication run succeeded; clean registry ESM/TypeScript consumer passed; three independent developers and cryptographic provenance verification remain open | No |
+| v0.4 | ESM/declarations, package contents, Next.js starter, onboarding | OIDC publication run succeeded; clean registry ESM/TypeScript consumer passed; registry signatures and one SDK provenance attestation verified in CI; three independent developers remain open | No |
 | v0.5 | Exact workspace totals, pagination, effective pricing, unknown-cost diagnostics | Real provider invoice/tier validation and pricing approval policy open | No |
 | v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
 | v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |
@@ -78,3 +78,69 @@ Only tag v1.0 when all of these **external and technical** gates have independen
 ## Getting involved
 
 Try the [local demo](DEMO.md), review [pricing import](PRICING_IMPORT.md), [analytics API](ANALYTICS_PAGINATION.md) and [integrations](INTEGRATIONS.md). Report what broke in [issue #1](https://github.com/rzkarsyad/agentmargin/issues/1). Real developer friction determines priority.
+
+## Engineering continuation evidence (2026-10-23)
+
+These are **stacked, unmerged review candidates**, in dependency order. No production deployment, database change, npm publication or stable tag was performed. PRs #22 and #23 were confirmed merged, and `main` was fetched at `bea396246af6495081f6bc596501c6af28750ff5` before implementation. The existing dashboard design is preserved.
+
+| PR | Implementation commit | Change and evidence |
+| --- | --- | --- |
+| [#24](https://github.com/rzkarsyad/agentmargin/pull/24) | `f172040` | Credential-backed tenant RLS, migration 007, protected key table, scoped transactions and SQL denial/upgrade tests; [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39906262771) |
+| [#25](https://github.com/rzkarsyad/agentmargin/pull/25) | `80647c8` | Readiness, metrics, draining lifecycle, encrypted backup hooks and recovery/alert runbooks; [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39906820150) |
+| [#26](https://github.com/rzkarsyad/agentmargin/pull/26) | `5f32075` | Traceable offline reconciliation, durable reports, rollback/connection recovery and bounded concurrency; [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39907388283) |
+| [#27](https://github.com/rzkarsyad/agentmargin/pull/27) | `e2d93cf` | Registry consumer/provenance check and SDK integration edge fixes; local checks passed; [registry signatures/provenance and Next.js CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39908019043); [full CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39908018981) must be checked on the final commit |
+
+Local verification on the combined source passed `npm run check` (57 passed, one pre-existing TODO), SDK package checks, root and starter dependency audits (zero vulnerabilities), Next.js production build, PostgreSQL 16 security/upgrade/recovery/concurrency tests, encrypted backup restore/failure drill, real server SIGTERM lifecycle, source scan and diff checks. The earlier PR CI runs additionally passed desktop/mobile Chromium and the full synthetic Docker/API/SDK/browser demo. These are synthetic engineering results, not independent security or production validation.
+
+Only schema migration **007** was added. It is additive and does not rewrite financial rows. Pause traffic, apply after 006 as trusted owner, reapply runtime grants, and deploy the matching API together. Old restricted API binaries are incompatible with the new authentication grants. SDK method signatures stay compatible; stricter invalid-input validation and Stripe payment-time replay considerations are documented in [integrations](INTEGRATIONS.md). No unpublished source fix is claimed to exist in the alpha.2 registry artifact.
+
+## Remaining release gates and required evidence
+
+| Gate | What still clears it |
+| --- | --- |
+| Independent tenant/security review | A reviewer other than the implementer reproduces direct SELECT/INSERT, forged context and pooling tests, audits definer ownership/effective grants/extensions, and signs off the deployment's threat boundaries |
+| Runtime deployment and abuse controls | Verified TLS/trusted ingress, separately provisioned non-owner credentials, shared gateway/atomic distributed quota infrastructure, multi-process failure/load tests and secret rotation evidence |
+| Recovery and monitoring | Actual encryption/storage hooks and independent key recovery; scheduled external backups and retention; delivered alerts; timed, production-scale isolated restores with agreed RPO/RTO and incident ownership |
+| Financial integrations | Authentic official billing imports and source attribution; provider invoice/cached-tier comparisons; Stripe sandbox payments/refunds/credits and out-of-order replay; explicit accounting/FX/multi-account policies and reviewed variance reports |
+| Remaining financial engineering | Durable Stripe webhook inbox/replay worker and persistent signed revenue adjustments are **not implemented**; offline reports alone do not clear this gate |
+| Data governance | Approved export/deletion/retention policy, backup expiry and privacy erasure procedure, with synthetic implementation tests and independent operator/privacy approval |
+| Developer adoption | Three real independent developers complete installation/integration and record feedback; automated clean npm consumption does not count as three developers |
+| Release integrity | Registry cryptographic verification passed (two registry signatures, one SDK attestation); current CI and independent review on final commits plus explicit authorization are still required for later npm publication or a stable tag |
+
+## Reproducing locally with disposable infrastructure
+
+Requires Node 24 (minimum 22.18), npm and Docker. The checkout command uses the top review branch; do not merge security changes before review.
+
+```bash
+git clone https://github.com/rzkarsyad/agentmargin.git
+cd agentmargin
+git fetch origin main test/registry-consumer-and-integration-edges
+git switch --track origin/test/registry-consumer-and-integration-edges
+npm ci
+npm run check
+npm audit --audit-level=low
+node scripts/sdk-registry-consumer-smoke.mjs
+# Requires access to npm's cryptographic verification/trust-data endpoints:
+node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
+
+docker run --rm -d --name agentmargin-local-ci \
+  -e POSTGRES_DB=agentmargin_ci -e POSTGRES_USER=agentmargin_ci \
+  -e POSTGRES_PASSWORD=ci-only-disposable -p 127.0.0.1:55432:5432 postgres:16
+docker exec agentmargin-local-ci pg_isready -U agentmargin_ci -d agentmargin_ci
+export AGENTMARGIN_STANDALONE_DATABASE_URL='postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:55432/agentmargin_ci'
+# Must start empty; this applies migrations 001–007 and populates fictional data.
+npm run test:postgres
+node --experimental-strip-types scripts/server-lifecycle-test.ts
+node --experimental-strip-types scripts/reconcile.ts \
+  examples/reconciliation/synthetic-costs.json /tmp/agentmargin-private-reports
+
+npm --prefix examples/nextjs-starter install --no-audit --no-fund
+npm --prefix examples/nextjs-starter run build
+npm --prefix examples/nextjs-starter audit --audit-level=high
+python3 scripts/check-release-files.py
+docker stop agentmargin-local-ci
+```
+
+For an already-cloned clean checkout, use `git fetch origin` then switch to the review branch; preserve any uncommitted work. Wait for `pg_isready` success before running the suite. To repeat PostgreSQL tests, create a new disposable container/database; the suite intentionally refuses a nonempty database. The CI-only rotation/restore/backup scripts additionally enforce their GitHub/synthetic guard and port 5432; use the existing CI workflow for those complete drills. Browser scripts require Python Playwright 1.56.0 and Chromium, as provisioned in CI. Optional provider calls are excluded from these commands.
+
+For a manually administered disposable database, the exact ordered schema and runtime-grant commands are in [database isolation](DB_RUNTIME_ROLE.md). Backup hook setup, retention and isolated recovery commands are in [backup/restore](BACKUP_RESTORE.md); monitoring and response examples are in [observability](OBSERVABILITY.md).

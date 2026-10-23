@@ -11,7 +11,7 @@ node scripts/sdk-registry-consumer-smoke.mjs
 node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
 ```
 
-The second command additionally requires cryptographic registry/provenance verification through `npm audit signatures`. Local verification failed to download trust data in the managed environment; metadata presence alone is **not** cryptographic verification. The Next.js starter workflow requires the full signature check on GitHub Actions; record that result separately. Both commands clean up their temporary consumer project and never publish a package.
+The second command additionally requires cryptographic registry/provenance verification through `npm audit signatures`. Local verification failed to download trust data in the managed environment; metadata presence alone is **not** cryptographic verification. The [GitHub starter workflow](https://github.com/rzkarsyad/agentmargin/actions/runs/39908019043) subsequently passed this check: **two packages have verified registry signatures and one SDK package has a verified attestation**. The local download failure does not invalidate this separate successful evidence. Both commands clean up their temporary consumer project and never publish a package.
 
 The Next.js starter production build passed locally; root and starter dependency audits found zero vulnerabilities. Main CI additionally validates compiled SDK package contents and a complete synthetic PostgreSQL/API/SDK/browser integration. New SDK edge fixes (IPv6 loopback, strict provider timestamps/IDs and stable invoice paid_at) are source changes awaiting review and a separately authorized future publication; they are not claimed to exist in the installed alpha.2 artifact.
 
