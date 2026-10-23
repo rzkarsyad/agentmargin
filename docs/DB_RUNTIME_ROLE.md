@@ -139,3 +139,20 @@ PostgreSQL tests deny direct ingest/admin resets, allow reviewed recovery and
 exercise migration rollback/retry and normal worker behavior. Pending-state
 completion/state authority still belongs to the runtime worker; this is not a
 separate writer/worker credential architecture or independent approval.
+
+
+## Pre-migration session boundary for a separately approved rollout
+
+Draining normal HTTP writers alone does not close admitted SQL cursors, including
+WITH HOLD results retained after commit. Before an approved existing-schema
+security rollout, the operator must inventory and close the old runtime pools and
+sessions as part of the reviewed downtime/containment plan. The separately owned
+NOLOGIN/session-termination tool has a shared-role, all-tenant availability impact;
+its use on any deployed database requires explicit incident/rollout authorization.
+No such action is authorized or performed by this source audit. A migration or key
+revocation cannot recall previously returned rows. Independent reviewers must
+accept this boundary or require a different credential/capability architecture.
+Verify encrypted recovery evidence and migration hashes first, apply only unapplied
+001–014 in order with matching code/final grants, and test negative tenant and
+financial probes in quarantine before any independently authorized traffic resume.
+Never silently rerun/edit a recorded migration or recover with broad runtime grants.

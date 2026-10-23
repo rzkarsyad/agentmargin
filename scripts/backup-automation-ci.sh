@@ -50,6 +50,17 @@ chmod 700 "$fixture/encrypt" "$fixture/upload" "$fixture/prune" "$fixture/recove
 export BACKUP_FIXTURE=$fixture AGENTMARGIN_BACKUP_DIR="$fixture/backups" \
  AGENTMARGIN_BACKUP_ENCRYPT="$fixture/encrypt" AGENTMARGIN_BACKUP_UPLOAD="$fixture/upload" \
  AGENTMARGIN_BACKUP_PRUNE="$fixture/prune"
+# Unsafe ancestors/hook modes must fail before pg_dump, hook execution or a
+# success marker. These local fixtures prove rejection, not a live exploit.
+mkdir "$fixture/unsafe-parent" "$fixture/unsafe-parent/backups"
+chmod 777 "$fixture/unsafe-parent"
+if AGENTMARGIN_BACKUP_DIR="$fixture/unsafe-parent/backups" bash scripts/postgres-backup.sh > "$fixture/config.log" 2>&1; then exit 1; fi
+[[ "$(cat "$fixture/config.log")" == *'{"kind":"backup_configuration_rejected"}'* ]]
+[[ ! -e "$fixture/unsafe-parent/backups/.backup-lock" ]]
+cp "$fixture/encrypt" "$fixture/unsafe-hook"; chmod 777 "$fixture/unsafe-hook"
+if AGENTMARGIN_BACKUP_ENCRYPT="$fixture/unsafe-hook" bash scripts/postgres-backup.sh > "$fixture/config.log" 2>&1; then exit 1; fi
+[[ "$(cat "$fixture/config.log")" == *'{"kind":"backup_configuration_rejected"}'* ]]
+[[ ! -e "$fixture/backups/.backup-lock" ]]
 # Local retention must preserve unrelated files and recent utility archives.
 touch "$fixture/backups/agentmargin-old.dump.enc" "$fixture/backups/unrelated.dump.enc"
 touch "$fixture/backups/agentmargin-expired-boundary.dump.enc" "$fixture/backups/agentmargin-fresh-boundary.dump.enc"

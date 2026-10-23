@@ -27,7 +27,7 @@ container=$(docker_local run -d --label agentmargin.synthetic-recovery=true \
  -p 127.0.0.1::5432 postgres:16)
 [[ "$container" =~ ^[a-f0-9]{64}$ ]] || exit 1
 for attempt in {1..60}; do
- if docker_local exec "$container" pg_isready -U agentmargin_ci -d agentmargin_ci >/dev/null 2>&1; then break; fi
+ if docker_local exec "$container" pg_isready -h 127.0.0.1 -U agentmargin_ci -d agentmargin_ci >/dev/null 2>&1; then break; fi
  if [[ "$attempt" == 60 ]]; then echo 'Disposable PostgreSQL startup timed out.' >&2; exit 1; fi
  sleep 1
 done

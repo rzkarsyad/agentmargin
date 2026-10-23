@@ -105,7 +105,7 @@ inventory rather than treating absence of a success marker as no remote upload.
 
 ### Safe macOS / Docker Desktop / OrbStack rehearsal
 
-Requires Node 24 and Docker with a **local Unix-socket context**. No provider keys,
+Requires Node 24, Git, Python 3 for the source scan, and Docker with a **local Unix-socket context**. No provider keys,
 paid calls, external backup credentials or existing databases are used. Keep any
 private reports outside the checkout. Preserve a dirty checkout and use a new
 worktree; the following commands do not reset or overwrite existing work:
@@ -203,3 +203,21 @@ financial probes; measure full elapsed time and backup age; retain private evide
 and obtain the incident/recovery owner's acceptance. Include erased-subject manifest
 reapplication before any cutover. No step in this follow-up authorizes production
 access or cutover. See PRIVACY_LIFECYCLE.md for outstanding policy decisions.
+
+
+The operator backup utility now resolves canonical directory/hook paths once and
+rejects files or ancestors owned by another UID or writable by group/others,
+except root-owned sticky directories such as /tmp. Hook files must not be writable
+by other users. Previously only the mode-700 leaf directory was checked, allowing
+unsafe ancestor/hook configuration and local replacement races. Regression fixtures
+require rejection before a dump, hook or lock is started. Same-UID/root compromise
+and malicious configured hooks are still trusted-boundary risks; this is not a
+proof that arbitrary hooks implement encryption/storage correctly. Use encrypted
+operator storage and independently controlled credentials, not a shared writable
+working directory. The Docker wrapper waits for TCP readiness rather than the
+entrypoint's temporary initialization socket.
+
+The freshness command measures last-success completion age. It does not calculate
+RPO or certify a recovery point; a long-running dump can complete recently with an
+older snapshot. Use the protected start/snapshot/backup-age evidence when measuring
+recovery objectives, and verify actual restore viability separately.

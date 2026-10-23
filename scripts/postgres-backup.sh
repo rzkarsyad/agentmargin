@@ -13,7 +13,30 @@ for hook in "$encrypt" "$upload" "$prune"; do
   [[ "$hook" == /* && -f "$hook" && -x "$hook" ]] || exit 2
 done
 mkdir -p -- "$backup_dir"
+# Resolve once, then use only canonical paths whose entry/ancestors cannot be
+# replaced by another local UID. Root-owned sticky /tmp is a supported parent;
+# same-UID/root compromise remains outside this operator filesystem boundary.
+trusted_path(){
+  local current=$1 owner permissions mode
+  while :; do
+    read -r owner permissions < <(stat -c '%u %a' -- "$current")
+    [[ "$owner" == 0 || "$owner" == "$EUID" ]] || return 1
+    mode=$((8#$permissions))
+    if (( (mode & 0022) != 0 )); then
+      [[ -d "$current" && "$owner" == 0 ]] && (( (mode & 01000) != 0 )) || return 1
+    fi
+    [[ "$current" == / ]] && break
+    current=$(dirname -- "$current")
+  done
+}
+backup_dir=$(realpath -e -- "$backup_dir")
 [[ "$(stat -c '%a' "$backup_dir")" == 700 && -O "$backup_dir" ]] || { echo 'Backup directory must be owned by the operator with mode 700.' >&2; exit 2; }
+encrypt=$(realpath -e -- "$encrypt")
+upload=$(realpath -e -- "$upload")
+prune=$(realpath -e -- "$prune")
+for path in "$backup_dir" "$encrypt" "$upload" "$prune"; do
+  trusted_path "$path" || { echo '{"kind":"backup_configuration_rejected"}' >&2; exit 2; }
+done
 # Refuse overlapping runs; stale locks require operator investigation.
 mkdir -- "$backup_dir/.backup-lock" 2>/dev/null || { echo 'Backup already locked.' >&2; exit 1; }
 work=''
