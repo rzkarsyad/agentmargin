@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import pg from 'pg';
+import {readCheckedFile} from './lib/private-files.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
 import {digest} from '../apps/api/src/app.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
@@ -41,8 +42,8 @@ export async function testFinancialReports(pool:pg.Pool,runtimeURL:string){
     const output=join(directory,'ledger.json'),input=join(directory,'reconcile.json'),reports=join(directory,'reports');
     const exported=JSON.parse(execFileSync(process.execPath,['--experimental-strip-types','scripts/export-financial-ledger.ts',start,end,output],
       {encoding:'utf8',env:{...process.env,DATABASE_URL:runtimeURL,AGENTMARGIN_API_KEY:key}}));
-    assert.equal(exported.inputDigest,report.inputDigest);assert.equal(statSync(output).mode&0o077,0);
-    assert.deepEqual(JSON.parse(readFileSync(output,'utf8')),report);
+    assert.equal(exported.inputDigest,report.inputDigest);assert.equal(readCheckedFile(output,{privateFile:true}).mode&0o077,0);
+    assert.deepEqual(JSON.parse(readCheckedFile(output,{privateFile:true}).contents),report);
     writeFileSync(input,JSON.stringify({ledger:report.inputs,billing}));
     const run=()=>execFileSync(process.execPath,['--experimental-strip-types','scripts/reconcile.ts',input,reports],{encoding:'utf8'});
     const first=JSON.parse(run());assert.equal(first.complete,true);

@@ -90,7 +90,7 @@ await client.trackRevenue([{
 }]);
 ```
 
-**Important:** the usage event's cost will be marked `unknown` unless you supply a provider-reported cost or configure a trusted matching workspace price through the [Model pricing API/UI](PRICING.md). This is intentional; missing pricing is not free usage. The SDK is not published to npm yet, and its server-side code must not ship with keys in browser bundles.
+**Important:** the usage event's cost will be marked `unknown` unless you supply a provider-reported cost or configure a trusted matching workspace price through the [Model pricing API/UI](PRICING.md). This is intentional; missing pricing is not free usage. The published SDK is `@makinohq/agentmargin@0.4.0-alpha.2`; the v0.9 candidate prepares SDK `0.5.0-alpha.1` but has not published it. Server-side SDK code and keys must not ship in browser bundles.
 
 To try the OpenAI post-call helper, see [packages/sdk/src/openai.ts](../packages/sdk/src/openai.ts). It does **not** instrument requests automatically.
 

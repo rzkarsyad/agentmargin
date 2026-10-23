@@ -40,11 +40,14 @@ restored="agentmargin_backup_ci_$(openssl rand -hex 6)"
 createdb --template=template0 "$restored"
 trap 'dropdb --if-exists "$restored"; rm -rf -- "$fixture"' EXIT
 pg_restore --exit-on-error --no-owner --no-acl --dbname="$restored" "$fixture/restorable.dump"
-query="SELECT md5(coalesce(string_agg(to_jsonb(t)::text, ',' ORDER BY to_jsonb(t)::text),'')) FROM revenue_records t"
-[[ "$(psql -XAt -v ON_ERROR_STOP=1 -c "$query")" == "$(psql -XAt -v ON_ERROR_STOP=1 -d "$restored" -c "$query")" ]]
+for table in workspaces workspace_api_keys customers price_versions workspace_price_versions usage_events revenue_records revenue_deliveries revenue_adjustments revenue_payment_sources adjustment_deliveries delivery_history delivery_requeues; do
+  query="SELECT md5(coalesce(string_agg(to_jsonb(t)::text, ',' ORDER BY to_jsonb(t)::text),'')) FROM $table t"
+  [[ "$(psql -XAt -v ON_ERROR_STOP=1 -c "$query")" == "$(psql -XAt -v ON_ERROR_STOP=1 -d "$restored" -c "$query")" ]]
+done
 cp "$fixture/backups/last-success.json" "$fixture/before.json"
 if AGENTMARGIN_BACKUP_UPLOAD=/bin/false bash scripts/postgres-backup.sh; then exit 1; fi
 cmp "$fixture/backups/last-success.json" "$fixture/before.json"
 [[ ! -d "$fixture/backups/.backup-lock" ]]
 [[ $(find "$fixture/backups" -name plain.dump | wc -l) == 0 ]]
+bash scripts/postgres-restored-probes.sh "$restored"
 echo 'Encrypted backup hooks, isolated restore and failure detection: PASSED (synthetic only)'

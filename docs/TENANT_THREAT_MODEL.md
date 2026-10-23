@@ -48,3 +48,63 @@ See [credential-backed isolation design, migration and limitations](DB_RUNTIME_R
 Until these gates are satisfied, serve the local demo only and do not put real customer data on an internet-exposed AgentMargin instance.
 
 See [runtime DB grants](DB_RUNTIME_ROLE.md), [pre-auth security](PREAUTH_SECURITY.md), [backup/restore](BACKUP_RESTORE.md), [observability](OBSERVABILITY.md), [security policy](../SECURITY.md) and [roadmap](ROADMAP.md). PostgreSQL reference: [Row Security Policies](https://www.postgresql.org/docs/16/ddl-rowsecurity.html).
+
+## v0.9 independent review packet (no approval recorded)
+
+Review the final combination, not just PR 24. Exact changes:
+
+```sh
+git diff bea396246af6495081f6bc596501c6af28750ff5..release/v0.9.0-alpha.1 -- db apps/api/src/postgres.ts
+# Include independent CodeQL patch exactly once in an isolated rehearsal:
+git show ec812275ce4ba3a030f981942fe15d619a21820d --stat
+```
+
+| Identity | Allowed authority | Denied / trust boundary |
+| --- | --- | --- |
+| Owner/migrator/function owner | DDL, key provisioning, reviewed recovery/maintenance | Trusted; outside runtime-password boundary; never API credentials |
+| Shared restricted runtime password alone | Global public pricing, catalog metadata, CONNECT | No tenant proof, no key-table/workspace access; no ownership, elevated attrs/memberships/CREATE |
+| Runtime + ingest key | Own-tenant inserts, pricing/inbox/source reads, inbox mutable state, narrow replay digest/allowance oracles | Bulk customer/usage/payment/adjustment reads denied; another tenant denied |
+| Runtime + read key | Own-tenant financial/pricing/inbox reads | Inserts/worker mutation/requeue denied |
+| Runtime + admin key | Own-tenant read/ingest/pricing and reviewed bounded recovery function | Another tenant, direct audit writes, DDL/key table mutations denied |
+| Backup/operator credentials | Protected exports, independently authorized incident containment | Must be separate from runtime; sensitive data/role recovery require review |
+
+The pg_temp catalog guard issue is **confirmed and contained in additive 013**;
+see DB_RUNTIME_ROLE.md for exploitability bounds and exact pre/post regression.
+RLS still prevented final cross-tenant writes; errors could disclose hidden payment
+existence/allowance before remediation. Catalogs are now explicitly qualified and
+pg_temp placed last. Direct runtime grants, trigger ownership and function ACLs
+must be reviewed independently.
+
+Acceptance checklist for a genuine reviewer:
+
+- [ ] Reproduce guarded PostgreSQL 16 clean/upgrade/rollback/contention tests;
+  inspect 007–014 diffs, all functions, grants, owners and installed extensions.
+- [ ] Confirm forged/missing/revoked/expired keys, tenant SELECT/INSERT and read/
+  ingest/admin scope violations fail; pool reuse overwrites transaction-local proof.
+- [ ] Reproduce fixed catalog-shadow denial and ensure no earlier trigger emits
+  cross-tenant financial existence/allowance errors.
+- [ ] Review persisted cursor/in-flight authentication limits. Accept the residual
+  boundary or require stronger credential/role isolation; no timeout is a hard max
+  malicious transaction lifetime. Rehearse separately authorized shared-role
+  NOLOGIN/session termination and incident ownership.
+- [ ] Assess own-tenant ingest inbox payload/state visibility, source metadata and
+  oracles, worker authorization and whether separate enqueue/worker DB identities
+  are required. Audit history does not prove external provider authenticity.
+- [ ] Verify immutable payments/reductions, cumulative row locking, account evidence,
+  replay completion atomicity, requeue cycles/receipts and explicit financial policy.
+- [ ] Inspect raw credentials in session context against host/log/statistics/extension
+  exposure; prohibit bound-parameter logging, separate migration/backup secrets.
+- [ ] Review CodeQL SARIF paths/false-positive recommendation; independently approve
+  deployment ingress, privacy/retention, storage/recovery and release restrictions.
+
+Human judgments needed: acceptable threat boundary for password-plus-tenant-key
+compromise; revocation incident response versus separate identities; financial
+credit/cross-period policy; real retention/erasure and operator recovery authority.
+No automated reviewer or implementer self-review substitutes for these approvals.
+
+
+Shared-role availability is not isolated by RLS. Runtime-password holders share
+session/resource identity and can disrupt same-role work; review cancellation,
+termination, connection/resource limits and incident blast radius independently.
+The data-scope tests do not claim availability containment. Separate identities
+or infrastructure may be required by the deployment's accepted threat model.

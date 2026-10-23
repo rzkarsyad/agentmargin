@@ -34,7 +34,7 @@ jobs:
         run: node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
       - name: Install starter dependencies and build
         run: |
-          npm --prefix examples/nextjs-starter install --no-audit --no-fund
+          npm --prefix examples/nextjs-starter ci --no-audit --no-fund
           npm --prefix examples/nextjs-starter run build
       - name: Audit Next.js starter dependencies (fail closed)
         run: |

@@ -47,6 +47,7 @@ if [[ "$(sql "$source_db" 'SELECT count(*) FROM public.workspaces')" -lt 2 || \
   exit 2
 fi
 
+restore_started=$SECONDS
 pg_dump --format=custom --no-owner --no-acl --file="$backup_file" "$source_db"
 pg_restore --list "$backup_file" >/dev/null
 createdb --template=template0 -- "$restore_db"
@@ -76,4 +77,5 @@ for query in \
   fi
 done
 
-echo 'PostgreSQL 16 restore drill: PASSED (full custom archive, row fingerprints, schema checks).'
+bash scripts/postgres-restored-probes.sh "$restore_db"
+echo "PostgreSQL 16 restore drill: PASSED (full archive, row fingerprints, schema checks; synthetic dump/restore elapsed $((SECONDS-restore_started)) seconds)."

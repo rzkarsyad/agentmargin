@@ -1,7 +1,7 @@
 {
   "name": "@makinohq/agentmargin",
-  "version": "0.4.0-alpha.2",
-  "description": "Source-first usage and revenue attribution SDK for AgentMargin",
+  "version": "0.5.0-alpha.1",
+  "description": "Exact usage, revenue and adjustment attribution SDK for AgentMargin",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/rzkarsyad/agentmargin",

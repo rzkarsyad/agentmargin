@@ -53,3 +53,17 @@ Source changes after alpha.2 validate HTTP(S) URLs without embedded credentials,
 
 
 The separate durable-delivery source candidate adds `enqueueRevenueDelivery` for verified normalized Stripe invoice payments. It commits to the tenant inbox before acknowledging; a scoped worker must complete replay. This additive method is unpublished and requires migration 008 plus the matching API/worker. See [integration contract](https://github.com/rzkarsyad/agentmargin/blob/main/docs/INTEGRATIONS.md); no live Stripe or production-readiness claim follows from synthetic tests.
+
+
+## v0.9 platform candidate / SDK 0.5.0-alpha.1 (NOT PUBLISHED)
+
+This checkout prepares the next additive SDK prerelease at `0.5.0-alpha.1`,
+independently of platform `v0.9.0-alpha.1`. Existing usage, revenue, OpenAI and
+Anthropic APIs remain compatible. New `trackAdjustments`, `enqueueRevenueDelivery`,
+`enqueueAdjustmentDelivery`, current-schema Stripe credits and `platformAccount`
+require matching reviewed API/schema 001–014 and a replay worker. API revenue
+analytics now reports net recorded revenue after adjustments; explicit gross and
+reduction fields preserve its derivation. Non-USD FX, mixed credits and positive
+reinstatements remain unsupported. SDK alpha.2 does **not** gain source-only methods
+through a server upgrade. Follow the authoritative [release dashboard](../../docs/ROADMAP.md)
+and [integration contract](../../docs/INTEGRATIONS.md). No new npm version is released.
