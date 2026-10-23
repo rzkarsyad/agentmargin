@@ -96,7 +96,7 @@ Current head/CI evidence is recorded in the reviewed-candidate table below. The 
 | Remaining financial engineering | Persisted linked adjustments, durable replay and ledger-backed reports are implemented/tested candidates. Positive reinstatements, full dispute/credit lifecycle, official importers and operational dead-letter recovery remain unfinished; real provider/accountant validation is still required |
 | Data governance | Approved export/deletion/retention policy, backup expiry and privacy erasure procedure, with synthetic implementation tests and independent operator/privacy approval |
 | Developer adoption | Three real independent developers complete installation/integration and record feedback; automated clean npm consumption does not count as three developers |
-| Release integrity | Registry cryptographic verification passed (two registry signatures, one SDK attestation); current CI and independent review on final commits plus explicit authorization are still required for later npm publication or a stable tag |
+| Release integrity | Registry cryptographic verification passed (two registry signatures, one SDK attestation). GitHub main branch metadata currently reports protection disabled / required checks off; an authorized repository owner must configure required CI and independent review enforcement before release. Current final-head CI/review plus explicit authorization remain required for npm publication or a stable tag |
 
 ## Reproducing locally with disposable infrastructure
 
