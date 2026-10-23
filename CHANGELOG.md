@@ -11,6 +11,10 @@
   accept only explicit null for unused out-of-band allocation while rejecting mixed
   allocations. Operator-verified signed sandbox recovery passed with $10.75 net
   and zero variance; independent billing/security/accounting gates remain open.
+- Private OpenAI CSV evidence validation with exact production-engine rounding,
+  scoped UTC comparisons and disposable SDK/API/restricted-PostgreSQL replay.
+  The authentic 25/13/0 sample matches 9 organization-billed micros with zero
+  variance; historical price authority, allocations/coverage and policy remain open.
 - Operational/readiness/backup/restore/restart/privacy rehearsals and full-stack
   browser/SDK validation. No deployment-specific production certification.
 - SDK candidate 0.5.0-alpha.1 adds adjustment and durable delivery methods while

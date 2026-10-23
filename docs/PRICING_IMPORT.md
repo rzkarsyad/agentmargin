@@ -42,3 +42,12 @@ node --experimental-strip-types scripts/pricing-catalog-scan.ts > pricing-candid
 ```
 
 If the catalog is unavailable, too large, malformed or its relevant costs cannot be represented exactly, the scan fails or excludes those candidates; it never fills missing values with zero.
+
+## Authentic provider evidence is a separate workflow
+
+Use the [OpenAI billing validator](OPENAI_INTEGRATION.md#private-openai-billing-validation-v05)
+for private authentic CSVs, exact production-engine comparison and disposable
+SDK/API/PostgreSQL replay. Its official-observed QA rates are conditional and
+never imported into existing customer workspaces. Community disagreements stay
+visible in provenance; they cannot override an official-observed QA hypothesis.
+Neither workflow proves a historical effective date or missing billing allocation.
