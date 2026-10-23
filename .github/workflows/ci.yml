@@ -43,6 +43,18 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: PostgreSQL backup/restore drill (synthetic CI database only)
+        run: |
+          docker run --rm --network host \
+            -e GITHUB_ACTIONS=true \
+            -e AGENTMARGIN_RESTORE_DRILL=ci-only \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGDATABASE=agentmargin_ci \
+            -e PGUSER=agentmargin_ci \
+            -e PGPASSWORD=ci-only-disposable \
+            -v "$PWD:/src:ro" -w /src \
+            postgres:16 bash scripts/postgres-restore-drill.sh
       - run: python3 scripts/check-release-files.py
       # npm's advisory endpoint can transiently return HTTP 503. Retry briefly,
       # but NEVER treat an unsuccessful audit as a pass.
