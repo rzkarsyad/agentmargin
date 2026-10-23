@@ -128,6 +128,58 @@ try {
   assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&cursor=!',
     {headers:{authorization:'Bearer '+key}})).status,400);
   assert.equal((await api.request('/v1/analytics/page?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z')).status,401);
+  // v0.7: prove the documented runtime grants support API queries while blocking
+  // schema/accounting mutations. The role exists only for this isolated CI run.
+  const runtimeRole='agentmargin_ci_runtime_'+randomBytes(6).toString('hex');
+  const runtimePassword=randomBytes(24).toString('base64url');
+  const roleDDL=await pool.query<{sql:string}>(
+    `SELECT format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', $1::text, $2::text) AS sql`,
+    [runtimeRole,runtimePassword]);
+  await pool.query(roleDDL.rows[0]!.sql);
+  let runtimeStore:PostgresEventStore|undefined;
+  try{
+    const grants=readFileSync(new URL('../db/runtime_privileges.psql',import.meta.url),'utf8')
+      .replaceAll(':"runtime_role"','"'+runtimeRole+'"')
+      .split('\n').filter(line=>!line.startsWith('--')).join('\n');
+    await pool.query(grants);
+    const runtimeURL=new URL(connectionString);
+    runtimeURL.username=runtimeRole;
+    runtimeURL.password=runtimePassword;
+    runtimeStore=new PostgresEventStore(runtimeURL.toString());
+    assert.equal(await runtimeStore.authenticate(createHash('sha256').update(key).digest('hex')),workspace);
+    const runtimeEvent:StoredEvent={...stored,event:{...event,id:'runtime-role-usage',customerId:'runtime-customer'},
+      payloadDigest:'runtime-role-usage'};
+    assert.equal((await runtimeStore.ingest(workspace,[runtimeEvent])).inserted,1);
+    const runtimeRevenue:StoredRevenue={...rev,id:'runtime-role-revenue',customerId:'runtime-customer',
+      payloadDigest:'runtime-role-revenue'};
+    assert.equal((await runtimeStore.ingestRevenue(workspace,[runtimeRevenue])).inserted,1);
+    const runtimePrice={...firstPrice,id:randomUUID(),model:'runtime-priced',
+      effectiveFrom:'2026-12-01T00:00:00Z'};
+    assert.equal((await runtimeStore.createPriceVersion(workspace,createHash('sha256').update(key).digest('hex'),runtimePrice)).id,
+      runtimePrice.id);
+    assert.equal((await runtimeStore.prices(workspace,'runtime-priced','2026-12-02T00:00:00Z'))[0]?.id,runtimePrice.id);
+    assert.ok((await runtimeStore.analyticsPage(workspace,'2026-10-01T00:00:00Z',
+      '2026-11-01T00:00:00Z',null,20)).summary.customerCount);
+    const denied=[
+      'SELECT * FROM workspaces',
+      'INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES (gen_random_uuid(),gen_random_uuid(),repeat(\'a\',64),\'forbidden\')',
+      'UPDATE revenue_records SET amount_micros=0',
+      'DELETE FROM revenue_records',
+      'TRUNCATE TABLE usage_events',
+      'ALTER TABLE customers ADD COLUMN forbidden text',
+      'CREATE TABLE public.forbidden_table(id integer)',
+    ];
+    for(const sql of denied){
+      await assert.rejects(runtimeStore.pool.query(sql),
+        (err:unknown)=>(err as {code?:string}).code==='42501',
+        'Runtime role unexpectedly allowed: '+sql);
+    }
+  }finally{
+    await runtimeStore?.pool.end();
+    // Drop only the randomly named role created by this test, never an existing role.
+    await pool.query('DROP OWNED BY "'+runtimeRole+'"');
+    await pool.query('DROP ROLE "'+runtimeRole+'"');
+  }
   process.stdout.write('Standalone PostgreSQL concurrency: PASSED (usage/revenue idempotency, reversed batch order, tenant isolation).\n');
 } finally {
   await store?.pool.end();
