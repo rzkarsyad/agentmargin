@@ -224,15 +224,28 @@ version IDs, hashes, delivery history and variances; do not upload it publicly.
 Only aggregate scenario results reach stdout. The script retains run-tagged
 sandbox fixtures for audit; an authorized operator may dispose that isolated
 sandbox after review. A failed/interrupted run can leave isolated fixtures, but
-never runs automatic account-wide cleanup. New runs use a new idempotency namespace;
-individual operations use deterministic keys within one run.
+never runs automatic account-wide cleanup. A private `qa-run.json` fixes the Stripe idempotency namespace for restart within
+23 hours; operation keys are deterministic, and each local attempt uses an isolated
+workspace/evidence filename. A new private directory creates a new isolated run.
+Stripe idempotency retention is not treated as indefinite.
 
 **Current evidence:** the configuration guard executed and rejected missing test
-credentials before any Stripe operation. No genuine sandbox run or external billing
-validation is claimed. MCP account access alone cannot provide the CLI key/listener
+credentials before any Stripe operation. No genuine paid/refund/credit or signed-listener sandbox run or external provider
+billing validation is claimed. MCP account access alone cannot provide the CLI key/listener
 secret. The synthetic acceptance fixture is separately tested across PostgreSQL,
 API, reconciliation and desktop/mobile browser: $128 gross − $105.25 refunds − $12
 credits = $10.75 net. It also preserves unknown pricing as incomplete contribution.
 A synthetic success does not clear the genuine sandbox, independent accounting or
 provider billing gates. The harness's external run, current payload shapes and
 billing-export corroboration remain to be verified.
+
+
+Moland test-mode connector follow-up (2026-10-23): the selected account was checked
+`livemode=false` before **every write**. Only newly created `agentmargin-qa` fixtures
+were touched. A customer/product/price/item/invoice were created with run metadata;
+finalized unpaid invoice readback is **USD 1500 due / 0 paid / open**. No existing
+customer records, payments, credits, unrelated data or live mode were accessed.
+The connector explicitly reports payment-method attachment, invoice payment and
+credit-note creation unavailable, so the full paid/refund/credit scenario and
+real signed delivery remain blocked. It exposes no CLI test key/listener secret.
+No paid-out-of-band flag or fabricated webhook is used to simulate those gates.

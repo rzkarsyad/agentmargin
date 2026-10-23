@@ -5,7 +5,7 @@
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createServer} from 'node:http';
 import {createHmac,timingSafeEqual,randomBytes,randomUUID,createHash} from 'node:crypto';
-import {mkdirSync,writeFileSync,statSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,existsSync,statSync} from 'node:fs';
 import {resolve,relative} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {once} from 'node:events';
@@ -27,11 +27,16 @@ if(target.hostname!=='127.0.0.1'||target.pathname!=='/agentmargin_ci'||target.us
  !relative(root,directory).startsWith('..'))throw new Error('Require isolated loopback CI database and evidence outside repository');
 mkdirSync(directory,{recursive:true,mode:0o700});
 if(statSync(directory).mode&0o077)throw new Error('Evidence directory must be mode 0700');
-const run=randomUUID(),workspace=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
+const runFile=resolve(directory,'qa-run.json');
+const existing=existsSync(runFile)?JSON.parse(readFileSync(runFile,'utf8')):null;
+const run:string=existing?.run??randomUUID(),workspace=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
+if(!/^[a-f0-9-]{36}$/.test(run)||existing&&(existing.account!==account||Date.now()-existing.createdAt>23*3600000))throw new Error('QA replay namespace expired or account changed; use a new private run directory');
+if(!existing)writeFileSync(runFile,JSON.stringify({run,account,createdAt:Date.now()}),{mode:0o600,flag:'wx'});
+
 // Never pass secrets as command-line arguments or print Stripe's error bodies.
 const stripe=(method:string,path:string,data:Record<string,string|number|boolean>={},operation='read')=>{
  const args=[method,path,'--stripe-version','2026-09-30.endive'];
- if(method==='post')args.push('--idempotency','agentmargin:'+run+':'+operation);
+ if(method==='post')args.push('--idempotency','agentmargin-qa:'+run+':'+operation);
  for(const [name,value] of Object.entries(data))args.push('-d',name+'='+String(value));
  let result:Record<string,any>;
  try{result=JSON.parse(execFileSync('stripe',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}));}
@@ -97,14 +102,15 @@ try{
  listener.stdout!.on('data',inspect);listener.stderr!.on('data',inspect);
  for(let i=0;i<100&&!secret&&!listenerError;i++)await delay(100);
  assert.ok(secret,'Stripe CLI listener did not provide a signing secret');
- customer=stripe('post','/v1/customers',{'metadata[agentmargin_qa_run]':run,description:'Synthetic AgentMargin QA'},'customer').id;
+ customer=stripe('post','/v1/customers',{'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run,name:'agentmargin-qa-'+run,description:'Synthetic AgentMargin QA'},'customer').id;
  const pm=stripe('post','/v1/payment_methods/pm_card_visa/attach',{customer},'payment-method').id;
+ stripe('post','/v1/payment_methods/'+pm,{'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},'payment-method-label');
  const invoice=(cents:number,currency:string,paid:boolean,label:string)=>{
-   const product=stripe('post','/v1/products',{name:'AgentMargin QA '+label,'metadata[agentmargin_qa_run]':run},label+'-product');
-   const price=stripe('post','/v1/prices',{product:product.id,currency,unit_amount:cents},label+'-price');
-   const inv=stripe('post','/v1/invoices',{customer,auto_advance:false,default_payment_method:pm,'metadata[agentmargin_qa_run]':run},label+'-invoice');
+   const product=stripe('post','/v1/products',{name:'agentmargin-qa '+label,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},label+'-product');
+   const price=stripe('post','/v1/prices',{product:product.id,currency,unit_amount:cents,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},label+'-price');
+   const inv=stripe('post','/v1/invoices',{customer,auto_advance:false,default_payment_method:pm,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},label+'-invoice');
    allowedInvoices.add(inv.id);
-   stripe('post','/v1/invoiceitems',{customer,invoice:inv.id,'pricing[price]':price.id},label+'-item');
+   stripe('post','/v1/invoiceitems',{customer,invoice:inv.id,'pricing[price]':price.id,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},label+'-item');
    stripe('post','/v1/invoices/'+inv.id+'/finalize',{auto_advance:false},label+'-finalize');
    return paid?stripe('post','/v1/invoices/'+inv.id+'/pay',{},label+'-pay'):stripe('get','/v1/invoices/'+inv.id);
  };
@@ -115,13 +121,13 @@ try{
    assert.equal(payments?.length,1,'Ambiguous original payment mapping');
    const payment=payments[0];assert.equal(payment.invoice,inv.id);assert.equal(payment.currency,'usd');
    assert.equal(payment.payment?.type,'payment_intent');
-   const r=stripe('post','/v1/refunds',{payment_intent:payment.payment.payment_intent,amount:cents,'metadata[agentmargin_qa_run]':run},label);
+   const r=stripe('post','/v1/refunds',{payment_intent:payment.payment.payment_intent,amount:cents,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},label);
    assert.notEqual(r.livemode,true);assert.equal(r.status,'succeeded');
    links[r.id]={originalPaymentId:'stripe:invoice:'+inv.id,customerId:'stripe:'+customer};return r;
  };
  const partial=refund(p29,625,'partial-refund'),full=refund(p99,9900,'full-refund');
  const credit=stripe('post','/v1/credit_notes',{invoice:p29.id,credit_amount:1200,'lines[0][type]':'invoice_line_item',
-   'lines[0][invoice_line_item]':p29.lines.data[0].id,'lines[0][amount]':1200,'metadata[agentmargin_qa_run]':run},'balance-credit');
+   'lines[0][invoice_line_item]':p29.lines.data[0].id,'lines[0][amount]':1200,'metadata[agentmargin_qa_run]':'agentmargin-qa-'+run},'balance-credit');
  assert.equal(credit.post_payment_amount,1200);assert.ok(credit.customer_balance_transaction);
  // Actual EUR evidence must remain unsupported; no exchange rate is invented.
  const eur=invoice(1000,'eur',true,'eur-unsupported');
@@ -168,7 +174,7 @@ try{
    {scenario:'EUR invoice',status:'unsupported_fx_required'},{scenario:'Independent billing export and dashboard browser',status:'pending'});
  const evidence={run,account,livemode:false,observations,providerEvidence:{p29,p99,unpaid,partial,full,credit,eur},ledger,reconciliation,deliveries:captured.map(c=>({eventId:c.event.id,apiVersion:c.event.api_version,objectId:c.event.data?.object?.id,
    accepted:c.accepted,sha256:createHash('sha256').update(c.raw).digest('hex')})),history:(await owner.pool.query('SELECT * FROM delivery_history WHERE workspace_id=$1 ORDER BY recorded_at,id',[workspace])).rows};
- writeFileSync(resolve(directory,run+'.json'),JSON.stringify(evidence,null,2),{mode:0o600,flag:'wx'});
+ writeFileSync(resolve(directory,run+'-'+workspace+'.json'),JSON.stringify(evidence,null,2),{mode:0o600,flag:'wx'});
  process.stdout.write(JSON.stringify({kind:'stripe_sandbox_qa',observations})+'\n');
 }catch{
  process.stderr.write('{"kind":"stripe_sandbox_qa_failed","reason":"Sandbox setup, API schema, signature, delivery or financial assertion failed; no release gate cleared"}\n');process.exitCode=1;
