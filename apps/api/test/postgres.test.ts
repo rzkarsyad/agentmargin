@@ -21,6 +21,10 @@ test('real embedded Postgres migrations and tenant-scoped analytics SQL',async()
     await db.exec(readFileSync(new URL('../../../db/005_api_key_roles.sql',import.meta.url),'utf8'));
     assert.equal((await db.query<{access_role:string}>(
       'SELECT access_role FROM workspace_api_keys WHERE workspace_id=$1',[one])).rows[0]?.access_role,'admin');
+    // Migration 006 preserves legacy keys: expiry is nullable for existing rows.
+    await db.exec(readFileSync(new URL('../../../db/006_api_key_expiry.sql',import.meta.url),'utf8'));
+    assert.equal((await db.query<{expires_at:Date|null}>(
+      'SELECT expires_at FROM workspace_api_keys WHERE workspace_id=$1',[one])).rows[0]?.expires_at,null);
     await assert.rejects(db.query(`INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name,access_role)
       VALUES ($1,$2,$3,$4,'superuser')`,['55555555-5555-4555-8555-555555555555',two,'b'.repeat(64),'invalid']),/check constraint/i);
     await db.query(`UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1`,[one]);
