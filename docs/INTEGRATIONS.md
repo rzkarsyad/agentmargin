@@ -125,3 +125,42 @@ Reports fail rather than silently truncate above 10,000 entries per evidence set
 To reconcile a Stripe account, pass `{ledger: exportedReport.inputs, billing: {...}}` to existing `scripts/reconcile.ts input.json private-report-directory`. `billing` includes the existing scope, export reference, exact tolerances and billed lines; allocations use `payment:<stored payment id>` / `adjustment:<stored adjustment id>`. Persisted reductions become negative recorded entries. The immutable report contains both the ledger snapshot and reconciler inputs/digests. Other known accounts are excluded; legacy payments without account attribution remain unresolved. Do not infer missing allocation/FX/provider data.
 
 `unresolvedEvidence` explicitly retains `{id, sourceRef, reason}` with `reason` one of `unknown_fx`, `unsupported_billing_tier`, `unmatched_transaction`, and optional original `currency`, integer-string `amountMicros`, `billingTier`. Such original-currency amounts are **not converted or included in USD sums**. Any unresolved item prevents a complete report/total variance claim; known sums remain available. Importers must enumerate unsupported or missing evidence, not discard it to make reconciliation pass. Adapter rejection alone cannot prove complete provider billing coverage. Official invoice/account/API-version and accountant review remain external release gates.
+
+
+## Reviewed dead-letter recovery (source candidate, migration 012)
+
+Each committed enqueue, state/attempt transition and requeue gets an append-only
+`delivery_history` row in the same transaction. Migration 012 records existing
+rows as **checkpoints**; it cannot recover prior attempt history. Rolled-back
+attempts/crashes have no committed transition; the worker's fixed error signal
+and external process monitoring cover these failures. History proves authenticated
+SQL transitions, not an independent Stripe receipt. A compromised ingest key plus
+DB password still has the documented inbox-state authority.
+
+Review the original receipt, account mapping, failure classification, payment and
+remaining allowance before recovery. Only `database_retry`/`unmatched_payment`
+failed jobs qualify; permanent conflicts/invalid records require investigated new
+evidence, not a payload edit. An admin bearer key is required. Each recovery has
+an immutable request UUID, unchanged payload digest, review reference and key UUID.
+Replaying that request returns its receipt without resetting a subsequent attempt.
+There are at most three reviewed requeues, each with eight attempts. The function
+locks jobs, preserves original payloads and lets normal ledger idempotency decide
+whether replay inserts anything. Workers cannot change `retry_cycle` or write the
+audit tables directly. External approval is an operator process; a string reference
+alone does not prove a human approved it.
+
+For a disposable loopback `/agentmargin_ci`, put this shape in a private mode-0600
+file, using actual fixture identifiers and the original digest:
+
+```json
+{"workspaceId":"<fixture-uuid>","kind":"adjustment","providerEventId":"evt_fixture","payloadDigest":"<64-hex>","reviewRef":"incident:QA-001","requestId":"<new-uuid>"}
+```
+
+```sh
+AGENTMARGIN_RECOVERY_ENV=disposable node --experimental-strip-types scripts/requeue-delivery.ts /private/review.json
+```
+
+Set `DATABASE_URL` to the restricted runtime and `AGENTMARGIN_API_KEY` to the
+fixture admin key through the shell's secret tooling. Never pass them as CLI
+arguments or log SQL bound parameters. The tool intentionally refuses remote or
+non-CI databases. It does not schedule a worker or clear the release approval gate.

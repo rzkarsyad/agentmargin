@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import {testFinancialReports} from './financial-report-tests.ts';
+import {testDefinerCatalogShadow} from './definer-shadow-tests.ts';
+import {testDeliveryRecovery} from './delivery-recovery-tests.ts';
 import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
@@ -98,6 +100,25 @@ try {
     assert.equal((await deliveryUpgrade.query("SELECT to_regclass('public.adjustment_deliveries') AS name")).rows[0].name,null);
     await deliveryUpgrade.query(sql);
   }finally{deliveryUpgrade.release();}
+  await pool.query("INSERT INTO revenue_deliveries(workspace_id,provider_event_id,provider_account,record_id,customer_id,occurred_at,amount_micros,payload_digest) VALUES($1,'evt_upgrade_checkpoint','acct_upgrade','checkpoint','upgrade','2026-10-10Z',1,$2)",[upgradeWorkspace,'c'.repeat(64)]);
+  const auditUpgrade=await pool.connect();
+  try{
+    const sql=readFileSync(new URL('../db/012_delivery_audit.sql',import.meta.url),'utf8');
+    await assert.rejects(auditUpgrade.query(sql.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await auditUpgrade.query('ROLLBACK');
+    assert.equal((await auditUpgrade.query("SELECT to_regclass('public.delivery_history') AS name")).rows[0].name,null);
+    await auditUpgrade.query(sql);
+    assert.equal((await auditUpgrade.query("SELECT operation FROM delivery_history WHERE provider_event_id='evt_upgrade_checkpoint'")).rows[0].operation,'checkpoint');
+  }finally{auditUpgrade.release();}
+  await testDefinerCatalogShadow(pool,connectionString);
+  const transitionUpgrade=await pool.connect();
+  try{
+    const sql=readFileSync(new URL('../db/014_delivery_transition_guard.sql',import.meta.url),'utf8');
+    await assert.rejects(transitionUpgrade.query(sql.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await transitionUpgrade.query('ROLLBACK');
+    assert.equal((await transitionUpgrade.query("SELECT to_regprocedure('agentmargin_auth.enforce_delivery_transition()') AS name")).rows[0].name,null);
+    await transitionUpgrade.query(sql);
+  }finally{transitionUpgrade.release();}
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
@@ -285,6 +306,7 @@ try {
     runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
       connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
     assert.equal(await runtimeStore.ready(),true);
+    assert.equal((await pool.query("SELECT has_function_privilege($1,'agentmargin_auth.validate_adjustment()','EXECUTE') AS allowed",[runtimeRole])).rows[0].allowed,false,'Runtime must not directly execute definer triggers');
     await pool.query('ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY');
     try{assert.equal(await runtimeStore.ready(),false,'Disabled RLS must fail readiness');}
     finally{await pool.query('ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY');}
@@ -556,6 +578,7 @@ try {
     }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
     assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
     await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
+    await testDeliveryRecovery(pool,runtimeStore,workspace,other,key,ingestKey,readKey);
     await testFinancialReports(pool,runtimeURL.toString());
     const queuedApi=createApp(runtimeStore);
     const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};

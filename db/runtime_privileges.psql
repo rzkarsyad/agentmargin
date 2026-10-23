@@ -27,23 +27,30 @@ GRANT SELECT, INSERT ON TABLE revenue_deliveries TO :"runtime_role";
 GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON revenue_deliveries TO :"runtime_role";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
 REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
+-- pg_restore --no-acl restores default PUBLIC EXECUTE on functions. Re-establish
+-- this boundary before granting runtime schema access.
+REVOKE ALL ON SCHEMA agentmargin_auth FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA agentmargin_auth FROM PUBLIC;
 GRANT USAGE ON SCHEMA agentmargin_auth TO :"runtime_role";
 GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text),
   agentmargin_auth.workspace(text), agentmargin_auth.event_digest(uuid,text,text) TO :"runtime_role";
+REVOKE ALL ON delivery_history,delivery_requeues FROM :"runtime_role";
+GRANT SELECT ON delivery_history,delivery_requeues TO :"runtime_role";
+GRANT EXECUTE ON FUNCTION agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid) TO :"runtime_role";
 -- Reject unsafe effective authority rather than silently claiming isolation.
 DO $guard$
 DECLARE
-  runtime pg_roles%ROWTYPE;
+  runtime pg_catalog.pg_roles%ROWTYPE;
 BEGIN
-  SELECT * INTO STRICT runtime FROM pg_roles WHERE rolname=current_setting('agentmargin.runtime_role');
+  SELECT * INTO STRICT runtime FROM pg_catalog.pg_roles WHERE rolname=current_setting('agentmargin.runtime_role');
   IF NOT runtime.rolcanlogin OR runtime.rolsuper OR runtime.rolbypassrls
      OR runtime.rolcreatedb OR runtime.rolcreaterole OR runtime.rolreplication
      OR runtime.rolinherit
-     OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member=runtime.oid)
-     OR EXISTS (SELECT 1 FROM pg_database WHERE oid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND datdba=runtime.oid)
-     OR EXISTS (SELECT 1 FROM pg_class WHERE relnamespace='public'::regnamespace AND relowner=runtime.oid)
-     OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname IN ('public','agentmargin_auth') AND nspowner=runtime.oid)
-     OR EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace IN ('public'::regnamespace,'agentmargin_auth'::regnamespace) AND proowner=runtime.oid)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE member=runtime.oid)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE oid=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database()) AND datdba=runtime.oid)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace AND relowner=runtime.oid)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname IN ('public','agentmargin_auth') AND nspowner=runtime.oid)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace IN ('public'::regnamespace,'agentmargin_auth'::regnamespace) AND proowner=runtime.oid)
      OR has_schema_privilege(runtime.oid,'public','CREATE')
      OR has_schema_privilege(runtime.oid,'agentmargin_auth','CREATE')
      OR has_database_privilege(runtime.oid,current_database(),'CREATE') THEN
@@ -54,21 +61,23 @@ BEGIN
      OR has_any_column_privilege(runtime.oid,'public.workspaces','SELECT,INSERT,UPDATE,REFERENCES')
      OR has_table_privilege(runtime.oid,'public.workspaces','DELETE,TRUNCATE,TRIGGER')
      OR EXISTS (
-       SELECT 1 FROM pg_class WHERE oid IN ('public.customers'::regclass,'public.usage_events'::regclass,
-         'public.revenue_records'::regclass,'public.revenue_adjustments'::regclass,'public.revenue_payment_sources'::regclass,'public.workspace_price_versions'::regclass,'public.price_versions'::regclass)
+       SELECT 1 FROM pg_catalog.pg_class WHERE oid IN ('public.customers'::regclass,'public.usage_events'::regclass,
+         'public.revenue_records'::regclass,'public.revenue_adjustments'::regclass,'public.revenue_payment_sources'::regclass,'public.workspace_price_versions'::regclass,'public.price_versions'::regclass,'public.delivery_history'::regclass,'public.delivery_requeues'::regclass)
        AND (has_table_privilege(runtime.oid,oid,'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
          OR has_any_column_privilege(runtime.oid,oid,'UPDATE,REFERENCES'))
-     ) OR has_any_column_privilege(runtime.oid,'public.price_versions','INSERT') THEN
+     ) OR has_any_column_privilege(runtime.oid,'public.price_versions','INSERT')
+     OR has_any_column_privilege(runtime.oid,'public.delivery_history','INSERT')
+     OR has_any_column_privilege(runtime.oid,'public.delivery_requeues','INSERT') THEN
     RAISE EXCEPTION 'Unsafe runtime grants: effective PUBLIC or column privileges exceed the supported runtime boundary';
   END IF;
   IF has_table_privilege(runtime.oid,'public.adjustment_deliveries','DELETE,TRUNCATE,REFERENCES,TRIGGER')
-    OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.adjustment_deliveries'::regclass
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='public.adjustment_deliveries'::regclass
       AND attnum>0 AND NOT attisdropped AND attname NOT IN ('state','attempts','available_at','delivered_at','error_class')
       AND has_column_privilege(runtime.oid,attrelid,attnum,'UPDATE')) THEN
     RAISE EXCEPTION 'Unsafe runtime grants: adjustment delivery payload must remain immutable';
   END IF;
   IF has_table_privilege(runtime.oid,'public.revenue_deliveries','DELETE,TRUNCATE,REFERENCES,TRIGGER')
-    OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.revenue_deliveries'::regclass
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='public.revenue_deliveries'::regclass
       AND attnum>0 AND NOT attisdropped AND attname NOT IN ('state','attempts','available_at','delivered_at','error_class')
       AND has_column_privilege(runtime.oid,attrelid,attnum,'UPDATE')) THEN
     RAISE EXCEPTION 'Unsafe runtime grants: durable delivery payload must remain immutable';

@@ -8,7 +8,7 @@ GitHub Actions uses PostgreSQL 16 and runs `npm run test:postgres` to populate a
 
 1. Fail closed unless explicitly running on GitHub Actions against `127.0.0.1:5432/agentmargin_ci` with the disposable CI database user and an opt-in guard.
 2. Create a **custom-format** `pg_dump` of the populated fixture, validate its archive table of contents and restore into a uniquely named, newly created `agentmargin_restore_ci_*` database.
-3. Compare row counts and content fingerprints for all eight application tables, plus counts of indexes, constraints and user-defined triggers. No row values or credential digests are printed.
+3. Compare row counts and content fingerprints for all application tables, plus counts of indexes, constraints and user-defined triggers. No row values or credential digests are printed.
 4. Drop only that uniquely generated restoration database and delete the transient archive, including when the drill fails. Never drop, empty or modify the source database.
 
 These checks establish that the current schema and synthetic sample data can be restored into a new database with matching logical rows. They do **not** establish a recovery time objective (RTO), recovery point objective (RPO), point-in-time recovery, backup confidentiality, retention compliance, or recovery under load. The drill intentionally excludes PostgreSQL cluster-wide roles and other infrastructure configuration.
@@ -44,7 +44,7 @@ Keep keys, hook config and libpq secrets outside the repository. Storage credent
 
 Schedule the utility under a dedicated account (for example, an hourly systemd timer with `OnFailure=` routing to the operator's alert service). Monitor the exit status **and freshness** of `last-success.json`, with an alert if no success occurs within two scheduled intervals. Disk exhaustion, upload, retention and encryption failures must alert. Do not log hook arguments or dump contents.
 
-The synthetic automation CI drill uses an ephemeral OpenSSL test key and local external-storage fixture, decrypts the uploaded bytes, restores them into a new database, verifies revenue fingerprints and proves upload-failure cleanup. This is not cloud-storage validation. The separate full restore drill covers all eight tables and schema integrity.
+The synthetic automation CI drill uses an ephemeral OpenSSL test key and local external-storage fixture, decrypts the uploaded bytes, restores them into a new database, verifies revenue fingerprints and proves upload-failure cleanup. This is not cloud-storage validation. The separate full restore drill covers all application tables and schema integrity.
 
 ## Recovery runbook and objectives
 
@@ -57,3 +57,5 @@ For hourly logical dumps, planning RPO is **at least one hour plus failed/missed
 5. Measure recovery duration and backup age. Obtain operator cutover approval; preserve the old environment for investigation. Document the drill and expire temporary plaintext and old backups under the approved privacy policy.
 
 Migration 008 adds normalized revenue deliveries to full restore fingerprints. Queue payloads, failed-job evidence and pending/delivered state must be restored together with the revenue ledger; replay is idempotent after recovery. Validate the worker and migration-008 grants before enabling delivery again.
+
+Migration 012 adds immutable delivery transition/requeue history to the full restore fingerprints. Preserve it with inbox and ledger state; restoring only the economic ledger loses recovery provenance.
