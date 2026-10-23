@@ -1,8 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion } from '../../../packages/core/src/index.ts';
+import type {OperationalMetrics} from './metrics.ts';
 import { WorkspaceRateLimiter, InvalidCredentialLimiter } from './rate-limit.ts';
 
 export interface IncomingEvent {
@@ -72,15 +73,18 @@ export interface AnalyticsPage{
 /** An allowlisted operational event. Raw paths, queries, headers, payloads and tenant identifiers are intentionally absent. */
 export interface SafeRequestLog {
   kind:'http_request'; requestId:string; timestamp:string;
-  route:'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'prices'|'analytics'|'analytics_page'|'other';
+  route:'readiness'|'metrics'|'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'prices'|'analytics'|'analytics_page'|'other';
   method:'GET'|'POST'|'HEAD'|'OPTIONS'|'OTHER';
   status:number; durationMs:number;
+  errorClass:'none'|'authentication'|'authorization'|'rate_limit'|'client'|'dependency'|'internal';
 }
 export type RequestLogSink=(entry:SafeRequestLog)=>void;
 
 function safeRoute(path:string):SafeRequestLog['route']{
   switch(path){
     case '/health':return 'health';
+    case '/ready':return 'readiness';
+    case '/metrics':return 'metrics';
     case '/dashboard':return 'dashboard';
     case '/v1/events':return 'events';
     case '/v1/revenue':return 'revenue';
@@ -163,7 +167,11 @@ function parsePriceInput(x:unknown):PriceInput {
     cachedInputMicrosPerMillion:rate(raw.cachedInputMicrosPerMillion,true),sourceNote:raw.sourceNote.trim()};
 }
 
-export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink) {
+export interface OperationsOptions {
+  ready?:()=>Promise<boolean>; isDraining?:()=>boolean;
+  metrics?:OperationalMetrics; metricsToken?:string;
+}
+export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink, operations:OperationsOptions={}) {
   const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole; store:EventStore } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
@@ -176,12 +184,14 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     const started=performance.now();
     try{await next();}finally{
       c.header('X-Request-ID',requestId);
-      if(logSink){
+      if(logSink||operations.metrics){
         const event:SafeRequestLog={kind:'http_request',requestId,timestamp:new Date().toISOString(),
           route:safeRoute(c.req.path),method:safeMethod(c.req.method),status:c.res.status,
+          errorClass:c.res.status===401?'authentication':c.res.status===403?'authorization':c.res.status===429?'rate_limit':c.res.status===503?'dependency':c.res.status>=500?'internal':c.res.status>=400?'client':'none',
           durationMs:Math.max(0,Math.round((performance.now()-started)*10)/10)};
         // Telemetry sink failure must never change API billing/ingestion responses.
-        try{logSink(event);}catch{/* Operator should monitor its external logging pipeline. */}
+        operations.metrics?.observe(event);
+        try{logSink?.(event);}catch{/* Operator should monitor its external logging pipeline. */}
       }
     }
   });
@@ -212,6 +222,22 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     });
   });
   app.get('/health', c => c.json({ status:'ok', phase:3 }));
+  app.get('/ready',async c=>{
+    let ready=false;
+    try{ready=!operations.isDraining?.()&&await (operations.ready?.()??Promise.resolve(false));}catch{/* No dependency details in public responses. */}
+    return c.json({status:ready?'ready':'unavailable'},ready?200:503);
+  });
+  app.get('/metrics',c=>{
+    if(!operations.metrics||!operations.metricsToken)return c.notFound();
+    const actual=createHash('sha256').update(c.req.header('authorization')??'').digest();
+    const expected=createHash('sha256').update('Bearer '+operations.metricsToken).digest();
+    if(!timingSafeEqual(actual,expected))return c.json({error:'Unauthorized'},401);
+    return c.text(operations.metrics.render(),200,{'Content-Type':'text/plain; version=0.0.4; charset=utf-8'});
+  });
+  app.use('/v1/*',async(c,next)=>{
+    if(operations.isDraining?.())return c.json({error:'Service unavailable'},503);
+    await next();
+  });
   // Limit all invalid/missing workspace credential attempts BEFORE parsing any body.
   // This process-local global bucket is intentionally not client-IP-based: arbitrary
   // forwarded headers are untrusted and trivial to spoof on an unconfigured proxy.
@@ -348,6 +374,11 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
       throw error;
     }
   });
-  app.onError((_err,c)=>c.json({error:'Internal server error'},500));
+  app.onError((err,c)=>{
+    const code=(err as Error&{code?:string}).code??'';
+    if(['ECONNREFUSED','ECONNRESET','ETIMEDOUT','53300','57P01','57P02','57P03','57014'].includes(code))
+      return c.json({error:'Service unavailable'},503);
+    return c.json({error:'Internal server error'},500);
+  });
   return app;
 }

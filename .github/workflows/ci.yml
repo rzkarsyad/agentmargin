@@ -43,6 +43,8 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: API lifecycle (synthetic database)
+        run: node --experimental-strip-types scripts/server-lifecycle-test.ts
       - name: API key rotation and revocation drill (synthetic CI only)
         run: AGENTMARGIN_KEY_ROTATION_DRILL=ci-only node --experimental-strip-types scripts/key-rotation-ci.ts
       - name: PostgreSQL backup/restore drill (synthetic CI database only)
@@ -57,6 +59,13 @@ jobs:
             -e PGPASSWORD=ci-only-disposable \
             -v "$PWD:/src:ro" -w /src \
             postgres:16 bash scripts/postgres-restore-drill.sh
+      - name: Encrypted backup automation drill (synthetic only)
+        run: |
+          docker run --rm --network host \
+            -e GITHUB_ACTIONS=true -e AGENTMARGIN_BACKUP_DRILL=ci-only \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=agentmargin_ci \
+            -e PGUSER=agentmargin_ci -e PGPASSWORD=ci-only-disposable \
+            -v "$PWD:/src:ro" -w /src postgres:16 bash scripts/backup-automation-ci.sh
       - run: python3 scripts/check-release-files.py
       # npm's advisory endpoint can transiently return HTTP 503. Retry briefly,
       # but NEVER treat an unsuccessful audit as a pass.
