@@ -5,7 +5,8 @@
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createServer} from 'node:http';
 import {createHmac,timingSafeEqual,randomBytes,randomUUID,createHash} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,existsSync,statSync} from 'node:fs';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {readCheckedFile,requirePrivateDirectory} from './lib/private-files.ts';
 import {resolve,relative} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {once} from 'node:events';
@@ -22,13 +23,16 @@ if(process.env.AGENTMARGIN_STRIPE_SANDBOX_QA!=='test-only'||!url||!account||!/^a
  !apiKey||! /^(?:rk|sk)_test_/.test(apiKey)||!output){
  process.stderr.write('{"kind":"stripe_sandbox_qa_blocked","reason":"Explicit sandbox account, TEST credential, private evidence directory and disposable database required"}\n');process.exit(2);
 }
-const target=new URL(url),directory=resolve(output),root=resolve('.');
+const target=new URL(url),requestedDirectory=resolve(output),root=resolve('.');
 if(target.hostname!=='127.0.0.1'||target.pathname!=='/agentmargin_ci'||target.username!=='agentmargin_ci'||
- !relative(root,directory).startsWith('..'))throw new Error('Require isolated loopback CI database and evidence outside repository');
-mkdirSync(directory,{recursive:true,mode:0o700});
-if(statSync(directory).mode&0o077)throw new Error('Evidence directory must be mode 0700');
+ !relative(root,requestedDirectory).startsWith('..'))throw new Error('Require isolated loopback CI database and evidence outside repository');
+mkdirSync(requestedDirectory,{recursive:true,mode:0o700});
+const directory=requirePrivateDirectory(requestedDirectory);
+if(!relative(root,directory).startsWith('..'))throw new Error('Evidence must be outside checkout');
 const runFile=resolve(directory,'qa-run.json');
-const existing=existsSync(runFile)?JSON.parse(readFileSync(runFile,'utf8')):null;
+let existing:Record<string,any>|null=null;
+try{existing=JSON.parse(readCheckedFile(runFile,{privateFile:true,maxBytes:100000}).contents);}
+catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
 const run:string=existing?.run??randomUUID(),workspace=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
 if(!/^[a-f0-9-]{36}$/.test(run)||existing&&(existing.account!==account||Date.now()-existing.createdAt>23*3600000))throw new Error('QA replay namespace expired or account changed; use a new private run directory');
 if(!existing)writeFileSync(runFile,JSON.stringify({run,account,createdAt:Date.now()}),{mode:0o600,flag:'wx'});
