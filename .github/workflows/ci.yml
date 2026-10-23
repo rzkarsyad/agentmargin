@@ -48,6 +48,8 @@ jobs:
           AGENTMARGIN_RESTART_DRILL: ci-only
           AGENTMARGIN_CI_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: node --experimental-strip-types scripts/database-restart-ci.ts
+      - name: QA recovery harness (fictional CLI, restricted PostgreSQL; no Stripe access)
+        run: node --experimental-strip-types scripts/stripe-sandbox-harness-test.ts
       - name: Signed Stripe durable delivery E2E (synthetic only)
         run: node --experimental-strip-types scripts/stripe-delivery-local-test.ts
       - name: API lifecycle (synthetic database)

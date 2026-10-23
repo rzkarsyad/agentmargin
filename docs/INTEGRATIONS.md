@@ -188,64 +188,127 @@ endpoint rejects connected-account envelopes. The legacy no-option SDK converter
 still uses `platform` for compatibility; new durable receivers require explicit
 routing. Signature verification still precedes normalization and durable acceptance.
 
-## Genuine sandbox QA harness (requires external setup)
+## Genuine sandbox QA harness and recovery
 
-`scripts/stripe-sandbox-qa.ts` uses Stripe CLI with an explicitly selected test
-account/key, a restricted disposable runtime, and an existing migrated loopback
-`agentmargin_ci`. It never uses live keys, public tunnels, fabricated webhook
-signatures, bulk cleanup or real card numbers. Use an isolated sandbox, not
-unrelated account fixtures. Create a test-only restricted key with only customer,
-payment-method, product/price, invoice/item/payment, refund, credit-note, event and
-account-read capabilities needed for this run; review the exact Stripe permission
-names in that sandbox. Install Stripe CLI from its official distribution and check
-`stripe whoami --format json` without printing configuration or credentials.
+`scripts/stripe-sandbox-qa.ts` requires a test-only API key, explicitly selected
+Moland sandbox account, and an existing loopback `agentmargin_ci` migrated through
+014 with the tested restricted runtime grants. It never uses live mode, public
+tunnels, fabricated signatures or account-wide cleanup. Keep private financial
+receipts outside the checkout in an operator-owned mode-0700 directory.
 
-Configure through supported secret tooling (never commit or paste secrets):
+Configure through secret tooling (never commit or paste secrets):
 `STRIPE_API_KEY` (test prefix only), `STRIPE_SANDBOX_ACCOUNT_ID`,
-`AGENTMARGIN_STANDALONE_DATABASE_URL`, `AGENTMARGIN_SANDBOX_RUNTIME_URL`, and a
-private mode-0700 `AGENTMARGIN_SANDBOX_EVIDENCE` directory **outside the checkout**.
-The DBs must be the same loopback `agentmargin_ci`; the runtime must be provisioned
-with the tested non-owner grants. The harness refuses missing configuration.
+`AGENTMARGIN_STANDALONE_DATABASE_URL`, `AGENTMARGIN_SANDBOX_RUNTIME_URL`, and
+`AGENTMARGIN_SANDBOX_EVIDENCE`. The owner URL must use user/database
+`agentmargin_ci` at `127.0.0.1`; the runtime URL must target that same disposable
+DB with a different, least-privilege role. Existing data/workspaces are retained.
+
+**Resume existing fixtures on macOS without creating financial objects:**
 
 ```sh
-AGENTMARGIN_STRIPE_SANDBOX_QA=test-only node --experimental-strip-types scripts/stripe-sandbox-qa.ts
+# Preserve your current work by using a separate checkout. Do not reset or clean it.
+git fetch origin release/v0.9.0-alpha.1:refs/remotes/origin/release/v0.9.0-alpha.1
+git worktree add --detach ../agentmargin-qa-resume origin/release/v0.9.0-alpha.1
+cd ../agentmargin-qa-resume
+npm ci
+stripe version                         # validated CLI protocol: v1.55.1
+env -u STRIPE_API_KEY stripe whoami --format json
+# The CLI login must select Moland, matching the restricted key's exact account.
+# Keep your existing DB/key/account settings; use the ORIGINAL evidence directory
+# containing qa-run.json. Do not create a new run ID or edit that file.
+export AGENTMARGIN_SANDBOX_EVIDENCE="$HOME/<existing-private-QA-directory>"
+AGENTMARGIN_STRIPE_SANDBOX_QA=test-only AGENTMARGIN_SANDBOX_MODE=recover \
+  node --experimental-strip-types scripts/stripe-sandbox-qa.ts
 ```
 
-The harness creates run-tagged synthetic customers/products/prices, pays $29/$99
-invoices, finalizes an unpaid $15 invoice, creates $6.25/$99 refunds and a $12
-post-payment balance credit, plus an unsupported EUR case. A localhost-only CLI
-listener supplies genuine signatures. Refund links come from exact InvoicePayment
-and Refund API evidence, never customer metadata. Receipts captured during a
-mapping race are re-verified within the five-minute window; no signature is
-manufactured. It compares separately retrieved Stripe API amounts with recorded
-ledger/API/reconciliation amounts and checks duplicate/out-of-order replay and
-unknown pricing. Run-specific private JSON includes source objects, event/API
-version IDs, hashes, delivery history and variances; do not upload it publicly.
-Only aggregate scenario results reach stdout. The script retains run-tagged
-sandbox fixtures for audit; an authorized operator may dispose that isolated
-sandbox after review. A failed/interrupted run can leave isolated fixtures, but
-never runs automatic account-wide cleanup. A private `qa-run.json` fixes the Stripe idempotency namespace for restart within
-23 hours; operation keys are deterministic, and each local attempt uses an isolated
-workspace/evidence filename. A new private directory creates a new isolated run.
-Stripe idempotency retention is not treated as indefinite.
+The harness independently checks BOTH the restricted-key account and the CLI
+login account before opening the listener. It removes `STRIPE_API_KEY` from the
+listener and resend subprocess environments only, preserving CLI login/profile,
+proxy and CA configuration. API reads continue to use the restricted test key.
+No need to export a signing secret: the running listener supplies it privately.
+Do not use `stripe config --list`, debug logging, `--live`, or `--skip-verify`.
 
-**Current evidence:** the configuration guard executed and rejected missing test
-credentials before any Stripe operation. No genuine paid/refund/credit or signed-listener sandbox run or external provider
-billing validation is claimed. MCP account access alone cannot provide the CLI key/listener
-secret. The synthetic acceptance fixture is separately tested across PostgreSQL,
-API, reconciliation and desktop/mobile browser: $128 gross − $105.25 refunds − $12
-credits = $10.75 net. It also preserves unknown pricing as incomplete contribution.
-A synthetic success does not clear the genuine sandbox, independent accounting or
-provider billing gates. The harness's external run, current payload shapes and
-billing-export corroboration remain to be verified.
+`recover` is the default. It requires the original `qa-run.json`, verifies its
+account/age, fully paginates the four expected event types from that run's creation
+time, and keeps only exact `agentmargin-qa-<run>` metadata matches. It reads the
+existing three paid invoices, refunds and credit, verifies exact InvoicePayment
+payment-intent links and shared customer, and confirms the unpaid $15 invoice.
+Ambiguous, incomplete, changed, unrelated or older-than-30-day fixtures fail
+closed. Discovery is API evidence, **never signed delivery**. Stripe Refund
+resources have no `livemode` field in the pinned official schema; their false-mode
+signed events, selected test-key context and exact payment links establish mode.
 
+After mapping, recovery executes `stripe events resend EVENT_ID` **without**
+`--webhook-endpoint`, using the same CLI login as the listener. In
+[CLI v1.55.1](https://github.com/stripe/stripe-cli/blob/4501fc5a6e58dacab6a60a089e93317cc7b84861/pkg/cmd/resource/events_resend.go),
+that command requests `for_stripecli=true`, routing existing events to the active
+local listener. It does not create invoices, payments, refunds or credits. The
+transport forbids all financial POSTs in recovery; the only remote write is this
+run-scoped delivery retry, with an account check before each request. It can also
+reach other active CLI listeners on the same sandbox: stop unrelated listeners
+first. Retry is bounded to two resend requests per missing event. CLI command
+success alone never satisfies the delivery check. A missing/denied/expired resend
+fails the run and preserves diagnostics; it never falls back to re-signing an API
+object, widening signature age or creating replacement transactions.
 
-Moland test-mode connector follow-up (2026-10-23): the selected account was checked
-`livemode=false` before **every write**. Only newly created `agentmargin-qa` fixtures
-were touched. A customer/product/price/item/invoice were created with run metadata;
-finalized unpaid invoice readback is **USD 1500 due / 0 paid / open**. No existing
-customer records, payments, credits, unrelated data or live mode were accessed.
-The connector explicitly reports payment-method attachment, invoice payment and
-credit-note creation unavailable, so the full paid/refund/credit scenario and
-real signed delivery remain blocked. It exposes no CLI test key/listener secret.
-No paid-out-of-band flag or fabricated webhook is used to simulate those gates.
+The localhost receiver verifies literal bytes, one timestamp within five minutes,
+v1 HMAC and false platform mode before matching run metadata. Run-scoped verified
+receipts are written privately and fsynced **before** enqueue/HTTP acknowledgment;
+no signing secret is persisted. Signature-invalid/unrelated requests are counted
+but their payloads are discarded. Normalized payment/adjustment acceptance uses
+the real API and restricted PostgreSQL role. Every recovery attempt uses a fresh
+local workspace to prove delivery/processing from the same existing Stripe
+objects; it does not alter earlier workspaces. Saved raw receipts are audit
+inputs, not a way to bypass signature expiry. Recovery always requests fresh
+signed delivery. API calls are asynchronous so fixture creation cannot block the
+receiver's event loop.
+
+Stdout/stderr contain allowlisted JSON only: stage, listener start/ready/exit,
+exit code/signal, expected/verified-received/accepted unique event counts by type,
+HTTP response counts, AgentMargin HTTP status counts, and fixed rejection
+categories. No keys, secrets, raw CLI/error text, event/object/customer IDs or
+payloads appear there. Interpret failures as follows:
+
+| Diagnostic | Meaning / next action |
+| --- | --- |
+| `account-check`, `listener-start` | Login/account mismatch, CLI setup, early exit or secret timeout; fix local login without the restricted-key override |
+| `missingAtListener` | Neither an observed CLI event nor a verified HTTP receipt; inspect CLI connection/subscription/resend permission |
+| `seenWithoutHttp` | CLI saw event, receiver has no verified receipt; inspect forwarding/HTTP status and signature counters |
+| `signature_missing`, `signature_invalid`, `signature_expired` (400) | Receiver reached, signature rejected; do not disable verification |
+| `account_mode`, `fixture_mismatch` (400/422) | Wrong account envelope/test flag or run metadata; investigate routing |
+| `fixture_mapping_pending` (503) | Genuine receipt raced the local mapping; resend after discovery/mapping |
+| `normalization` (422) | Unsupported/malformed financial snapshot; inspect private API-version/raw evidence |
+| `normalized_delivery` (503) | AgentMargin rejected or timed out; inspect aggregate upstream HTTP statuses and local DB/runtime setup |
+| `evidence_write` (503) | Private receipt could not be persisted; repair permissions/storage before replay |
+| `unsupported_fx` (422) | Expected EUR rejection, retained as unresolved FX; never included in USD sums |
+
+`received` counts only authenticated, run-matched receipts; signature rejects are
+shown separately. Counts are unique event IDs, with duplicate HTTP attempts counted
+separately. CLI log parsing is supplementary: missing log lines do not override a
+verified HTTP receipt. Default delivery wait is 30 seconds per round; optional
+`AGENTMARGIN_SANDBOX_DELIVERY_TIMEOUT_MS` is bounded to 1000–120000. It cannot make a
+missing/rejected receipt successful. Private session discovery/failure files and
+raw receipts survive failures; successful report files retain API versions,
+provider evidence, exact ledger/reconciliation, delivery history and hashes.
+Do not upload these financial files publicly.
+
+For a genuinely new fixture run only, use a **new private directory** and explicit
+`AGENTMARGIN_SANDBOX_MODE=create`. It refuses any existing run file, checks the
+selected account before every financial write, uses deterministic operation keys,
+sets invoice currency explicitly (including EUR), and labels newly created
+objects. An interrupted create run is recovered without automatic financial
+mutation; missing fixtures remain a blocker. Never reuse Stripe's expiring
+idempotency namespace to recreate an old run.
+
+**Evidence status:** the operator reports genuine Moland test-mode creation of
+three `invoice.paid`, two `refund.created`, two `refund.updated` and one
+`credit_note.created` events, with complete event pagination, payments, refunds and
+credit creation successful. This supersedes the earlier connector-only unpaid
+invoice check. The original harness stopped at `webhook-delivery`; end-to-end
+signed acceptance is still pending a successful run of this recovery path. The
+implementing agent's fictional CLI/real PostgreSQL regression is synthetic only.
+It verifies $128 gross − $105.25 refunds − $12 credits = $10.75 net, duplicate and
+out-of-order processing, signature/mapping rejection, missed forwarding and
+failure evidence. Unknown pricing keeps complete contribution null. Real signed
+sandbox recovery, independent billing-export corroboration/accountant approval,
+and independent security review remain release gates.
