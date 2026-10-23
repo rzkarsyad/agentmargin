@@ -57,7 +57,11 @@ export interface WorkspaceAnalyticsSummary{
   unknownCustomerCount:string;
   usageEventCount:string;
   unknownUsageEventCount:string;
+  /** Net of persisted period adjustments after migration 010. */
   totalRevenueMicros:string;
+  unresolvedRevenueDeliveries?:string;revenueProcessingComplete?:boolean;
+  revenueBasis?:'net_adjusted';grossRevenueMicros?:string;refundsMicros?:string;creditsMicros?:string;
+  paymentReversalsMicros?:string;netRevenueMicros?:string;
   totalKnownAiCostMicros:string;
   /** Sum of contribution for customers whose inference cost is fully known. This is NOT an entire-workspace margin when unknown customers exist. */
   verifiedCustomerContributionMicros:string;

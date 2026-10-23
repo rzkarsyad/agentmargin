@@ -1,4 +1,5 @@
 import pg from 'pg';
+import {summarizeFinancialLedger,type FinancialLedgerInput} from '../../../packages/core/src/financial-ledger.ts';
 import {parseAdjustment,type StoredAdjustment} from '../../../packages/core/src/adjustments.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
 import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, AnalyticsPage, AnalyticsCustomer, PriceInput, WorkspacePrice, ScopedPriceVersion, AuthenticatedWorkspace, WorkspaceKeyRole, RevenueDelivery } from './app.ts';
@@ -6,7 +7,7 @@ import type { EventStore, StoredEvent, StoredRevenue, AnalyticsSnapshot, Analyti
 const { Pool } = pg;
 export const ANALYTICS_SQL = `WITH revenue AS (
        SELECT customer_id, SUM(amount_micros)::text AS amount
-       FROM revenue_records WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz
+       FROM (SELECT workspace_id,customer_id,occurred_at,amount_micros FROM revenue_records UNION ALL SELECT workspace_id,customer_id,occurred_at,-amount_micros FROM revenue_adjustments) ledger WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz
          AND occurred_at < $3::timestamptz GROUP BY customer_id
      ), usage AS (
        SELECT customer_id, COALESCE(SUM(calculated_cost_micros),0)::text AS cost,
@@ -32,7 +33,7 @@ export const UNKNOWN_MODELS_SQL = `SELECT model, COUNT(*)::text AS event_count
  */
 const CUSTOMER_ROWS_CTE=`WITH revenue AS (
   SELECT customer_id, SUM(amount_micros) AS revenue
-  FROM revenue_records
+  FROM (SELECT workspace_id,customer_id,occurred_at,amount_micros FROM revenue_records UNION ALL SELECT workspace_id,customer_id,occurred_at,-amount_micros FROM revenue_adjustments) ledger
   WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz
   GROUP BY customer_id
 ), usage AS (
@@ -60,7 +61,13 @@ export const ANALYTICS_FULL_SUMMARY_SQL=CUSTOMER_ROWS_CTE+`
   COALESCE(SUM(revenue),0)::text AS total_revenue_micros,
   COALESCE(SUM(known_cost),0)::text AS total_known_ai_cost_micros,
   COALESCE(SUM(CASE WHEN unknown_events=0 THEN revenue-known_cost ELSE 0 END),0)::text
-    AS verified_customer_contribution_micros
+    AS verified_customer_contribution_micros,
+  (SELECT coalesce(sum(amount_micros),0)::text FROM revenue_records WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz) AS gross_revenue_micros,
+  (SELECT coalesce(sum(amount_micros),0)::text FROM revenue_adjustments WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz AND kind='refund') AS refunds_micros,
+  (SELECT coalesce(sum(amount_micros),0)::text FROM revenue_adjustments WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz AND kind='credit') AS credits_micros,
+  (SELECT coalesce(sum(amount_micros),0)::text FROM revenue_adjustments WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz AND kind='payment_reversal') AS payment_reversals_micros,
+  ((SELECT count(*) FROM revenue_deliveries WHERE workspace_id=$1 AND state<>'delivered')+
+   (SELECT count(*) FROM adjustment_deliveries WHERE workspace_id=$1 AND state<>'delivered'))::text AS unresolved_revenue_deliveries
  FROM customer_data`;
 export const ANALYTICS_CUSTOMER_PAGE_SQL=CUSTOMER_ROWS_CTE+`
  SELECT customer_id,revenue::text AS revenue_micros,known_cost::text AS known_cost_micros,
@@ -75,7 +82,7 @@ function mapAnalyticsCustomer(r:{
 }):AnalyticsCustomer{
  const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=BigInt(r.unknown_events);
  const contribution=unknown>0n?null:revenue-cost;
- const margin=contribution===null||revenue===0n?null:(contribution<0n
+ const margin=contribution===null||revenue<=0n?null:(contribution<0n
   ? -((-contribution*10000n+revenue/2n)/revenue)
   : (contribution*10000n+revenue/2n)/revenue);
  return {customerId:r.customer_id,revenueMicros:revenue.toString(),
@@ -422,6 +429,38 @@ export class PostgresEventStore implements EventStore {
     }catch(error){await this.rollback(client);throw error;}
     finally{client.release(this.brokenClients.has(client));}
   }
+  /** Bounded sensitive export, one READ COMMITTED snapshot; never log the result. */
+  async financialLedger(workspaceId:string,start:string,end:string){
+    const snapshot=await this.query(`SELECT
+      (SELECT coalesce(jsonb_agg(p),'[]'::jsonb) FROM (
+        SELECT r.id,r.customer_id AS "customerId",to_char(r.occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "occurredAt",
+          r.amount_micros::text AS "amountMicros",r.currency,r.payload_digest AS "payloadDigest",
+          s.provider_account AS "providerAccount",s.provider_event_id AS "providerEventId"
+        FROM revenue_records r LEFT JOIN revenue_payment_sources s ON r.workspace_id=s.workspace_id AND r.id=s.record_id
+        WHERE r.workspace_id=$1 AND ((r.occurred_at >= $2::timestamptz AND r.occurred_at < $3::timestamptz)
+          OR r.id IN (SELECT original_payment_id FROM revenue_adjustments WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz))
+        ORDER BY r.id LIMIT 10001) p) AS payments,
+      (SELECT coalesce(jsonb_agg(a),'[]'::jsonb) FROM (
+        SELECT id,original_payment_id AS "originalPaymentId",customer_id AS "customerId",kind,amount_micros::text AS "amountMicros",currency,
+          to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "occurredAt",provider,provider_account AS "providerAccount",
+          source_object_id AS "sourceObjectId",evidence_ref AS "evidenceRef",payload_digest AS "payloadDigest"
+        FROM revenue_adjustments WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz ORDER BY id LIMIT 10001) a) AS adjustments,
+      (SELECT coalesce(jsonb_agg(u),'[]'::jsonb) FROM (
+        SELECT event_id AS id,customer_id AS "customerId",model,
+          to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "occurredAt",
+          calculated_cost_micros::text AS "costMicros",cost_source AS source,coalesce(workspace_price_version_id::text,price_version_id::text) AS "pricingRef"
+        FROM usage_events WHERE workspace_id=$1 AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz ORDER BY event_id LIMIT 10001) u) AS usage,
+      (SELECT coalesce(jsonb_agg(d),'[]'::jsonb) FROM (
+        SELECT 'payment_delivery:'||provider_event_id AS id,provider_event_id AS "sourceRef",'unmatched_transaction' AS reason
+          FROM revenue_deliveries WHERE workspace_id=$1 AND state<>'delivered'
+        UNION ALL
+        SELECT 'adjustment_delivery:'||provider_event_id AS id,provider_event_id AS "sourceRef",'unmatched_transaction' AS reason
+          FROM adjustment_deliveries WHERE workspace_id=$1 AND state<>'delivered'
+        ORDER BY id LIMIT 10001) d) AS unresolved`,[workspaceId,start,end]);
+    const row=snapshot.rows[0]!;
+    return summarizeFinancialLedger({workspaceId,currency:'USD',periodStart:start,periodEnd:end,
+      payments:row.payments,adjustments:row.adjustments,usage:row.usage,unresolvedEvidence:row.unresolved} as FinancialLedgerInput);
+  }
   async analyticsPage(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>{
     if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Invalid pagination limit');
     const client=await this.begin('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY');
@@ -443,7 +482,7 @@ export class PostgresEventStore implements EventStore {
       const hasMore=page.rows.length>limit;
       const selected=page.rows.slice(0,limit);
       const totalRevenue=BigInt(row.total_revenue_micros),totalCost=BigInt(row.total_known_ai_cost_micros);
-      const complete=row.unknown_customer_count==='0';
+      const complete=row.unknown_customer_count==='0'&&row.unresolved_revenue_deliveries==='0';
       const last=selected[selected.length-1]?.customer_id;
       return {periodStart:start,periodEnd:end,pageSize:limit,
         customers:selected.map(mapAnalyticsCustomer),
@@ -457,6 +496,10 @@ export class PostgresEventStore implements EventStore {
           usageEventCount:row.usage_event_count,
           unknownUsageEventCount:row.unknown_usage_event_count,
           totalRevenueMicros:row.total_revenue_micros,
+          unresolvedRevenueDeliveries:row.unresolved_revenue_deliveries,revenueProcessingComplete:row.unresolved_revenue_deliveries==='0',
+          revenueBasis:'net_adjusted',grossRevenueMicros:row.gross_revenue_micros,
+          refundsMicros:row.refunds_micros,creditsMicros:row.credits_micros,paymentReversalsMicros:row.payment_reversals_micros,
+          netRevenueMicros:row.total_revenue_micros,
           totalKnownAiCostMicros:row.total_known_ai_cost_micros,
           verifiedCustomerContributionMicros:row.verified_customer_contribution_micros,
           completeContributionMicros:complete?(totalRevenue-totalCost).toString():null,
@@ -492,7 +535,7 @@ export class PostgresEventStore implements EventStore {
     const customers=q.rows.slice(0,2000).map(r=>{
       const revenue=BigInt(r.revenue_micros),cost=BigInt(r.known_cost_micros),unknown=Number(r.unknown_events);
       const contribution=unknown>0?null:revenue-cost;
-      const margin=contribution===null||revenue===0n?null:(contribution<0n
+      const margin=contribution===null||revenue<=0n?null:(contribution<0n
         ? -((-contribution*10000n+revenue/2n)/revenue) : (contribution*10000n+revenue/2n)/revenue);
       return {customerId:r.customer_id,revenueMicros:revenue.toString(),knownAiCostMicros:cost.toString(),
         contributionMicros:contribution?.toString()??null,marginBasisPoints:margin?.toString()??null,

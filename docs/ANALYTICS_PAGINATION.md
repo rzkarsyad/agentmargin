@@ -30,3 +30,9 @@ Pagination uses keyset ordering by customer identifier. Individual pages share a
 The legacy `GET /v1/analytics` remains for existing clients but is bounded to the first 2,000 customers and marks `truncated`; use the new endpoint for complete totals. The frontend uses this new endpoint so full-workspace KPIs are no longer derived from a partial table.
 
 This is a preview for synthetic/local usage, not invoice reconciliation or a production reporting SLA.
+
+### Persisted adjustment accounting
+
+After migrations 010–011 and the reporting candidate, `revenueMicros` and `summary.totalRevenueMicros` mean **net recorded revenue**: gross payments minus period refunds, credits and payment reversals. Summary fields `grossRevenueMicros`, `refundsMicros`, `creditsMicros`, `paymentReversalsMicros`, `netRevenueMicros` and `revenueBasis: 'net_adjusted'` make that basis explicit. With no adjustments the old amounts are unchanged. Consumers that require gross must use the new gross field; original payment records remain immutable. The established dashboard layout is preserved.
+
+Each reduction belongs to its own `occurredAt` period. A refund this month for last month's payment can produce negative net revenue this month. Contribution is net revenue minus inference cost; percentage margin is null for nonpositive net revenue or unknown costs. No fees, taxes or FX are silently added to that definition. Workspace totals, customer page and diagnostics share one READ COMMITTED statement snapshot. Unknown inference cost or unresolved delivery backlog makes the full-workspace `completeContributionMicros` null. Backlog includes all workspace unresolved receipts conservatively, even outside the selected period; `unresolvedRevenueDeliveries` / `revenueProcessingComplete` exposes this condition. Known recorded amounts are still returned, not presented as reconciled external balances.
