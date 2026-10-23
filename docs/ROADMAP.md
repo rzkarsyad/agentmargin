@@ -144,3 +144,28 @@ docker stop agentmargin-local-ci
 For an already-cloned clean checkout, use `git fetch origin` then switch to the review branch; preserve any uncommitted work. Wait for `pg_isready` success before running the suite. To repeat PostgreSQL tests, create a new disposable container/database; the suite intentionally refuses a nonempty database. The CI-only rotation/restore/backup scripts additionally enforce their GitHub/synthetic guard and port 5432; use the existing CI workflow for those complete drills. Browser scripts require Python Playwright 1.56.0 and Chromium, as provisioned in CI. Optional provider calls are excluded from these commands.
 
 For a manually administered disposable database, the exact ordered schema and runtime-grant commands are in [database isolation](DB_RUNTIME_ROLE.md). Backup hook setup, retention and isolated recovery commands are in [backup/restore](BACKUP_RESTORE.md); monitoring and response examples are in [observability](OBSERVABILITY.md).
+
+
+## Preliminary integration-readiness review — 2026-10-23
+
+**No merge is authorized.** The implementer's review is preliminary and does not replace an independent security review. The stack is still **#24 → #25 → #26 → #27**, with no recorded independent review approvals at the start of this audit. All four original heads had passing GitHub CI. Fixes are committed on their owning branches and propagated by merge commits; no branch history is rewritten.
+
+| Finding | Owning PR / action | Residual risk |
+| --- | --- | --- |
+| Runtime grants relied on manual detection of elevated roles, ownership, memberships and effective CREATE/mutation privileges | #24: transactional guard rejects unsupported authority; real PostgreSQL tests exercise rejection | Extensions/other definer functions and deployment credentials still require independent review |
+| Migration 007 could wait indefinitely on active writers | #24: bounded lock/statement waits, contention rollback/retry test | Operator staging timing and explicit migration approval remain required |
+| Readiness could report 200 with schema 006 or disabled RLS | #25: migration-contract checks; pre-007 and disabled-RLS tests | Readiness is not certification of arbitrary policies/grants |
+| String allocation IDs were normalized before shape validation | #26: reject malformed JSON and excess allocations before copying; reject negative estimated inference costs | Authentic provider evidence and accounting review remain external gates |
+| Possible surviving column grant | Tested and **not reproduced** on PostgreSQL 16; REVOKE ALL removed the tested grant | Do not describe a rejected hypothesis as a proven vulnerability |
+| In-flight revocation under hostile repeatable-read snapshots | Explicitly documented in #24 security design | **Open review gate:** a continuously active hostile transaction is not hard-bounded by statement/idle timeouts; session containment or stronger identity isolation may be required |
+
+SQL reads/writes remain parameterized; SECURITY DEFINER functions use pg_catalog and fully qualified tables. Adversarial tests cover shadow key tables, forged credentials, function replacement, RLS disabling, cross-tenant writes/reads and pool reuse. No tested cross-tenant bypass was found for a correctly provisioned runtime password alone. This is bounded automated evidence, not independent assurance or approval.
+
+After security migration/residual findings receive **explicit approval**, merge #24 first, then retarget #25 to main and rerun checks; repeat for #26 and #27. Keep parent branches until dependents are retargeted. The exact staging rollout is in [database isolation](DB_RUNTIME_ROLE.md): pause/drain traffic, apply 007 after 006, validate runtime grants, deploy matching API, verify schema readiness and synthetic tenant operations, then resume only under the approved plan. Never broaden grants to make an older API work.
+
+### Next engineering backlog
+
+1. **Durable Stripe delivery:** persist only verified/normalized invoice evidence before acknowledgment; transactionally replay into revenue with row claims, exact-payload deduplication, bounded retries, dead-letter visibility and synthetic crash/concurrency tests. Real Stripe sandbox/account routing and delivery monitoring remain external gates.
+2. **Persisted financial adjustments:** append-only signed credits/refunds/adjustments linked to original payment/provider evidence; define effective dates, correction/reversal policy and multi-account/currency rules before including them in dashboard revenue. Preserve old positive-only records and require clean/upgrade/RLS/replay tests.
+3. **Reconciliation accuracy:** authentic provider billing importers, allocation completeness, credit attribution, cached tier coverage, explicit FX provenance and batch-versus-line tolerance policy. Keep unknown and unmatched data incomplete; do not silently replace estimates.
+4. **Release operations:** independent security review; deployed shared abuse controls; actual storage/key recovery/retention; timed restore and alert drills; privacy export/deletion policy; three independent developer trials. Synthetic CI does not clear these gates.
