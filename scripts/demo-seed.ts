@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
 export const DEMO_WORKSPACE = '11111111-2222-4333-8444-555555555555';
-const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql'] as const;
+const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql', '008_revenue_deliveries.sql'] as const;
 export interface Queryable {
   query(sql: string, params?: unknown[]): Promise<{rows: Record<string, unknown>[]}>;
 }

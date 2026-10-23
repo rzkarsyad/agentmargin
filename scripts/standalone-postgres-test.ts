@@ -51,6 +51,15 @@ try {
     await upgrade.query(migration);
     assert.equal((await upgrade.query('SELECT amount_micros::text FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].amount_micros,'1234567');
   }finally{upgrade.release();}
+  const inboxMigration=readFileSync(new URL('../db/008_revenue_deliveries.sql',import.meta.url),'utf8');
+  const inboxUpgrade=await pool.connect();
+  try{
+    await assert.rejects(inboxUpgrade.query(inboxMigration.replace('COMMIT;','SELECT 1/0; COMMIT;')),/division by zero/);
+    await inboxUpgrade.query('ROLLBACK');
+    assert.equal((await inboxUpgrade.query("SELECT to_regclass('public.revenue_deliveries') AS name")).rows[0].name,null);
+    await inboxUpgrade.query(inboxMigration);
+    assert.equal((await inboxUpgrade.query('SELECT amount_micros::text FROM revenue_records WHERE workspace_id=$1',[upgradeWorkspace])).rows[0].amount_micros,'1234567');
+  }finally{inboxUpgrade.release();}
   const workspace=randomUUID(),other=randomUUID(),key='am_'+randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO workspaces(id,name) VALUES ($1,$2),($3,$4)',[workspace,'A',other,'B']);
   await pool.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES ($1,$2,$3,$4)',
@@ -332,6 +341,93 @@ try {
       assert.equal(results.reduce((n,r)=>n+r.duplicate,0),39);
       process.stdout.write('Synthetic restricted-role concurrency: 80 requests, 41 unique rows, '+Math.round(performance.now()-loadStarted)+' ms.\n');
     }finally{await loadStore.pool.end();}
+    // Durable deliveries: committed enqueue, exact-payload duplicate handling,
+    // concurrent consumers, crash-released claims and atomic financial replay.
+    const queuedRecord:StoredRevenue={id:'stripe:invoice:queue',customerId:'queue-customer',
+      occurredAt:'2026-10-10T00:00:00.000Z',amountMicros:'1000000',payloadDigest:'a'.repeat(64)};
+    const delivery={providerEventId:'evt_queue_first',providerAccount:'acct_synthetic',record:queuedRecord};
+    assert.deepEqual(await runtimeStore.enqueueRevenueDelivery(workspace,delivery),{duplicate:false,state:'pending'});
+    assert.equal((await runtimeStore.pool.query('SELECT * FROM revenue_deliveries')).rowCount,0,'Inbox default deny failed');
+    await pool.query('UPDATE workspace_api_keys SET expires_at=NULL WHERE key_digest=$1',[createHash('sha256').update(readKey).digest('hex')]);
+    await assert.rejects(runtimeStore.forCredential(readKey).enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_read_forbidden'}),
+      (e:unknown)=>(e as {code?:string}).code==='42501');
+    const readSession=await runtimeStore.pool.connect();
+    try{
+      await readSession.query('BEGIN');await readSession.query("SELECT set_config('agentmargin.api_key',$1,true)",[readKey]);
+      assert.equal((await readSession.query("UPDATE revenue_deliveries SET state='delivered',delivered_at=now() WHERE workspace_id=$1",[workspace])).rowCount,0);
+      await readSession.query('COMMIT');
+    }finally{readSession.release();}
+    assert.deepEqual(await runtimeStore.enqueueRevenueDelivery(workspace,delivery),{duplicate:true,state:'pending'});
+    await assert.rejects(runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,record:{...queuedRecord,payloadDigest:'b'.repeat(64)}}),/Idempotency conflict/);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM revenue_records WHERE id='stripe:invoice:queue'")).rows[0].n,0,'Enqueue must not prematurely count revenue');
+    await assert.rejects(runtimeStore.enqueueRevenueDelivery(other,delivery),(e:unknown)=>(e as {code?:string}).code==='42501');
+    await assert.rejects(runtimeStore.pool.query("UPDATE revenue_deliveries SET amount_micros=0"),(e:unknown)=>(e as {code?:string}).code==='42501');
+    const claim=await runtimeStore.pool.connect();
+    try{
+      await claim.query('BEGIN');await claim.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
+      await claim.query('SELECT * FROM revenue_deliveries WHERE workspace_id=$1 FOR UPDATE',[workspace]);
+      // Independent connection sees no claimable work, then rollback simulates a crash.
+      const consumer=new PostgresEventStore(runtimeURL.toString()).forCredential(key);
+      try{assert.equal((await consumer.processNextRevenueDelivery(workspace)).state,'empty');}
+      finally{await consumer.pool.end();}
+      await claim.query('ROLLBACK');
+    }finally{claim.release();}
+    await runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_queue_second'});
+    const worker=new PostgresEventStore(runtimeURL.toString()).forCredential(key);
+    try{
+      const results=await Promise.all([runtimeStore.processNextRevenueDelivery(workspace),worker.processNextRevenueDelivery(workspace)]);
+      assert.equal(results.filter(r=>r.state==='delivered').length,2);
+      assert.equal(results.reduce((n,r)=>n+(r.inserted??0),0),1);
+      assert.equal(results.reduce((n,r)=>n+(r.duplicate??0),0),1);
+    }finally{await worker.pool.end();}
+    assert.deepEqual(await runtimeStore.enqueueRevenueDelivery(workspace,delivery),{duplicate:true,state:'delivered'});
+    await runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_queue_conflict',record:{...queuedRecord,amountMicros:'9',payloadDigest:'c'.repeat(64)}});
+    assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'failed');
+    assert.equal((await pool.query("SELECT amount_micros::text FROM revenue_records WHERE id='stripe:invoice:queue'")).rows[0].amount_micros,'1000000');
+    await pool.query(`CREATE FUNCTION queue_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN
+      IF NEW.id='queue-retry' THEN RAISE EXCEPTION 'synthetic retry' USING ERRCODE='40001'; END IF; RETURN NEW; END$$;
+      CREATE TRIGGER queue_test_failure BEFORE INSERT ON revenue_records FOR EACH ROW EXECUTE FUNCTION queue_test_failure()`);
+    try{
+      await runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_queue_retry',record:{...queuedRecord,id:'queue-retry',customerId:'queue-retry-customer'}});
+      for(let attempt=1;attempt<=8;attempt++){
+        const result:{state:string}=await runtimeStore.processNextRevenueDelivery(workspace);
+        assert.equal(result.state,attempt===8?'failed':'retry');
+        const row=(await pool.query("SELECT attempts,state,error_class FROM revenue_deliveries WHERE provider_event_id='evt_queue_retry'")).rows[0];
+        assert.equal(row.attempts,attempt);assert.equal(row.error_class,'database_retry');
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM customers WHERE id='queue-retry-customer'")).rows[0].n,0,'Failed replay leaked a partial customer');
+        if(attempt<8){
+          assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'empty','Backoff must delay retry');
+          await pool.query("UPDATE revenue_deliveries SET available_at=now() WHERE provider_event_id='evt_queue_retry'");
+        }
+      }
+    }finally{await pool.query('DROP TRIGGER queue_test_failure ON revenue_records; DROP FUNCTION queue_test_failure()');}
+    assert.equal((await runtimeStore.revenueDeliveryStatus(workspace)).failed,'2');
+    assert.equal((await runtimeStore.forCredential(otherKey).revenueDeliveryStatus(workspace)).failed,'0');
+    await runtimeStore.enqueueRevenueDelivery(workspace,{...delivery,providerEventId:'evt_queue_scope_change',record:{...queuedRecord,id:'queue-scope-change'}});
+    await pool.query(`CREATE FUNCTION queue_scope_change() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$BEGIN
+      IF NEW.id='queue-scope-change' THEN
+        UPDATE public.workspace_api_keys SET access_role='read'
+          WHERE key_digest=encode(sha256(convert_to(current_setting('agentmargin.api_key'),'UTF8')),'hex');
+      END IF; RETURN NEW; END$$;
+      CREATE TRIGGER queue_scope_change AFTER INSERT ON revenue_records FOR EACH ROW EXECUTE FUNCTION queue_scope_change()`);
+    try{
+      await assert.rejects(runtimeStore.processNextRevenueDelivery(workspace),/Delivery authorization changed/);
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM revenue_records WHERE id='queue-scope-change'")).rows[0].n,0);
+      const pending=(await pool.query("SELECT state,attempts FROM revenue_deliveries WHERE provider_event_id='evt_queue_scope_change'")).rows[0];
+      assert.equal(pending.state,'pending');assert.equal(pending.attempts,0);
+      assert.equal((await runtimeStore.authenticate('ignored'))?.accessRole,'admin','Authorization mutation did not roll back');
+    }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
+    assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
+    const queuedApi=createApp(runtimeStore);
+    const wire={providerEventId:'evt_api_delivery',providerAccount:'acct_synthetic',record:{id:'api-queued',customerId:'api-queue-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'123'}};
+    const submit=(token:string,payload:unknown=wire)=>queuedApi.request('/v1/revenue/deliveries',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)});
+    assert.equal((await submit(ingestKey)).status,202);
+    assert.equal((await submit(ingestKey)).status,202);
+    assert.equal((await submit(ingestKey,{...wire,record:{...wire.record,amountMicros:'124'}})).status,409);
+    assert.equal((await submit(ingestKey,{...wire,record:{...wire.record,amountMicros:'-1'}})).status,400);
+    assert.equal((await queuedApi.request('/v1/revenue/deliveries',{method:'POST'})).status,401);
+    await pool.query('UPDATE workspace_api_keys SET expires_at=NULL WHERE key_digest=$1',[createHash('sha256').update(readKey).digest('hex')]);
+    assert.equal((await submit(readKey)).status,403);
     // Revocation affects the already-created credential view on its next statement.
     await pool.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE key_digest=$1',
       [createHash('sha256').update(otherKey).digest('hex')]);

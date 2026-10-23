@@ -13,6 +13,7 @@ export interface IncomingEvent {
 }
 export interface StoredEvent { event: UsageEvent; payloadDigest: string; costMicros: bigint | null; source: string; priceId: string | null; workspacePriceId?: string | null }
 export interface StoredRevenue { id:string; customerId:string; occurredAt:string; amountMicros:string; payloadDigest:string }
+export interface RevenueDelivery {providerEventId:string;providerAccount:string;record:StoredRevenue}
 export type ScopedPriceVersion = PriceVersion & { scope?: 'workspace' | 'legacy' };
 export interface PriceInput {
   id:string; model:string; effectiveFrom:string; effectiveTo:string|null;
@@ -30,6 +31,7 @@ export interface EventStore {
   createPriceVersion?(workspaceId:string, creatorDigest:string, input:PriceInput):Promise<WorkspacePrice>;
   listPriceVersions?(workspaceId:string):Promise<{items:WorkspacePrice[]; truncated:boolean}>;
   ingest(workspaceId: string, events: readonly StoredEvent[]): Promise<{ inserted: number; duplicate: number }>;
+  enqueueRevenueDelivery?(workspaceId:string,delivery:RevenueDelivery):Promise<{duplicate:boolean;state:string}>;
   ingestRevenue?(workspaceId:string, records: readonly StoredRevenue[]): Promise<{inserted:number;duplicate:number}>;
   analytics?(workspaceId:string,start:string,end:string):Promise<AnalyticsSnapshot>;
   analyticsPage?(workspaceId:string,start:string,end:string,after:string|null,limit:number):Promise<AnalyticsPage>;
@@ -73,7 +75,7 @@ export interface AnalyticsPage{
 /** An allowlisted operational event. Raw paths, queries, headers, payloads and tenant identifiers are intentionally absent. */
 export interface SafeRequestLog {
   kind:'http_request'; requestId:string; timestamp:string;
-  route:'readiness'|'metrics'|'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'prices'|'analytics'|'analytics_page'|'other';
+  route:'readiness'|'metrics'|'health'|'dashboard'|'dashboard_asset'|'events'|'revenue'|'revenue_deliveries'|'prices'|'analytics'|'analytics_page'|'other';
   method:'GET'|'POST'|'HEAD'|'OPTIONS'|'OTHER';
   status:number; durationMs:number;
   errorClass:'none'|'authentication'|'authorization'|'rate_limit'|'client'|'dependency'|'internal';
@@ -88,6 +90,7 @@ function safeRoute(path:string):SafeRequestLog['route']{
     case '/dashboard':return 'dashboard';
     case '/v1/events':return 'events';
     case '/v1/revenue':return 'revenue';
+    case '/v1/revenue/deliveries':return 'revenue_deliveries';
     case '/v1/prices':return 'prices';
     case '/v1/analytics':return 'analytics';
     case '/v1/analytics/page':return 'analytics_page';
@@ -99,7 +102,7 @@ function safeMethod(value:string):SafeRequestLog['method']{
 }
 function requiredKeyRole(method:string,path:string):WorkspaceKeyRole{
   if(method==='GET'&&['/v1/prices','/v1/analytics','/v1/analytics/page'].includes(path))return 'read';
-  if(method==='POST'&&['/v1/events','/v1/revenue'].includes(path))return 'ingest';
+  if(method==='POST'&&['/v1/events','/v1/revenue','/v1/revenue/deliveries'].includes(path))return 'ingest';
   // Price changes, unknown future endpoints and other methods are admin-only by default.
   return 'admin';
 }
@@ -323,6 +326,25 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     return c.json(await store.analyticsPage(workspaceId,start,end,after,Number(rawLimit)));
   });
 
+  app.post('/v1/revenue/deliveries',async c=>{
+    const store=c.get('store'),workspaceId=c.get('workspaceId');
+    if(!limiter.allow(workspaceId))return c.json({error:'Rate limit exceeded'},429);
+    if(!store.enqueueRevenueDelivery)return c.json({error:'Durable revenue unavailable'},503);
+    let payload:unknown;
+    try{payload=await c.req.json();}catch{return c.json({error:'Invalid JSON'},400);}
+    if(!payload||typeof payload!=='object'||Array.isArray(payload))return c.json({error:'Invalid delivery'},400);
+    const raw=payload as Record<string,unknown>;
+    if(typeof raw.providerEventId!=='string'||!/^evt_[A-Za-z0-9_]{1,196}$/.test(raw.providerEventId)||!validId(raw.providerAccount))
+      return c.json({error:'Invalid delivery'},400);
+    try{
+      const record=parseRevenue(raw.record);
+      return c.json(await store.enqueueRevenueDelivery(workspaceId,{providerEventId:raw.providerEventId,providerAccount:raw.providerAccount,record}),202);
+    }catch(error){
+      if(error instanceof Error&&error.message==='Idempotency conflict')return c.json({error:'Delivery ID reused with different payload'},409);
+      if(error instanceof Error&&error.message==='Invalid revenue record')return c.json({error:error.message},400);
+      throw error;
+    }
+  });
   app.post('/v1/revenue',async c=>{
     const store=c.get('store');
     const workspaceId=c.get('workspaceId');

@@ -61,7 +61,7 @@ The following work is **mandatory before** any production internet deployment. T
 | v0.6 | OpenAI/Anthropic helpers, signed USD invoice conversion and duplicate tests | Stripe sandbox, credits/refunds, multi-account/currency evidence open | No |
 | v0.7 | Credential-backed tenant RLS migration, SQL denial, key expiry/revocation, pool reuse and migration recovery tests | Independent security review and deployment-specific least privilege/TLS/abuse validation open | No |
 | v0.8 | Encrypted backup hook/restore CI drill, privacy-safe classified telemetry, readiness, private Prometheus metrics, graceful shutdown, DB operation time bounds | Scheduled encrypted external backups, measured RPO/RTO, alerts and incident drills open | No |
-| v0.9 | Offline traceable cost/revenue reconciliation, signed credits/refunds in reports, exact tolerances/cached-token diagnostics, durable report replay, ingestion concurrency/rollback/connection-recovery smoke and atomic migration failure/retry tests | Real billing imports, durable webhook inbox/adjustment ingestion, provider/accountant review and production-scale load evidence open | No |
+| v0.9 | Offline traceable cost/revenue reconciliation, signed credits/refunds in reports, exact tolerances/cached-token diagnostics, durable report replay, normalized Stripe inbox/atomic replay candidate, ingestion concurrency/rollback/connection-recovery smoke and atomic migration failure/retry tests | Real billing imports, deployed webhook/account validation, persisted adjustment ingestion, provider/accountant review and production-scale load evidence open | No |
 | v1.0 | Release gates tracked below | No independent release approval | No |
 
 ## v1.0 — stable release (NOT DONE)
@@ -102,7 +102,7 @@ Only schema migration **007** was added. It is additive and does not rewrite fin
 | Runtime deployment and abuse controls | Verified TLS/trusted ingress, separately provisioned non-owner credentials, shared gateway/atomic distributed quota infrastructure, multi-process failure/load tests and secret rotation evidence |
 | Recovery and monitoring | Actual encryption/storage hooks and independent key recovery; scheduled external backups and retention; delivered alerts; timed, production-scale isolated restores with agreed RPO/RTO and incident ownership |
 | Financial integrations | Authentic official billing imports and source attribution; provider invoice/cached-tier comparisons; Stripe sandbox payments/refunds/credits and out-of-order replay; explicit accounting/FX/multi-account policies and reviewed variance reports |
-| Remaining financial engineering | Durable Stripe webhook inbox/replay worker and persistent signed revenue adjustments are **not implemented**; offline reports alone do not clear this gate |
+| Remaining financial engineering | A separate durable normalized Stripe delivery candidate is implemented and tested synthetically; deployed/sandbox validation and persistent signed revenue adjustments remain **unfinished**; offline reports alone do not clear this gate |
 | Data governance | Approved export/deletion/retention policy, backup expiry and privacy erasure procedure, with synthetic implementation tests and independent operator/privacy approval |
 | Developer adoption | Three real independent developers complete installation/integration and record feedback; automated clean npm consumption does not count as three developers |
 | Release integrity | Registry cryptographic verification passed (two registry signatures, one SDK attestation); current CI and independent review on final commits plus explicit authorization are still required for later npm publication or a stable tag |
@@ -128,7 +128,7 @@ docker run --rm -d --name agentmargin-local-ci \
   -e POSTGRES_PASSWORD=ci-only-disposable -p 127.0.0.1:55432:5432 postgres:16
 docker exec agentmargin-local-ci pg_isready -U agentmargin_ci -d agentmargin_ci
 export AGENTMARGIN_STANDALONE_DATABASE_URL='postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:55432/agentmargin_ci'
-# Must start empty; this applies migrations 001–007 and populates fictional data.
+# Must start empty; this applies migrations 001–008 and populates fictional data.
 npm run test:postgres
 node --experimental-strip-types scripts/server-lifecycle-test.ts
 node --experimental-strip-types scripts/reconcile.ts \
@@ -169,3 +169,17 @@ After security migration/residual findings receive **explicit approval**, merge 
 2. **Persisted financial adjustments:** append-only signed credits/refunds/adjustments linked to original payment/provider evidence; define effective dates, correction/reversal policy and multi-account/currency rules before including them in dashboard revenue. Preserve old positive-only records and require clean/upgrade/RLS/replay tests.
 3. **Reconciliation accuracy:** authentic provider billing importers, allocation completeness, credit attribution, cached tier coverage, explicit FX provenance and batch-versus-line tolerance policy. Keep unknown and unmatched data incomplete; do not silently replace estimates.
 4. **Release operations:** independent security review; deployed shared abuse controls; actual storage/key recovery/retention; timed restore and alert drills; privacy export/deletion policy; three independent developer trials. Synthetic CI does not clear these gates.
+
+
+A separate `feat/durable-revenue-deliveries` candidate now implements backlog item 1's local foundation: migration 008, tenant-scoped committed enqueue, atomic idempotent replay, eight-attempt backoff/dead letters, aggregate backlog reporting and signed synthetic receiver E2E. It follows #27 and does not change the required #24 → #25 → #26 → #27 order or authorize a merge. Review its schema/state-update grants separately. Persisted financial adjustments, real Stripe sandbox/account mapping, official billing imports and all independent/operational release gates remain open.
+
+
+| Reviewed candidate | Current reviewed head | Latest audit CI evidence |
+| --- | --- | --- |
+| #24 | `403f066` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910305923) |
+| #25 | `a2e645f` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910535006) |
+| #26 | `260219e` | [CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910770329) |
+| #27 | `609dc94` | [Full CI passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910883628), [starter/registry verification passed](https://github.com/rzkarsyad/agentmargin/actions/runs/39910883631) |
+| [#28](https://github.com/rzkarsyad/agentmargin/pull/28) | Separate durable-delivery candidate | Local checks passed (58 tests plus one pre-existing TODO, PostgreSQL 16, signed local receiver, migration/role/retry/race tests); [current PR checks](https://github.com/rzkarsyad/agentmargin/pull/28/checks) must pass on its final reviewed head |
+
+Passing CI is technical evidence only. No reviewer approval has been inferred from CI or this preliminary audit; all candidates remain blocked from merge until the requested security/critical-finding review and explicit approval.

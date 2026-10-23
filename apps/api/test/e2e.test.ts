@@ -25,6 +25,7 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
     await db.exec(readFileSync(new URL('../../../db/005_api_key_roles.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/006_api_key_expiry.sql',import.meta.url),'utf8'));
     await db.exec(readFileSync(new URL('../../../db/007_credential_tenant_isolation.sql',import.meta.url),'utf8'));
+    await db.exec(readFileSync(new URL('../../../db/008_revenue_deliveries.sql',import.meta.url),'utf8'));
     await db.query('INSERT INTO workspaces(id,name) VALUES($1,$2)',[workspace,'Integration']);
     await db.query('INSERT INTO workspace_api_keys(id,workspace_id,key_digest,name) VALUES($1,$2,$3,$4)',
       ['22222222-2222-4222-8222-222222222222',workspace,digest(key),'e2e']);
@@ -89,6 +90,11 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
     assert.equal(shifted.status,201);
     assert.equal((await db.query<{calculated_cost_micros:string}>('SELECT calculated_cost_micros FROM usage_events WHERE event_id=$1',['priced-1'])).rows[0]?.calculated_cost_micros.toString(),'1000000',
       'New price cannot silently rewrite stored costs');
+    const delivery={providerEventId:'evt_e2e_queue',providerAccount:'acct_synthetic',record:{id:'queued-invoice',customerId:'queued-customer',occurredAt:'2026-10-10T00:00:00Z',amountMicros:'987654'}};
+    assert.deepEqual(await sdk.enqueueRevenueDelivery(delivery),{duplicate:false,state:'pending'});
+    assert.deepEqual(await sdk.enqueueRevenueDelivery(delivery),{duplicate:true,state:'pending'});
+    assert.equal((await store.forCredential(key).processNextRevenueDelivery(workspace)).inserted,1);
+    assert.deepEqual(await sdk.enqueueRevenueDelivery(delivery),{duplicate:true,state:'delivered'});
     await db.query('UPDATE workspace_api_keys SET revoked_at=now() WHERE workspace_id=$1',[workspace]);
     assert.equal((await app.request('/v1/analytics?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z',{headers:{authorization:'Bearer '+key}})).status,401);
   }finally{

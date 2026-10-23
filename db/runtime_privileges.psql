@@ -17,6 +17,9 @@ GRANT SELECT ON TABLE
   price_versions, workspace_price_versions TO :"runtime_role";
 GRANT INSERT ON TABLE
   customers, usage_events, revenue_records, workspace_price_versions TO :"runtime_role";
+REVOKE ALL ON TABLE revenue_deliveries FROM :"runtime_role";
+GRANT SELECT, INSERT ON TABLE revenue_deliveries TO :"runtime_role";
+GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON revenue_deliveries TO :"runtime_role";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
 REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
 GRANT USAGE ON SCHEMA agentmargin_auth TO :"runtime_role";
@@ -52,6 +55,12 @@ BEGIN
          OR has_any_column_privilege(runtime.oid,oid,'UPDATE,REFERENCES'))
      ) OR has_any_column_privilege(runtime.oid,'public.price_versions','INSERT') THEN
     RAISE EXCEPTION 'Unsafe runtime grants: effective PUBLIC or column privileges exceed the supported runtime boundary';
+  END IF;
+  IF has_table_privilege(runtime.oid,'public.revenue_deliveries','DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.revenue_deliveries'::regclass
+      AND attnum>0 AND NOT attisdropped AND attname NOT IN ('state','attempts','available_at','delivered_at','error_class')
+      AND has_column_privilege(runtime.oid,attrelid,attnum,'UPDATE')) THEN
+    RAISE EXCEPTION 'Unsafe runtime grants: durable delivery payload must remain immutable';
   END IF;
 END;
 $guard$;

@@ -43,6 +43,8 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: Signed Stripe durable delivery E2E (synthetic only)
+        run: node --experimental-strip-types scripts/stripe-delivery-local-test.ts
       - name: API lifecycle (synthetic database)
         run: node --experimental-strip-types scripts/server-lifecycle-test.ts
       - name: API key rotation and revocation drill (synthetic CI only)
