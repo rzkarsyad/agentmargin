@@ -47,8 +47,10 @@ All PRs were rechecked open/unmerged with no review approvals. Main remains
 | #35 | latest nullable-allocation candidate | #34 | [Recovery checkpoint CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391943) and [starter](https://github.com/rzkarsyad/agentmargin/actions/runs/39993391993) passed; [current checks](https://github.com/rzkarsyad/agentmargin/pull/35/checks) must cover the nullable-field follow-up |
 | #36 release preparation | release branch | #35 | [Recovery rehearsal checkpoint](https://github.com/rzkarsyad/agentmargin/actions/runs/39993427654) passed (78 pass + existing TODO; unfiltered JS 103 / 3 retained findings, Python 50 / 0, Actions 23 / 0). [Final-head checks](https://github.com/rzkarsyad/agentmargin/pull/36/checks) must pass after the nullable-field/evidence update |
 
+| #37 OpenAI billing evidence | `feat/openai-billing-evidence` | #36 | [Current source/combined/CodeQL checks](https://github.com/rzkarsyad/agentmargin/pull/37/checks); authentic private export replay passed locally, overall external gates INCONCLUSIVE |
+
 **Preferred approved merge order:** #33 first, then **#24 → #25 → #26 → #27 →
-#28 → #29 → #30 → #31 → #32 → #34 → #35 → #36 → OpenAI billing follow-up**. #33 is independent and its
+#28 → #29 → #30 → #31 → #32 → #34 → #35 → #36 → #37**. #33 is independent and its
 changes are merged once in an isolated rehearsal, not duplicated into stack PRs.
 Retain parent branches. After each approved parent merge, retarget its immediate
 child to main, merge updated main into the child without rewriting reviewed history,
@@ -277,7 +279,7 @@ Three independent developer trials remain the separate v1.0 adoption gate.
 
 The existing production cost engine already rounded correctly; no calculation,
 authentication, SDK API, schema, RLS, migration or UI changes were needed. The
-billing follow-up branches from `release/v0.9.0-alpha.1` after #36; no inherited PR
+[#37 billing follow-up](https://github.com/rzkarsyad/agentmargin/pull/37) branches from `release/v0.9.0-alpha.1` after #36; no inherited PR
 is rewritten or merged. Stripe's genuine QA is unchanged and was not repeated.
 
 | Acceptance gate | Current result | Evidence / remaining action |
