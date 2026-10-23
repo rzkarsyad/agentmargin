@@ -37,10 +37,16 @@ An idempotent stable event ID is required for direct `track`. Reported provider 
 
 ## Publishing and provenance
 
-Install the public prerelease with `npm install @makinohq/agentmargin@alpha`.
+Install the verified prerelease with `npm install @makinohq/agentmargin@0.4.0-alpha.2`. The `alpha` tag may move; pin the version for reproducible applications. The OIDC publication of this version succeeded; registry-consumer verification is documented in [developer adoption](https://github.com/rzkarsyad/agentmargin/blob/main/docs/V04_DEV_ADOPTION.md).
 
 The initial `0.4.0-alpha.1` version was published manually. Subsequent tested versions are released through [`publish-sdk.yml`](../../.github/workflows/publish-sdk.yml), using npm Trusted Publishing (GitHub OIDC) with the `npm-publish` environment; no long-lived npm publishing token is required.
 
 For a new prerelease, bump the SDK and lockfile versions in one reviewed commit, merge after CI is green, create an immutable `sdk-vX.Y.Z-alpha.N` tag **on that tested commit**, then manually dispatch the workflow from GitHub Actions with the same tag. It checks that the tag and package version match before publishing to the `alpha` dist-tag. After a successful publish, confirm the registry version, tag and provenance on npm.
 
 Do not rerun publishing for an existing version: npm versions are immutable. Do not use the `latest` dist-tag for an alpha release.
+
+## Delivery and source compatibility
+
+The SDK sends one request per call. Supply AbortSignal to bound client work, persist failed usage/revenue in your own durable queue, and retry identical IDs/payloads. HTTP 409 is a payload conflict to investigate. Never replay the underlying billable provider request to retry analytics delivery.
+
+Source changes after alpha.2 validate HTTP(S) URLs without embedded credentials, support IPv6 HTTP loopback, reject impossible Anthropic dates/oversized OpenAI IDs, and prefer Stripe invoice paid_at when present. They preserve method signatures and await separate review/publication. Existing records created with event-time fallback must retain their original payload on replay; changing an old record timestamp correctly yields an idempotency conflict. No SDK version is published automatically by a source PR.

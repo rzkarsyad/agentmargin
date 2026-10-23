@@ -1,23 +1,23 @@
-# AgentMargin v0.4 — developer adoption candidate
+# AgentMargin v0.4 — developer adoption verification
 
-Work on this branch is a **candidate, not a released or npm-published SDK**.
+`@makinohq/agentmargin@0.4.0-alpha.2` is published. [PR #23](https://github.com/rzkarsyad/agentmargin/pull/23) is merged; [OIDC run 39898669098](https://github.com/rzkarsyad/agentmargin/actions/runs/39898669098) succeeded at `bea3962`. No subsequent version was published by this engineering continuation.
 
-## Developer milestones
+## Automated consumer evidence
 
-1. A compiled, typed, zero-runtime-dependency SDK package suitable for publishing with npm Trusted Publishing/OIDC.
-2. Real Next.js App Router starter with local synthetic POST route and optional OpenAI Responses API call.
-3. Opt-in external pricing importer with bounded HTTPS download, exact per-token rate parsing, source hash, preview and authenticated apply. Source is **community LiteLLM**, not provider-verified billing data.
-4. Unit tests, SDK tarball contents check, full-stack CI and Next.js production build.
-5. Independent developer trials and npm namespace authorization are **external gates**, not achievable by committing code.
+On 2026-10-23, `scripts/sdk-registry-consumer-smoke.mjs` installed the **registry artifact**, not a workspace build, in a fresh temporary project outside the repository. ESM imports, TypeScript declarations, usage/revenue calls, OpenAI helper and Anthropic/Stripe exports passed. Registry SHA-512 integrity and SLSA provenance metadata were present. This is maintainer-run automated consumption, not an independent developer trial.
 
-## Required validation
+```bash
+node scripts/sdk-registry-consumer-smoke.mjs
+node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
+```
 
-- [ ] Main CI plus new Next.js starter workflow pass.
-- [ ] Three developers install without assistance.
-- [ ] npm `@makinohq` organization owner publishes the first `@makinohq/agentmargin` prerelease manually; then enables the GitHub Actions trusted publisher for future versions. The registry must return a verifiable version.
-- [ ] Review community catalog estimates against official provider invoices before enabling any unattended import.
-- [ ] One user confirms the full Next.js → AgentMargin → PostgreSQL → analytics loop with their own non-sensitive development workload.
+The second command additionally requires cryptographic registry/provenance verification through `npm audit signatures`. Local verification failed to download trust data in the managed environment; metadata presence alone is **not** cryptographic verification. The [GitHub starter workflow](https://github.com/rzkarsyad/agentmargin/actions/runs/39908019043) subsequently passed this check: **two packages have verified registry signatures and one SDK package has a verified attestation**. The local download failure does not invalidate this separate successful evidence. Both commands clean up their temporary consumer project and never publish a package.
 
-## Explicitly not done
+The Next.js starter production build passed locally; root and starter dependency audits found zero vulnerabilities. Main CI additionally validates compiled SDK package contents and a complete synthetic PostgreSQL/API/SDK/browser integration. New SDK edge fixes (IPv6 loopback, strict provider timestamps/IDs and stable invoice paid_at) are source changes awaiting review and a separately authorized future publication; they are not claimed to exist in the installed alpha.2 artifact.
 
-Production hardening, role-based pricing approval, a vetted provider price feed, Stripe signature handling/reconciliation, model/provider coverage outside OpenAI, server-side paginated analytics, historical provider pricing correctness, backups, incident response, and independent security review remain future work; this PR must not claim v1.0 readiness.
+## External release gates
+
+- Three independent developers must install and use the core loop without maintainer assistance; record actual feedback and environments.
+- A real non-sensitive provider development workload must be validated against official usage/billing evidence, including cached tokens and supported pricing tiers.
+- Community catalog imports still require explicit operator review and source provenance. They are not official billing truth.
+- Security, operations, financial reconciliation and independent release approval remain open in the [roadmap](ROADMAP.md).

@@ -34,3 +34,22 @@ test('Stripe signature, timestamp, USD cents, invoice ID and provider customer m
  const other=JSON.stringify({...data,type:'customer.created'});
  assert.equal(stripeInvoicePaidToRevenue(other,sign(other),secret,now),null);
 });
+
+test('Anthropic rejects normalized impossible dates and unsafe cached counts',()=>{
+ const message={id:'synthetic-message',model:'synthetic-model',usage:{input_tokens:80,output_tokens:20,cache_read_input_tokens:20}};
+ assert.throws(()=>fromAnthropicMessage(message,'synthetic-customer','2026-02-31T00:00:00Z'),/timestamp/);
+ assert.throws(()=>fromAnthropicMessage(message,'synthetic-customer','2026-10-22'),/timestamp/);
+ assert.throws(()=>fromAnthropicMessage({...message,usage:{...message.usage,input_tokens:Number.MAX_SAFE_INTEGER}},'c','2026-10-22T00:00:00Z'),/safe integer/);
+});
+test('Stripe duplicate/out-of-order invoice events use stable paid_at and validate its bounds',()=>{
+ const secret='whsec_synthetic_paid_time',now=1792663200;
+ const invoice={id:'in_synthetic',customer:'cus_synthetic',status:'paid',currency:'usd',amount_paid:100,status_transitions:{paid_at:now-100}};
+ const convert=(id:string,created:number,object:unknown=invoice)=>{
+  const raw=JSON.stringify({id,type:'invoice.paid',created,data:{object}});
+  const signature='t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+raw).digest('hex');
+  return stripeInvoicePaidToRevenue(raw,signature,secret,now);
+ };
+ assert.deepEqual(convert('evt_first',now-50),convert('evt_second',now));
+ assert.equal(convert('evt_first',now)?.occurredAt,new Date((now-100)*1000).toISOString());
+ assert.throws(()=>convert('evt_bad',now,{...invoice,status_transitions:{paid_at:now+1}}),/payment time/);
+});

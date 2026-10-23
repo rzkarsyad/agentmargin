@@ -48,7 +48,13 @@ export function stripeInvoicePaidToRevenue(
   throw new Error('Invalid USD invoice amount');
  const micros=BigInt(inv.amount_paid)*10000n; // USD cents -> USD micros
  if(micros>9223372036854775807n)throw new Error('Stripe invoice amount exceeds bounds');
- const at=new Date(Number(e.created)*1000);
+ // Invoice payment time is stable across separately delivered invoice events.
+ // Preserve legacy fixtures lacking status_transitions with event-time fallback.
+ const transitions=inv.status_transitions;
+ if(transitions!=null&&(typeof transitions!=='object'||Array.isArray(transitions)))throw new Error('Invalid invoice payment time');
+ const paidAt=(transitions as Record<string,unknown>|null|undefined)?.paid_at;
+ if(paidAt!=null&&(!Number.isSafeInteger(paidAt)||Number(paidAt)<=0||Number(paidAt)>Number(e.created)))throw new Error('Invalid invoice payment time');
+ const at=new Date(Number(paidAt??e.created)*1000);
  if(!Number.isFinite(at.getTime()))throw new Error('Invalid event date');
  return {id:'stripe:invoice:'+inv.id,customerId:'stripe:'+customer,
   occurredAt:at.toISOString(),amountMicros:micros.toString()};

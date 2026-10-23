@@ -20,7 +20,9 @@ export class AgentMarginClient {
   readonly fetchImpl:typeof fetch;
   constructor(options:AgentMarginOptions) {
     this.endpoint=new URL(options.endpoint);
-    if (this.endpoint.protocol !== 'https:' && !['localhost','127.0.0.1','::1'].includes(this.endpoint.hostname))
+    if(!['https:','http:'].includes(this.endpoint.protocol)||this.endpoint.username||this.endpoint.password)
+      throw new Error('HTTP(S) endpoint without embedded credentials required');
+    if (this.endpoint.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(this.endpoint.hostname))
       throw new Error('HTTPS required outside localhost');
     if (!/^am_[A-Za-z0-9_-]{32,}$/.test(options.apiKey)) throw new Error('Invalid AgentMargin API key format');
     this.apiKey=options.apiKey;

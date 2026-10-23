@@ -21,7 +21,7 @@ Provider result IDs give deterministic idempotency; never send generated text or
 2. Build SDK and run `node --experimental-strip-types examples/stripe-webhook-local.ts` with server-only `STRIPE_WEBHOOK_SECRET` and `AGENTMARGIN_API_KEY` environment variables.
 3. Use Stripe CLI's local `stripe listen --forward-to http://127.0.0.1:8788/stripe/webhook`. Copy the **CLI-issued** signing secret into the server shell. Test only in Stripe sandbox.
 4. The receiver verifies Stripe's raw-payload HMAC SHA-256 signature and 5-minute timestamp tolerance. It only maps `invoice.paid` for **USD** invoices with stable Stripe invoice and customer IDs. `amount_paid` cents become USD microdollars. It calls authenticated AgentMargin `trackRevenue`.
-5. Stable invoice IDs make duplicate deliveries idempotent. A failure writing revenue returns 503 for retry; nonmatching signatures are rejected.
+5. Stable invoice IDs make duplicate deliveries idempotent. Source now prefers invoice `status_transitions.paid_at` over event creation time so separate events for the same payment retain a stable timestamp; legacy payloads without that field retain event-time fallback. These source changes are not yet npm-published. A failure writing revenue returns 503 for retry; nonmatching signatures are rejected.
 
 Use the optional `STRIPE_ACCOUNT_ID` to require a specific connected account. For a real multi-account deployment, **require** account-to-workspace mapping, approval and reconciliation independently; do not use the single demo key across accounts. The local receiver deliberately binds to `127.0.0.1` and has no public TLS ingress.
 
@@ -55,5 +55,8 @@ Reports contain a deep snapshot of every normalized input, source references, pe
 
 Synthetic tests cover exact large amounts, tolerance edges, missing usage, unknown cached pricing, cached-token mismatches, credits/refunds, duplicate and out-of-order evidence, currency boundaries and durable report replay. Real provider statement import/export authenticity, actual Stripe sandbox refunds/credit notes, FX/accounting policy and independent accountant/provider validation remain external release gates. The adapter is an auditable foundation, not a claim of completed live reconciliation.
 
+## Retry and delivery contract
+
+The SDK performs one request per call and propagates cancellation/network errors; it does not automatically retry uncertain writes or provider calls. For recoverable AgentMargin failures, persist the normalized event/record in your durable queue and replay the same ID, occurredAt and payload with bounded backoff and jitter. Treat HTTP 409 as an integrity conflict requiring investigation, 400/401/403 as configuration/input failures, and 429/503 as recoverable according to your queue policy. Never re-run a paid provider inference call merely because usage tracking failed. The local Stripe receiver returns 503 when persistence fails so Stripe can retry; it has no independent durable inbox and remains a development example.
 
 Preliminary integration review hardened the original JSON boundary: billing `recordIds` must be an actual array (strings are rejected before iterable copying), and the total allocation budget is checked before deep copying. Estimated inference costs cannot be negative; signed provider credits remain separate reported adjustment evidence. These checks prevent malformed evidence from acquiring a complete reconciliation result. Independent billing/accounting review remains required.
