@@ -23,11 +23,11 @@ psql "$AGENTMARGIN_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/005_api_key_role
 
 Existing API key rows gain `access_role='admin'` by default so existing client integrations continue to work. This is **compatibility, not least privilege**; plan migration to new lower-privilege keys and revoke broad legacy keys. Older API binaries ignore the extra column if rollback is needed; avoid destructive schema rollback. A database still at migration 004 cannot run the new API's credential query successfully.
 
-To create a key from a trusted admin workstation (never from the public API), use the existing CLI with an explicit role:
+To create a key from a trusted admin workstation (never from the public API), first configure `DATABASE_URL` securely in the shell or through a secret manager to point to the **admin/migrator** database connection. Then use the existing CLI with an explicit role:
 
 ```bash
-DATABASE_URL="$AGENTMARGIN_ADMIN_DATABASE_URL" node --experimental-strip-types apps/api/src/create-key.ts WORKSPACE_UUID reader read
-DATABASE_URL="$AGENTMARGIN_ADMIN_DATABASE_URL" node --experimental-strip-types apps/api/src/create-key.ts WORKSPACE_UUID writer ingest
+node --experimental-strip-types apps/api/src/create-key.ts WORKSPACE_UUID reader read
+node --experimental-strip-types apps/api/src/create-key.ts WORKSPACE_UUID writer ingest
 ```
 
 The third positional argument is the key name; the fourth is `admin`, `ingest`, or `read`. For backwards compatibility, omitting the role still creates an `admin` key. The CLI prints the raw secret **once**: never paste it into issue trackers, CI logs or screenshots. Use `apps/api/src/revoke-key.ts` to invalidate keys after rotating them.
