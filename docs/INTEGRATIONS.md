@@ -164,3 +164,75 @@ Set `DATABASE_URL` to the restricted runtime and `AGENTMARGIN_API_KEY` to the
 fixture admin key through the shell's secret tooling. Never pass them as CLI
 arguments or log SQL bound parameters. The tool intentionally refuses remote or
 non-CI databases. It does not schedule a worker or clear the release approval gate.
+
+
+## Current Stripe credit-note schema and platform routing
+
+The original synthetic credit fixture used `credit_amount`, `refund_amount` and
+`refund`. The official [Stripe OpenAPI snapshot](https://github.com/stripe/openapi/blob/90539938d9aad57955213f39ffbb23312ddbb6c8/openapi/spec3.json)
+(`2026-09-30.endive`) instead returns `refunds: [{refund, amount_refunded}]`.
+`credit_amount` is a **create-request parameter**, not a credit-note object field.
+Source now accepts pure post-payment balance credits only when amount equals
+post-payment amount, pre-payment/out-of-band amounts are zero, refunds is empty,
+and an explicit customer-balance transaction exists. Wholly refund-backed notes
+are ignored in favor of succeeded refund events; mixed, duplicate-refund,
+expanded/unknown allocation and contradictory old/new shapes fail explicitly.
+Legacy fixture shapes remain compatible but are not claimed as live API evidence.
+
+For a dedicated **platform-account** signing secret, set
+`STRIPE_PLATFORM_ACCOUNT_ID` (events omit `event.account`). For a connected-account
+endpoint use `STRIPE_ACCOUNT_ID` (the signed event must match). Choose exactly one.
+Never derive a workspace/account from untrusted webhook metadata. The additive SDK
+`platformAccount` option binds this trusted routing configuration; a platform
+endpoint rejects connected-account envelopes. The legacy no-option SDK converter
+still uses `platform` for compatibility; new durable receivers require explicit
+routing. Signature verification still precedes normalization and durable acceptance.
+
+## Genuine sandbox QA harness (requires external setup)
+
+`scripts/stripe-sandbox-qa.ts` uses Stripe CLI with an explicitly selected test
+account/key, a restricted disposable runtime, and an existing migrated loopback
+`agentmargin_ci`. It never uses live keys, public tunnels, fabricated webhook
+signatures, bulk cleanup or real card numbers. Use an isolated sandbox, not
+unrelated account fixtures. Create a test-only restricted key with only customer,
+payment-method, product/price, invoice/item/payment, refund, credit-note, event and
+account-read capabilities needed for this run; review the exact Stripe permission
+names in that sandbox. Install Stripe CLI from its official distribution and check
+`stripe whoami --format json` without printing configuration or credentials.
+
+Configure through supported secret tooling (never commit or paste secrets):
+`STRIPE_API_KEY` (test prefix only), `STRIPE_SANDBOX_ACCOUNT_ID`,
+`AGENTMARGIN_STANDALONE_DATABASE_URL`, `AGENTMARGIN_SANDBOX_RUNTIME_URL`, and a
+private mode-0700 `AGENTMARGIN_SANDBOX_EVIDENCE` directory **outside the checkout**.
+The DBs must be the same loopback `agentmargin_ci`; the runtime must be provisioned
+with the tested non-owner grants. The harness refuses missing configuration.
+
+```sh
+AGENTMARGIN_STRIPE_SANDBOX_QA=test-only node --experimental-strip-types scripts/stripe-sandbox-qa.ts
+```
+
+The harness creates run-tagged synthetic customers/products/prices, pays $29/$99
+invoices, finalizes an unpaid $15 invoice, creates $6.25/$99 refunds and a $12
+post-payment balance credit, plus an unsupported EUR case. A localhost-only CLI
+listener supplies genuine signatures. Refund links come from exact InvoicePayment
+and Refund API evidence, never customer metadata. Receipts captured during a
+mapping race are re-verified within the five-minute window; no signature is
+manufactured. It compares separately retrieved Stripe API amounts with recorded
+ledger/API/reconciliation amounts and checks duplicate/out-of-order replay and
+unknown pricing. Run-specific private JSON includes source objects, event/API
+version IDs, hashes, delivery history and variances; do not upload it publicly.
+Only aggregate scenario results reach stdout. The script retains run-tagged
+sandbox fixtures for audit; an authorized operator may dispose that isolated
+sandbox after review. A failed/interrupted run can leave isolated fixtures, but
+never runs automatic account-wide cleanup. New runs use a new idempotency namespace;
+individual operations use deterministic keys within one run.
+
+**Current evidence:** the configuration guard executed and rejected missing test
+credentials before any Stripe operation. No genuine sandbox run or external billing
+validation is claimed. MCP account access alone cannot provide the CLI key/listener
+secret. The synthetic acceptance fixture is separately tested across PostgreSQL,
+API, reconciliation and desktop/mobile browser: $128 gross − $105.25 refunds − $12
+credits = $10.75 net. It also preserves unknown pricing as incomplete contribution.
+A synthetic success does not clear the genuine sandbox, independent accounting or
+provider billing gates. The harness's external run, current payload shapes and
+billing-export corroboration remain to be verified.

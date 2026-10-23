@@ -11,6 +11,9 @@ const client=new AgentMarginClient({endpoint:process.env.AGENTMARGIN_ENDPOINT??'
 const refundLinks:Record<string,StripeRefundLink>=process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE?
  JSON.parse(readFileSync(process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE,'utf8')):{};
 const expectedAccount=process.env.STRIPE_ACCOUNT_ID;
+const platformAccount=process.env.STRIPE_PLATFORM_ACCOUNT_ID;
+if(process.env.AGENTMARGIN_DURABLE_REVENUE==='true'&&(!expectedAccount&&!platformAccount||expectedAccount&&platformAccount))
+ throw new Error('Bind exactly one connected or platform account to this signing secret');
 const port=Number(process.env.STRIPE_LOCAL_PORT??8788);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid local Stripe port');
 http.createServer(async(req,res)=>{
@@ -27,7 +30,7 @@ http.createServer(async(req,res)=>{
   const data=Buffer.concat(chunks);
   if(process.env.AGENTMARGIN_DURABLE_REVENUE==='true'){
     let delivery;
-    try{delivery=stripeEventToFinancialDelivery(data,header,secret!,Math.floor(Date.now()/1000),{expectedAccount,refundLinks});}
+    try{delivery=stripeEventToFinancialDelivery(data,header,secret!,Math.floor(Date.now()/1000),{expectedAccount,platformAccount,refundLinks});}
     catch(error){
       // Valid but unsupported/unmapped financial evidence must not be acknowledged
       // as successfully recorded. Integrators must alert on these repeated errors.
