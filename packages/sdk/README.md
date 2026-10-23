@@ -61,7 +61,7 @@ This checkout prepares the next additive SDK prerelease at `0.5.0-alpha.1`,
 independently of platform `v0.9.0-alpha.1`. Existing usage, revenue, OpenAI and
 Anthropic APIs remain compatible. New `trackAdjustments`, `enqueueRevenueDelivery`,
 `enqueueAdjustmentDelivery`, current-schema Stripe credits and `platformAccount`
-require matching reviewed API/schema 001–013 and a replay worker. API revenue
+require matching reviewed API/schema 001–014 and a replay worker. API revenue
 analytics now reports net recorded revenue after adjustments; explicit gross and
 reduction fields preserve its derivation. Non-USD FX, mixed credits and positive
 reinstatements remain unsupported. SDK alpha.2 does **not** gain source-only methods

@@ -17,7 +17,7 @@ methods; platform and SDK milestones deliberately differ). Neither is published.
 | v0.4 developer adoption | Complete foundation | Existing SDK/starter on main; source additions PR only | Published ESM/TypeScript consumer, signatures/provenance and Next.js CI [39953502998](https://github.com/rzkarsyad/agentmargin/actions/runs/39953502998) | Alpha.2 OIDC/registry verified; independent users pending | Release integrity review open for candidate | Foundation passed; three real developer trials remain a **v1.0 adoption gate**, not a sole blocker for v0.9 engineering |
 | v0.5 analytics/pricing | Complete for supported USD/token contract | Baseline on main; net adjustments PR only | Whole-workspace/pagination/effective pricing/unknown costs; [#32 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39941973060) | Official provider bills and accountant review pending | Candidate review open | Blocked: supply authentic exports, approved allocations/prices and accounting policy |
 | v0.6 integrations | Partial validation | Original adapters on main; durable/current-schema fixes PR only | SDK/signature/schema fixtures; [#35 original CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39959864754) | Moland **test-mode unpaid $15 invoice / $0 paid verified**; paid/refund/credit/signed CLI path pending | Account/routing review open | Blocked: supported CLI test credentials/listener or equivalent tooling for unavailable payment/credit APIs |
-| v0.7 security | Implemented candidate boundary; residual powers remain | PR only | PostgreSQL 16 007–013 attacks, RLS, scopes, pooling; [013 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) | **No independent security approval** | Catalog error oracle fixed in 013; cursor/in-flight and inbox authority open | Blocked: independently review/accept boundary and migrations, approve protected PRs |
+| v0.7 security | Implemented candidate boundary; residual powers remain | PR only | PostgreSQL 16 007–014 attacks, RLS, scopes, pooling; [013 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) | **No independent security approval** | Catalog error oracle fixed in 013; cursor/in-flight and inbox authority open | Blocked: independently review/accept boundary and migrations, approve protected PRs |
 | v0.8 reliability/privacy | Partial deployment validation | PR only | Encrypted/full restores, key rotation, readiness, lifecycle and bounded concurrency CI; disposable privacy/restart follow-up in release candidate | External storage/key recovery, delivered alerts, scale/RPO/RTO and privacy approval pending | Operations review open | Blocked: deployment-specific storage, ingress/shared quotas, scheduled drills and operator sign-off |
 | v0.9 financial engineering | Supported ledger/replay/net reports implemented; genuine QA incomplete | PR only | Exact $128−$117.25=$10.75 synthetic fixture across ledger/API/reconciliation/browser; immutable recovery tests | Authentic Stripe paid/refund/credit, official provider billing and policy approval pending | Independent SQL/accounting approval open | Blocked: clear external evidence and merge gates, validate final main commit, authorize alpha publication |
 
@@ -93,6 +93,13 @@ Reviewer package: [threat model and checklist](TENANT_THREAT_MODEL.md),
 [role/grant/deployment model](DB_RUNTIME_ROLE.md), [CodeQL paths](PREAUTH_SECURITY.md),
 `db/007…013`, `db/runtime_privileges.psql`, and guarded PostgreSQL tests.
 Automated implementer evidence does not replace independent human review.
+
+Migration 014 additionally prevents direct runtime failed/delivered-state resets:
+normal workers may only advance pending attempts and preserve retry cycles/backoff;
+reviewed admin recovery is the required reset path. Ingest and admin bearer keys
+cannot bypass it through direct runtime SQL. Original 012/013 files are unchanged.
+The trusted owner and pending-state worker completion authority remain separate
+review boundaries; no independent approval is inferred.
 
 ## Financial QA evidence and remaining cases
 
@@ -173,10 +180,10 @@ psql "$AGENTMARGIN_DEV_ADMIN_URL" -X -v ON_ERROR_STOP=1 \
 ```
 
 Existing schemas: apply only unapplied migrations; never replay 001 or edit stored
-checksums. Drain API/receivers/workers, verify isolated restore, apply 007–013 as
+checksums. Drain API/receivers/workers, verify isolated restore, apply 007–014 as
 trusted migrator, reapply final grants and deploy matching API/worker/receiver.
 Old RR analytics, broader grants and old schema/API pairs are incompatible. Readiness
-fails closed before 013. Preserve original payments and review legacy account-source
+fails closed before 014. Preserve original payments and review legacy account-source
 mappings against evidence; no automatic guessed backfill. On failure: rollback,
 investigate/retry or restore a new isolated DB; no destructive down-migration.
 
@@ -205,7 +212,7 @@ It publishes no release. See [draft notes](releases/v0.9.0-alpha.1.md),
 
 Remaining release actions, in order:
 
-1. Independent security review/acceptance of 007–013, residual authority and CodeQL
+1. Independent security review/acceptance of 007–014, residual authority and CodeQL
    triage; founder/accountant approval of recorded-revenue/credit/cross-period policy.
 2. Supply sandbox-scoped CLI/API access for real signed paid/refund/credit delivery;
    execute the harness and corroborate reports with authentic provider exports.

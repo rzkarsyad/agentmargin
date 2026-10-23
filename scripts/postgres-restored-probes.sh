@@ -13,6 +13,7 @@ sql() { psql -XAt -v ON_ERROR_STOP=1 --dbname="$restored_db" -c "$1"; }
 sql 'REVOKE ALL ON SCHEMA agentmargin_auth FROM PUBLIC;
      REVOKE ALL ON ALL FUNCTIONS IN SCHEMA agentmargin_auth FROM PUBLIC' >/dev/null
 predicates=(
+ "SELECT count(*)=2 FROM pg_catalog.pg_trigger WHERE tgname='enforce_delivery_transition' AND tgfoid='agentmargin_auth.enforce_delivery_transition()'::regprocedure AND tgenabled='O'"
  "SELECT count(*)=10 FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace AND relrowsecurity"
  "SELECT count(*)=3 FROM pg_catalog.pg_proc WHERE oid IN ('agentmargin_auth.validate_adjustment()'::regprocedure,'agentmargin_auth.validate_stripe_adjustment_source()'::regprocedure,'agentmargin_auth.record_delivery_transition()'::regprocedure) AND prosecdef AND proconfig @> ARRAY['search_path=pg_catalog, pg_temp']"
  "SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.pronamespace='agentmargin_auth'::regnamespace AND a.grantee=0 AND a.privilege_type='EXECUTE')"

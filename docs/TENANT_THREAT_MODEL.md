@@ -78,7 +78,7 @@ must be reviewed independently.
 Acceptance checklist for a genuine reviewer:
 
 - [ ] Reproduce guarded PostgreSQL 16 clean/upgrade/rollback/contention tests;
-  inspect 007–013 diffs, all functions, grants, owners and installed extensions.
+  inspect 007–014 diffs, all functions, grants, owners and installed extensions.
 - [ ] Confirm forged/missing/revoked/expired keys, tenant SELECT/INSERT and read/
   ingest/admin scope violations fail; pool reuse overwrites transaction-local proof.
 - [ ] Reproduce fixed catalog-shadow denial and ensure no earlier trigger emits
