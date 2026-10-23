@@ -3,13 +3,17 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {createHmac} from 'node:crypto';
-const source=process.env.QA_CLI_FIXTURE;
-if(!source)throw new Error('Synthetic fixture configuration required');
-const {events,objects,control,run}=JSON.parse(readFileSync(source,'utf8'));
+import {stripeQaData} from './stripe-qa-data.ts';
+const run=process.env.QA_CLI_RUN,control=process.env.QA_CLI_CONTROL;
+if(!run||!/^[a-f0-9-]{36}$/.test(run)||!control)throw new Error('Synthetic fixture configuration required');
+const now=Number(process.env.QA_CLI_NOW);
+if(!Number.isSafeInteger(now)||now<=0)throw new Error('Synthetic fixture time required');
+const {events,objects}=stripeQaData(run,now);
 const args=process.argv.slice(2),secret='whsec_fictionalclitest';
 if(args[0]==='listen'){
  if(process.env.STRIPE_API_KEY)throw new Error('Listener inherited API key');
- const target=args[args.indexOf('--forward-to')+1];
+ const target=new URL(args[args.indexOf('--forward-to')+1]);
+ if(target.protocol!=='http:'||target.hostname!=='127.0.0.1'||target.pathname!=='/stripe/webhook'||target.username||target.password||target.search||target.hash)throw new Error('Loopback fixture receiver only');
  const server=createServer(async(req,res)=>{
   const event=events.find(e=>e.id===req.url.slice(1));
   if(!event){res.writeHead(404).end();return;}
@@ -38,7 +42,9 @@ if(args[0]==='listen'){
 }else if(args[0]==='events'&&args[1]==='resend'){
  if(process.env.STRIPE_API_KEY)throw new Error('Resend inherited API key');
  if(args.includes('--webhook-endpoint')||!events.some(e=>e.id===args[2]))throw new Error('Unscoped resend');
- const r=await fetch('http://127.0.0.1:'+readFileSync(control,'utf8')+'/'+args[2]);if(!r.ok)throw new Error('Failed synthetic resend');
+ const port=Number(readFileSync(control,'utf8'));
+ if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid loopback control port');
+ const r=await fetch('http://127.0.0.1:'+port+'/'+args[2]);if(!r.ok)throw new Error('Failed synthetic resend');
  console.log('{}');
 }else if(args[0]==='get'){
  const params=Object.fromEntries(args.flatMap((a,i)=>a==='-d'?[args[i+1].split(/=(.*)/s).slice(0,2)]:[]));
