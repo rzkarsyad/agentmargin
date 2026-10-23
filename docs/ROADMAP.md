@@ -322,7 +322,7 @@ integration and inherited independent security/release gates.
 
 ## v0.7/v0.8 gate closure follow-up
 
-The security follow-up branches from #37; preserve the entire parent order and
+[#38 security follow-up](https://github.com/rzkarsyad/agentmargin/pull/38) branches from #37; the backup/recovery follow-up branches from #38. Preserve the entire parent order and
 include #33 once in the isolated combined-source rehearsal. No merge is authorized.
 The [updated risk register/reviewer packet](TENANT_THREAT_MODEL.md)
 records exact immutable 007–014 checksums and decisions still requiring a reviewer.
@@ -339,3 +339,62 @@ records exact immutable 007–014 checksums and decisions still requiring a revi
 There is no accounting, key hashing, SDK, UI or migration contract change in the
 security follow-up. Existing genuine financial acceptance evidence stays scoped
 as recorded above. All candidate production-ready statuses remain NO.
+
+
+## v0.8 reliability/privacy evidence matrix — recovery follow-up
+
+| Gate | Implemented | Tested / result | Externally verified | Production-ready / required evidence |
+| --- | --- | --- | --- | --- |
+| Local backup retention boundary | Explicit UTC cutoff; old -mtime rounding corrected | Baseline FAIL: a 7-day/5-minute-old file survived; new boundary/unrelated-file regression PASS | No external retention evidence | BLOCKED: approved schedule/holds and actual version/replica/object expiry |
+| Backup integrity / key recovery | Archive hash/size/start metadata, authenticated synthetic CMS envelope and distinct local key-recovery fixture | PASS: missing/wrong/recovered key, truncation/content tampering, full fingerprints and restore | Local only; same UID is not separate credential administration | BLOCKED: real independent key recovery and durable external download/authentication |
+| Failure / retry / overlap | Existing lock/cleanup; expanded dump/encrypt/upload/prune failure and successful retry drills | PASS: old success marker preserved, no plaintext/lock after ordinary failures, held lock respected | No scheduler/hook outage evidence | BLOCKED: deadlines, crash residue handling, external inventory reconciliation and alert receipt |
+| Restored tenant/financial permissions | Fresh restricted LOGIN plus final grants on both restored targets | PASS: missing/revoked/expired key, auth-table denial, tenant SELECT/INSERT, transaction reset and immutable grants | No deployment-like role/secret restoration | BLOCKED: operator and independent review; no owner-session SET ROLE substitute |
+| Readiness / restart / shutdown / concurrency | #38 schema drift checks; existing pool/restart/lifecycle/rollback/load tests | PASS locally and #38 combined CI | No production-scale or deployed recovery measurement | BLOCKED: agreed RPO/RTO and load/ingress topology; synthetic elapsed times are not guarantees |
+| Backup monitoring / alerts | Read-only private freshness CLI; allowlisted error/metrics logs and operator procedure | PASS: age boundary, legacy/new markers, future clock, malformed/unsafe private file and output redaction | No actual notification receipt | BLOCKED: approved destination firing/ack/escalation/resolution and collector-loss drill |
+| Privacy lifecycle | Existing bounded fictional export/teardown, immutable ledger and protected evidence; per-category decision matrix | Synthetic PASS; real retention/erasure approval INCONCLUSIVE | No real-data privacy/legal review | BLOCKED: category owners/durations/holds, backup resurrection manifest, copies and independent approval |
+| Distributed rate limiting / TLS | Process-local limiter is explicitly local; shared gateway/atomic quota design documented | Multiple deployed instances and partition behavior NOT tested | None | BLOCKED: infrastructure selection and fail-closed quota/edge verification |
+
+Local Linux recovery observations: full restore/probes 2 seconds; authenticated
+backup/key/failure/restore probes 2 seconds; final wrapper 17 seconds on tiny
+fictional data. These are measurements, not RPO/RTO commitments. Mac execution,
+external object/key custody, real alert delivery, scale and policy acceptance remain
+unverified. No private financial evidence is committed or any new Stripe/OpenAI
+request performed. The [macOS/Docker operator commands](BACKUP_RESTORE.md#safe-macos--docker-desktop--orbstack-rehearsal)
+and [privacy decision matrix](PRIVACY_LIFECYCLE.md#v08-privacy-evidence-matrix-and-decisions)
+are the handoff, with no authorization for production actions.
+
+Verified parent evidence for #38 `91a46ac73caf358ed0bc9cdab2b956d213b11af3`:
+[source CI](https://github.com/rzkarsyad/agentmargin/actions/runs/40040048988) and
+[full combined rehearsal](https://github.com/rzkarsyad/agentmargin/actions/runs/40040049019)
+PASS. Downloaded unfiltered SARIF matches combined tree
+`fcbb57a68bb79ffc8ba25f4f981c277ec1c87198`: JS/TS 103 rules / 3 inherited
+candidates, Python 50 / 0, Actions 23 / 0. No suppression, exclusion or dismissal.
+The two original regex findings are absent in the combined tree; main alert closure
+still needs approved integration/rescan and authorized independent triage.
+Final child CI/CodeQL evidence must match its own source head/tree and is recorded
+on its PR after completion; parent evidence is not substituted for those checks.
+
+Remaining founder/operator/reviewer actions, in order:
+
+1. Independent reviewer reproduces the pinned PG16/migration/CodeQL packet and
+   explicitly decides cursor/in-flight, shared runtime/ingest/worker/inbox and
+   provider-authenticity boundaries. No independent security approval exists.
+2. Founder/operator performs the safe Mac rehearsal, then supplies separately
+   authorized nonproduction external storage/key-recovery, retention, notification,
+   incident, load and measured recovery evidence with accountable owners.
+3. Privacy/financial owners approve category retention/legal holds, erasure/restore
+   manifests, operational objectives and existing accounting/precision/materiality
+   policy. Genuine sandbox success is not independent provider billing validation.
+4. Required protected reviews and explicit integration authorization; only then
+   integrate #33 independently and #24 → #25 → #26 → #27 → #28 → #29 → #30 → #31
+   → #32 → #34 → #35 → #36 → #37 → #38 → backup/recovery follow-up. Drain writers
+   for a separately approved migration rollout, apply only unapplied 001–014 in
+   order, verify checksums, reapply final grants and matching binaries, test in an
+   isolated deployment and review cutover. No production action is authorized now.
+5. Repeat final-main CI/CodeQL/package/provenance validation and obtain explicit
+   alpha release/tag/npm authorization. Repository transfer to makinohq/agentmargin
+   is a future approved destination, not an action authorized by this work.
+
+v0.4–v0.9 implementation/financial evidence above is preserved. v0.7/v0.8 technical
+coverage improves; independent approval, deployed operations and production-ready
+remain BLOCKED. v0.9.0-alpha.1 is still an unreleased candidate.

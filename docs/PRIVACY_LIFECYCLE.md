@@ -68,3 +68,30 @@ CLI evidence reads/exports are capped at 10 MB (requeue review JSON: 100 KB),
 with additional row-count bounds. Partition larger inputs before export; no
 truncation is performed. CLI configuration/JSON failures emit fixed events rather
 than raw payload snippets or credential-bearing connection URLs.
+
+
+## v0.8 privacy evidence matrix and decisions
+
+| Category / control | Source/disposable evidence | External/operator decision | Gate |
+| --- | --- | --- | --- |
+| API logs and aggregate metrics | Fixed allowlist, redaction/error-sink tests and private metrics authentication PASS | Edge/APM/database bind-parameter logging, access and deletion not inspected | BLOCKED |
+| Auth keys and customer exports | Digests excluded from fictional export; raw credentials not persisted in application tables; private descriptor/file bounds tested | Secret custody, role/statistics/log exposure and credential disposal need review | BLOCKED |
+| Immutable ledger, source links, delivery history/requeue receipts | Append-only, tenant isolation, replay and synthetic scoped teardown PASS | Decide financial/legal retention, minimum provider references, lawful holds and authorized exceptions. No expiry scheduler exists | BLOCKED |
+| Backups and recovered copies | Authenticated synthetic restore, separate LOCAL key recovery/failure drills, full row fingerprints and actual restricted-login probes | Real encrypted external objects, independent key custody, remote retention/expiry and restore inventory not verified | BLOCKED |
+| Export/erasure | Fictional guarded export/digest/stale denial/teardown and restored triggers PASS | Real requester authentication, policy, replica/provider/export/log copies and erasure manifest need independent review | BLOCKED |
+| Financial/private QA receipts and billing exports | Remain outside Git; mode-0700 directory/0600 bounded descriptor reads; public evidence uses aggregates | Founder chooses storage, access, retention and expiry; no raw private financial evidence is certified or republished here | INCONCLUSIVE |
+
+For each category, record accountable owner, retention duration/start event,
+legal-hold precedence, deletion authority, all copy locations and verified expiry
+method. Values are **undecided**, not implicitly seven days. The backup utility's
+seven-day default is a configurable technical default, not an approved privacy or
+financial retention policy. Object versioning, replicas, caches, vault recovery
+copies and prior exports may survive deletion of the latest object. A local key
+copy is not independently administered key storage; decryption ability alone is
+not approval to retain data. Plaintext cleanup does not prove physical erasure.
+
+A restore can resurrect previously erased data. Maintain the reviewed erasure/hold
+manifest outside the backup being restored, reapply it in quarantine and verify
+all applicable copies before an independently authorized cutover. No real erasure
+or privacy/legal approval has occurred. Approving a source alpha must explicitly
+retain these deployment restrictions; do not mark production-ready from CI.

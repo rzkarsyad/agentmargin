@@ -28,20 +28,29 @@ cleanup(){
 trap cleanup EXIT
 work=$(mktemp -d "$backup_dir/.work-XXXXXXXX")
 started=$SECONDS
+started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 id="agentmargin-$(date -u +%Y%m%dT%H%M%SZ)-${work##*-}"
 # Neither hook output nor libpq diagnostics are emitted: they may include secrets.
 pg_dump --format=custom --no-owner --no-acl --file="$work/plain.dump" >/dev/null 2>&1
 pg_restore --list "$work/plain.dump" >/dev/null 2>&1
 "$encrypt" "$work/plain.dump" "$work/$id.dump.enc" >/dev/null 2>&1
 [[ -s "$work/$id.dump.enc" ]]
+# A transport integrity reference, not authentication of arbitrary hook output.
+archive_sha=$(sha256sum -- "$work/$id.dump.enc")
+archive_sha=${archive_sha%% *}
+archive_bytes=$(stat -c '%s' "$work/$id.dump.enc")
 rm -- "$work/plain.dump"
 "$upload" "$work/$id.dump.enc" "$id.dump.enc" >/dev/null 2>&1
 "$prune" "$retention" >/dev/null 2>&1
 mv -- "$work/$id.dump.enc" "$backup_dir/$id.dump.enc"
 # Local retention only touches this utility's regular encrypted artifacts.
-find "$backup_dir" -maxdepth 1 -type f -name 'agentmargin-*.dump.enc' -mtime +"$retention" -delete
-printf '{"kind":"backup_succeeded","completedAt":"%s","durationSeconds":%d,"retentionDays":%d}\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$((SECONDS-started))" "$retention" > "$work/last-success.json"
+# GNU -mtime +N rounds down whole days and would retain almost N+1 days.
+# Use an explicit UTC cutoff so the configured day count is actually honored.
+cutoff=$(date -u -d "$((retention*86400)) seconds ago" +%Y-%m-%dT%H:%M:%SZ)
+find "$backup_dir" -maxdepth 1 -type f -name 'agentmargin-*.dump.enc' ! -newermt "$cutoff" -delete
+printf '{"kind":"backup_succeeded","startedAt":"%s","completedAt":"%s","durationSeconds":%d,"retentionDays":%d,"archive":"%s.dump.enc","archiveSha256":"%s","archiveBytes":%d}\n' \
+  "$started_at" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$((SECONDS-started))" "$retention" \
+  "$id" "$archive_sha" "$archive_bytes" > "$work/last-success.json"
 mv -- "$work/last-success.json" "$backup_dir/last-success.json"
 cat -- "$backup_dir/last-success.json"
 success=1

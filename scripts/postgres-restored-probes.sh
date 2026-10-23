@@ -26,3 +26,69 @@ for predicate in "${predicates[@]}"; do
   [[ "$(sql "$predicate")" == t ]] || { echo 'Post-restore security/financial probe failed.' >&2; exit 1; }
 done
 echo 'Post-restore RLS, private definer ACLs, missing-proof denial and financial integrity: PASSED (synthetic only)'
+
+# Authenticate a genuine fresh restricted LOGIN, not SET ROLE in an owner
+# session (session_user owner exemptions would make that a misleading probe).
+probe_role="agentmargin_restore_probe_$(openssl rand -hex 6)"
+probe_password=$(openssl rand -hex 24)
+probe_key="am_$(openssl rand -hex 32)"
+probe_other_key="am_$(openssl rand -hex 32)"
+probe_tenant=$(sql 'SELECT gen_random_uuid()')
+probe_other=$(sql 'SELECT gen_random_uuid()')
+cleanup_probe(){
+ local code=$?
+ trap - EXIT
+ # Only the newly provisioned disposable role is cleaned; never source roles.
+ sql "DROP OWNED BY \"$probe_role\"; DROP ROLE \"$probe_role\"" >/dev/null 2>&1 || code=1
+ exit "$code"
+}
+# Values are locally generated restricted alphabets, never user-supplied SQL.
+sql "CREATE ROLE \"$probe_role\" LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '$probe_password'" >/dev/null
+trap cleanup_probe EXIT
+psql -X -v ON_ERROR_STOP=1 --dbname="$restored_db" -v runtime_role="$probe_role" -f db/runtime_privileges.psql >/dev/null
+sql "INSERT INTO public.workspaces(id,name) VALUES('$probe_tenant','agentmargin-qa restore A'),('$probe_other','agentmargin-qa restore B');
+ INSERT INTO public.workspace_api_keys(id,workspace_id,key_digest,name,access_role) VALUES
+ (gen_random_uuid(),'$probe_tenant',encode(sha256(convert_to('$probe_key','UTF8')),'hex'),'restore-probe','admin'),
+ (gen_random_uuid(),'$probe_other',encode(sha256(convert_to('$probe_other_key','UTF8')),'hex'),'restore-probe','admin');
+ INSERT INTO public.customers(workspace_id,id) VALUES('$probe_tenant','restore-probe'),('$probe_other','restore-probe');
+ INSERT INTO public.revenue_records(workspace_id,id,customer_id,occurred_at,amount_micros) VALUES
+ ('$probe_tenant','restore-probe','restore-probe','2026-10-10Z',7),('$probe_other','restore-probe','restore-probe','2026-10-10Z',11)" >/dev/null
+runtime_sql(){
+ PGUSER="$probe_role" PGPASSWORD="$probe_password" psql -X -v ON_ERROR_STOP=1 --dbname="$restored_db" >/dev/null
+}
+runtime_sql <<SQL
+DO \$probe\$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.revenue_records) OR EXISTS(SELECT 1 FROM public.delivery_history)
+    OR EXISTS(SELECT 1 FROM public.delivery_requeues) THEN RAISE EXCEPTION 'Missing proof read allowed'; END IF;
+ BEGIN PERFORM key_digest FROM public.workspace_api_keys; RAISE EXCEPTION 'Authentication table read allowed';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ PERFORM set_config('agentmargin.api_key','$probe_key',true);
+ IF (SELECT count(*) FROM public.revenue_records)<>1 OR
+    EXISTS(SELECT 1 FROM public.revenue_records WHERE workspace_id<>'$probe_tenant') THEN
+   RAISE EXCEPTION 'Restored tenant read isolation failed'; END IF;
+ BEGIN
+  INSERT INTO public.customers(workspace_id,id) VALUES('$probe_other','cross-tenant-probe');
+  RAISE EXCEPTION 'Cross-tenant insert allowed';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ BEGIN DELETE FROM public.revenue_records; RAISE EXCEPTION 'Financial delete allowed';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ INSERT INTO public.customers(workspace_id,id) VALUES('$probe_tenant','authorized-probe');
+END \$probe\$;
+DO \$probe\$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.revenue_records) THEN RAISE EXCEPTION 'Transaction proof leaked'; END IF;
+END \$probe\$;
+SQL
+sql "UPDATE public.workspace_api_keys SET revoked_at=now() WHERE workspace_id='$probe_tenant';
+ UPDATE public.workspace_api_keys SET expires_at=now()-interval '1 second' WHERE workspace_id='$probe_other'" >/dev/null
+runtime_sql <<SQL
+DO \$probe\$ BEGIN
+ PERFORM set_config('agentmargin.api_key','$probe_key',true);
+ IF EXISTS(SELECT 1 FROM public.revenue_records) OR EXISTS(SELECT 1 FROM agentmargin_auth.principal('$probe_key')) THEN
+   RAISE EXCEPTION 'Revoked proof accepted after restore'; END IF;
+ PERFORM set_config('agentmargin.api_key','$probe_other_key',true);
+ IF EXISTS(SELECT 1 FROM public.revenue_records) OR EXISTS(SELECT 1 FROM agentmargin_auth.principal('$probe_other_key')) THEN
+   RAISE EXCEPTION 'Expired proof accepted after restore'; END IF;
+END \$probe\$;
+SQL
+echo 'Post-restore restricted LOGIN: missing/revoked/expired proof, tenant SELECT/INSERT, transaction reuse and immutable permission probes PASSED (synthetic only)'

@@ -73,3 +73,13 @@ reproduce the pre-fix false-ready result. These catalog checks do not prove poli
 expressions or function bodies/ownership/ACLs correct; installed-definition review
 and cross-tenant negative probes remain mandatory. Liveness still says only that
 the process can respond. Monitor readiness separately and keep metrics private.
+
+
+Backup freshness now has an executable private-marker check, with stale/unavailable
+nonzero exits and fixed aggregate output: see BACKUP_RESTORE.md. Its tests cover
+boundary age, unsafe/malformed inputs, future clock data, legacy markers and secret
+redaction. No monitor transport or on-call message is sent by that command. Follow
+the documented staging notification procedure and retain actual destination/ack/
+recovery receipts before claiming alert delivery. The local replay/restart/shutdown
+and bounded-concurrency checks complement this; they do not establish production
+scale, distributed quota enforcement, externally observed RPO/RTO or incident approval.
