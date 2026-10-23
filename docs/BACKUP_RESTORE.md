@@ -59,3 +59,14 @@ For hourly logical dumps, planning RPO is **at least one hour plus failed/missed
 Migration 008 adds normalized revenue deliveries to full restore fingerprints. Queue payloads, failed-job evidence and pending/delivered state must be restored together with the revenue ledger; replay is idempotent after recovery. Validate the worker and migration-008 grants before enabling delivery again.
 
 Migration 012 adds immutable delivery transition/requeue history to the full restore fingerprints. Preserve it with inbox and ledger state; restoring only the economic ledger loses recovery provenance.
+
+
+Both restore drills now run post-restore probes on the newly created isolated DB:
+all ten RLS-enabled tables, catalog-safe definer settings, missing credential denial,
+original/customer/currency/time linkage, cumulative reduction limits and Stripe
+source-account attribution. `--no-acl` restores default PUBLIC EXECUTE on functions;
+the isolated restore is quarantined by revoking PUBLIC auth-schema/function access.
+Before enabling a provisioned runtime, reapply the final runtime template, which
+also revokes those defaults and grants only the exact entry points. Synthetic
+probes complement row/schema fingerprints; they do not replace staging role/secret
+recovery and approved operational cutover.

@@ -77,4 +77,5 @@ for query in \
   fi
 done
 
+bash scripts/postgres-restored-probes.sh "$restore_db"
 echo "PostgreSQL 16 restore drill: PASSED (full archive, row fingerprints, schema checks; synthetic dump/restore elapsed $((SECONDS-restore_started)) seconds)."

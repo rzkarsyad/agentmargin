@@ -49,4 +49,5 @@ if AGENTMARGIN_BACKUP_UPLOAD=/bin/false bash scripts/postgres-backup.sh; then ex
 cmp "$fixture/backups/last-success.json" "$fixture/before.json"
 [[ ! -d "$fixture/backups/.backup-lock" ]]
 [[ $(find "$fixture/backups" -name plain.dump | wc -l) == 0 ]]
+bash scripts/postgres-restored-probes.sh "$restored"
 echo 'Encrypted backup hooks, isolated restore and failure detection: PASSED (synthetic only)'
