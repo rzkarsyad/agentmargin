@@ -2,7 +2,7 @@
 name: agentmargin-local-demo
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     environment:
       POSTGRES_DB: agentmargin_demo
       POSTGRES_USER: agentmargin_demo

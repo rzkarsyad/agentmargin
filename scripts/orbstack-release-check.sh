@@ -11,7 +11,7 @@ name="agentmargin-release-$(date +%s)-$$"
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 # Publish to 127.0.0.1 only on a randomly allocated ephemeral host port.
-docker run -d --name "$name" -e POSTGRES_DB=agentmargin_ci -e POSTGRES_USER=agentmargin_ci -e POSTGRES_PASSWORD=ci-only-disposable -p 127.0.0.1::5432 postgres:16 >/dev/null
+docker run -d --name "$name" -e POSTGRES_DB=agentmargin_ci -e POSTGRES_USER=agentmargin_ci -e POSTGRES_PASSWORD=ci-only-disposable -p 127.0.0.1::5432 postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 >/dev/null
 ready=0
 for i in $(seq 1 60); do
   if docker exec "$name" pg_isready -U agentmargin_ci -d agentmargin_ci >/dev/null 2>&1; then ready=1; break; fi

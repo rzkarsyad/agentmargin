@@ -436,3 +436,5 @@ reproducibility is INCONCLUSIVE; no completed provider acceptance is repeated.
 New controls require their own exact-source CI/operator evidence. External signing
 and recovery-key custody, anti-rollback inventory, retention, delivered alerts,
 representative RPO/RTO/scale and independent security/privacy approval remain BLOCKED.
+
+AM-08/17/18: exact-head and combined CodeQL evidence are separate; main ruleset verified active. Publication authority is split from build/install and all current-branch Actions/PG image/Python wheels are pinned. Local unprivileged build and checks PASS; no publish dispatch or publisher/environment approval occurred. Transitive browser/OS/Node and legacy independent audit workflow trust remain disclosed. Finding-count triage, npm environment/tag restrictions and final protected-main release authorization are BLOCKED. See the candidate release acceptance report.
