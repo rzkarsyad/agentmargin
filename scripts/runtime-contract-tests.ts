@@ -9,6 +9,14 @@ export async function testRuntimeContract(pool:pg.Pool,runtime:PostgresEventStor
  await pool.query('ALTER POLICY tenant_read ON usage_events USING (true)');
  try{assert.equal(await runtime.ready(),false,'A weakened existing policy must fail readiness');}
  finally{await pool.query('ALTER POLICY tenant_read ON usage_events USING ('+policies.expr+')');}
+ const baseline=(await pool.query("SELECT digest FROM agentmargin_auth.security_contract WHERE kind='policy' AND identity='public.usage_events.tenant_read'")).rows[0].digest;
+ await pool.query('ALTER POLICY tenant_read ON usage_events USING (true)');
+ await pool.query("UPDATE agentmargin_auth.security_contract SET digest=(SELECT digest FROM agentmargin_auth.installed_contract() WHERE kind='policy' AND identity='public.usage_events.tenant_read') WHERE kind='policy' AND identity='public.usage_events.tenant_read'");
+ try{assert.equal(await runtime.ready(),false,'Capturing pre-existing weak policy state must not bless it');}
+ finally{
+   await pool.query('ALTER POLICY tenant_read ON usage_events USING ('+policies.expr+')');
+   await pool.query("UPDATE agentmargin_auth.security_contract SET digest=$1 WHERE kind='policy' AND identity='public.usage_events.tenant_read'",[baseline]);
+ }
  for(const [grant,revoke] of [
    ['GRANT SELECT ON workspace_api_keys TO','REVOKE SELECT ON workspace_api_keys FROM'],
    ['GRANT UPDATE ON revenue_records TO','REVOKE UPDATE ON revenue_records FROM'],
