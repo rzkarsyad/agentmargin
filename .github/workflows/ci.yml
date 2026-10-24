@@ -43,6 +43,10 @@ jobs:
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts
       - run: npm run test:postgres
+      - name: Synthetic PostgreSQL log-parameter containment
+        env:
+          AGENTMARGIN_CI_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: node --experimental-strip-types scripts/database-log-ci.ts
       - name: OpenAI pricing/SDK/API/restricted PostgreSQL replay (synthetic, no provider calls)
         run: node --experimental-strip-types scripts/openai-billing-local-test.ts
       - name: PostgreSQL service restart and financial fingerprint recovery (synthetic only)

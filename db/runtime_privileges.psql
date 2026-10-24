@@ -7,6 +7,17 @@
 -- in an elevated role. Review inherited and PUBLIC privileges separately.
 BEGIN;
 SELECT set_config('agentmargin.runtime_role', :'runtime_role', true);
+-- Superuser-managed logging defaults. Application checks the effective values
+-- on every checkout BEFORE transmitting any reusable bearer parameter.
+ALTER ROLE :"runtime_role" SET log_parameter_max_length=0;
+ALTER ROLE :"runtime_role" SET log_parameter_max_length_on_error=0;
+ALTER ROLE :"runtime_role" SET auto_explain.log_parameter_max_length=0;
+ALTER ROLE :"runtime_role" SET auto_explain.log_min_duration=-1;
+ALTER ROLE :"runtime_role" SET pgaudit.log_parameter=off;
+DO $database$ BEGIN
+ EXECUTE format('REVOKE TEMP ON DATABASE %I FROM PUBLIC',current_database());
+ EXECUTE format('REVOKE TEMP ON DATABASE %I FROM %I',current_database(),current_setting('agentmargin.runtime_role'));
+END $database$;
 REVOKE ALL ON SCHEMA public FROM :"runtime_role";
 GRANT USAGE ON SCHEMA public TO :"runtime_role";
 REVOKE ALL ON TABLE
@@ -20,10 +31,13 @@ GRANT INSERT ON TABLE
 REVOKE ALL ON TABLE revenue_adjustments FROM :"runtime_role";
 GRANT SELECT,INSERT ON revenue_adjustments TO :"runtime_role";
 REVOKE ALL ON TABLE revenue_payment_sources,adjustment_deliveries FROM :"runtime_role";
-GRANT SELECT,INSERT ON revenue_payment_sources,adjustment_deliveries TO :"runtime_role";
+GRANT SELECT,INSERT ON revenue_payment_sources TO :"runtime_role";
+GRANT SELECT ON adjustment_deliveries TO :"runtime_role";
+GRANT INSERT(workspace_id,provider_event_id,provider_account,record,payload_digest) ON adjustment_deliveries TO :"runtime_role";
 GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON adjustment_deliveries TO :"runtime_role";
 REVOKE ALL ON TABLE revenue_deliveries FROM :"runtime_role";
-GRANT SELECT, INSERT ON TABLE revenue_deliveries TO :"runtime_role";
+GRANT SELECT ON TABLE revenue_deliveries TO :"runtime_role";
+GRANT INSERT(workspace_id,provider_event_id,provider_account,record_id,customer_id,occurred_at,amount_micros,payload_digest) ON revenue_deliveries TO :"runtime_role";
 GRANT UPDATE(state,attempts,available_at,delivered_at,error_class) ON revenue_deliveries TO :"runtime_role";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
 REVOKE ALL ON TABLE workspace_api_keys, workspaces FROM PUBLIC;
@@ -37,6 +51,12 @@ GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text),
 REVOKE ALL ON delivery_history,delivery_requeues FROM :"runtime_role";
 GRANT SELECT ON delivery_history,delivery_requeues TO :"runtime_role";
 GRANT EXECUTE ON FUNCTION agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid) TO :"runtime_role";
+DO $contract$ BEGIN
+ IF to_regclass('agentmargin_auth.security_contract') IS NOT NULL THEN
+   EXECUTE format('GRANT SELECT ON agentmargin_auth.security_contract TO %I',current_setting('agentmargin.runtime_role'));
+   EXECUTE format('GRANT EXECUTE ON FUNCTION agentmargin_auth.installed_contract() TO %I',current_setting('agentmargin.runtime_role'));
+ END IF;
+END $contract$;
 -- Reject unsafe effective authority rather than silently claiming isolation.
 DO $guard$
 DECLARE
@@ -53,7 +73,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace IN ('public'::regnamespace,'agentmargin_auth'::regnamespace) AND proowner=runtime.oid)
      OR has_schema_privilege(runtime.oid,'public','CREATE')
      OR has_schema_privilege(runtime.oid,'agentmargin_auth','CREATE')
-     OR has_database_privilege(runtime.oid,current_database(),'CREATE') THEN
+     OR has_database_privilege(runtime.oid,current_database(),'CREATE,TEMP') THEN
     RAISE EXCEPTION 'Unsafe runtime role: require dedicated non-owner LOGIN NOINHERIT without memberships, elevated attributes or schema/database creation';
   END IF;
   IF has_any_column_privilege(runtime.oid,'public.workspace_api_keys','SELECT,INSERT,UPDATE,REFERENCES')
@@ -81,6 +101,11 @@ BEGIN
       AND attnum>0 AND NOT attisdropped AND attname NOT IN ('state','attempts','available_at','delivered_at','error_class')
       AND has_column_privilege(runtime.oid,attrelid,attnum,'UPDATE')) THEN
     RAISE EXCEPTION 'Unsafe runtime grants: durable delivery payload must remain immutable';
+  END IF;
+  IF EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN ('public.revenue_deliveries'::regclass,'public.adjustment_deliveries'::regclass)
+    AND a.attnum>0 AND NOT a.attisdropped AND a.attname IN ('state','attempts','retry_cycle','error_class','delivered_at','received_at','available_at')
+    AND has_column_privilege(runtime.oid,a.attrelid,a.attnum,'INSERT')) THEN
+    RAISE EXCEPTION 'Unsafe runtime grants: inbox INSERT must use initial payload columns only';
   END IF;
 END;
 $guard$;

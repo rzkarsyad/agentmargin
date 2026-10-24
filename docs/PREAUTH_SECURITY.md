@@ -47,3 +47,11 @@ Do not enable RLS solely from a copied SQL snippet: RLS requires a trusted tenan
 ## Historical gate notes (superseded by the current ROADMAP)
 
 See [GitHub security gate #10](https://github.com/rzkarsyad/agentmargin/issues/10). Production controls, encrypted backups/restore drills, retention/export/delete, incident response, and independent penetration review remain **NOT DONE**.
+
+AM-03 follow-up: the application now admits at most two concurrent authentication
+lookups per createApp instance, without queueing or caching valid keys. Saturation
+returns 503/Retry-After, and finally releases capacity on success/error. It bounds
+unknown-key database occupancy while reserving the rest of the ten-connection pool
+for admitted work; it does not cap total auth QPS, provide tenant fairness or stop
+distributed abuse. A valid key is never blacklisted by the global invalid bucket.
+Ingress identity/atomic quota and network overload tests remain deployment gates.

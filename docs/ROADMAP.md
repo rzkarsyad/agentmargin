@@ -422,3 +422,5 @@ AM-01 is reproduced on disposable PostgreSQL and corrected additively in 015;
 remaining findings and deployment approvals are open. Ruleset 25719548 Protect
 main is active; the assessment's contrary legacy-protection inference is corrected.
 All security/operational/release gates remain subject to their documented review.
+
+AM-02–AM-06 source containment is implemented in the runtime follow-up (016, final grants, effective log/TLS checks, auth admission and installed-contract drift detection). Local full SDK/web/types/tests, real PG16 regression and synthetic server-log verification PASS. Deployment TLS/extension inventory and independent approval remain BLOCKED. See DB_RUNTIME_ROLE.md for breaking configuration prerequisites; no approved accounting or key digest changes.

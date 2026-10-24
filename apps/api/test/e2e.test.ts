@@ -34,6 +34,7 @@ test('SDK -> authenticated API -> pg adapter -> persisted cost -> analytics', {t
       ['22222222-2222-4222-8222-222222222222',workspace,digest(key),'e2e']);
     await db.query(`INSERT INTO price_versions(id,model,effective_from,input_micros_per_million,output_micros_per_million)
       VALUES($1,'sample','2026-01-01T00:00:00Z',1000000,2000000)`,[price]);
+    await db.exec('SET log_parameter_max_length=0; SET log_parameter_max_length_on_error=0');
     await socket.start();started=true;
     store=new PostgresEventStore(`postgresql://postgres:postgres@127.0.0.1:${port}/postgres`);
     const app=createApp(store);

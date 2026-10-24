@@ -179,3 +179,18 @@ test('request telemetry preserves sanitised errors and remains non-blocking',asy
   const explodingLogger=createApp(new MemoryStore(),new WorkspaceRateLimiter(50),new InvalidCredentialLimiter(),()=>{throw new Error('logger offline');});
   assert.equal((await send(explodingLogger,{events:[entry]})).status,202);
 });
+
+test('bounds unauthenticated database concurrency and releases capacity after errors',async()=>{
+ const store=new MemoryStore();let active=0,peak=0,release!:()=>void;
+ const held=new Promise<void>(r=>{release=r;});
+ store.authenticate=async()=>{store.authenticationQueries++;active++;peak=Math.max(peak,active);try{await held;return null;}finally{active--;}};
+ const app=createApp(store),unknown='am_'+'u'.repeat(43);
+ const requests=Array.from({length:20},()=>send(app,{events:[entry]},unknown));
+ await new Promise(r=>setTimeout(r,10));assert.equal(store.authenticationQueries,2);
+ release();const statuses=await Promise.all(requests.map(async r=>(await r).status));
+ assert.equal(peak,2);assert.equal(statuses.filter(s=>s===503).length,18);
+ store.authenticate=async()=>{throw new Error('synthetic outage');};
+ assert.equal((await send(app,{events:[entry]})).status,500);
+ store.authenticate=async()=>({workspaceId:'w1',accessRole:'admin'});
+ assert.equal((await send(app,{events:[entry]})).status,202,'Capacity leak must not lock out a valid tenant');
+});

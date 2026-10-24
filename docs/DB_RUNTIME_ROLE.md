@@ -156,3 +156,63 @@ Verify encrypted recovery evidence and migration hashes first, apply only unappl
 001–014 in order with matching code/final grants, and test negative tenant and
 financial probes in quarantine before any independently authorized traffic resume.
 Never silently rerun/edit a recorded migration or recover with broad runtime grants.
+
+## AI review remediation: 015–016 deployment contract
+
+Apply only unapplied 015 then 016 during a reviewed drained rollout. Do not edit
+001–014 or re-run 016 to bless drift: its owner-only security_contract captures
+the reviewed installation, including policy expressions/roles/commands, function
+definitions/settings and trigger bindings/enabled state. Readiness compares the
+installed contract and checks effective dangerous runtime privileges, PUBLIC
+function access and common definer ownership. A migrator who can replace both
+baseline and verifier remains trusted. Validate the installed baseline against a
+clean reviewed migration chain; it is not an independent approval or arbitrary
+extension audit. 016 adds explicit pg_temp-last to all remaining definers.
+
+Provisioning now requires a DBA who may set superuser logging defaults. It removes
+PUBLIC/runtime TEMP on the **dedicated** database (review other application roles
+first). A direct or inherited TEMP grant makes provisioning fail. Inbox INSERT
+is limited to payload columns; state/attempts/retry history default in PostgreSQL.
+A separate completion trigger requires matching immutable ledger/account evidence;
+the invoker transition guard and reviewed admin requeue path remain separate.
+Shared runtime+ingest still permits own-tenant payload assertions, failure/worker
+operations and within-tenant data poisoning; this is containment, not separation
+of worker capabilities. The accepted cursor/in-flight boundary is unchanged.
+
+### Bearer-safe logging and authenticated transport (AM-02)
+
+Every credential-bound checkout checks effective log_parameter_max_length=0,
+log_parameter_max_length_on_error=0, auto_explain.log_parameter_max_length=0,
+auto_explain.log_min_duration=-1 and pgaudit.log_parameter=off (absent extension
+settings use safe fallbacks), **before** any bearer bind. Disable auto_explain
+for runtime sessions: EXPLAIN VERBOSE may expose literals even if bind logging
+is truncated. Provisioning supplies role defaults. Per-database role settings,
+startup options and reused-session overrides are checked, not assumed safe. A
+bad setting rejects the request before transmitting a credential; readiness
+fails too. Stop and review incompatible provider-managed settings; never restore
+unsafe logging for convenience. Recycle pools after changing defaults.
+
+For every non-loopback URL require **sslmode=verify-full** and a trusted CA,
+matching certificate hostname and database identity, for example:
+
+```sh
+# Placeholder only. Supply credentials through the operator's private mechanism.
+DATABASE_URL='postgresql://runtime@db.example.invalid/agentmargin?sslmode=verify-full&sslrootcert=/private/db-ca.pem'
+```
+
+The URL cannot override host via query parameters, and require/prefer/verify-ca
+are rejected. A remote checkout additionally requires pg_stat_ssl.ssl=true.
+Node pg handles certificate/hostname validation with verify-full; an observed TLS
+bit alone would not authenticate the peer. Provisioned pools are trusted application
+configuration; operators must not provide a custom pool disabling verification.
+Loopback-only synthetic fixtures may use plaintext; their results do not validate
+a deployed certificate. Test an untrusted CA and mismatched hostname in the target
+nonproduction topology before approval. Unix socket/remote proxy topologies need
+separate reviewed configuration rather than a silent TLS exception.
+
+Synthetic PostgreSQL log tests reproduce unlimited bind logging with a fictional
+key and verify protected application proof is absent. These controls cover standard
+statement/error logs and the named extension settings. They cannot hide secrets
+from a malicious DBA, debugger, unreviewed extension, driver trace or network/TLS
+endpoint operator. Inventory installed extensions and logs/shipper access privately;
+short-lived proof or distinct credential architecture remains a human design gate.

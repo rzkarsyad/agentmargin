@@ -10,7 +10,8 @@ import {testFinancialReports} from './financial-report-tests.ts';
 import {testDefinerCatalogShadow} from './definer-shadow-tests.ts';
 import {testDeliveryRecovery} from './delivery-recovery-tests.ts';
 import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
-import {testPaymentBinding} from './payment-binding-tests.ts';
+import {testSecurityUpgrades} from './security-upgrade-tests.ts';
+import {testRuntimeContract} from './runtime-contract-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
 import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot} from '../apps/api/src/app.ts';
@@ -26,6 +27,9 @@ try {
   const tables=await pool.query<{count:string}>(`SELECT count(*)::text AS count FROM information_schema.tables
     WHERE table_schema='public' AND table_type='BASE TABLE'`);
   if(Number(tables.rows[0]?.count)!==0)throw new Error('Refusing to test: agentmargin_ci must be empty');
+  // Synthetic owner/other CI tools use fresh connections with safe log defaults.
+  const settings=await pool.query("SELECT format('ALTER ROLE %I SET log_parameter_max_length=0; ALTER ROLE %I SET log_parameter_max_length_on_error=0; ALTER ROLE %I SET auto_explain.log_parameter_max_length=0',current_user,current_user,current_user) AS sql");
+  await pool.query(settings.rows[0].sql);
   await pool.query(readFileSync(new URL('../db/001_initial.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/002_ingestion.sql',import.meta.url),'utf8'));
   await pool.query(readFileSync(new URL('../db/003_revenue_ingestion.sql',import.meta.url),'utf8'));
@@ -123,6 +127,7 @@ try {
     assert.equal((await transitionUpgrade.query("SELECT to_regprocedure('agentmargin_auth.enforce_delivery_transition()') AS name")).rows[0].name,null);
     await transitionUpgrade.query(sql);
   }finally{transitionUpgrade.release();}
+  await testSecurityUpgrades(pool,connectionString);
   const incidentRole='agentmargin_ci_incident_'+randomBytes(6).toString('hex');
   const incidentPassword=randomBytes(24).toString('hex');
   await pool.query(`CREATE ROLE "${incidentRole}" LOGIN NOINHERIT PASSWORD '${incidentPassword}'`);
@@ -310,6 +315,7 @@ try {
     runtimeStore=new PostgresEventStore('',{pool:new pg.Pool({connectionString:runtimeURL.toString(),max:1,
       connectionTimeoutMillis:5000,statement_timeout:15000})}).forCredential(key);
     assert.equal(await runtimeStore.ready(),true);
+    await testRuntimeContract(pool,runtimeStore,runtimeURL.toString(),workspace,key);
     // Readiness must cover the private recovery/audit boundary as well as money.
     for(const table of ['delivery_history','delivery_requeues']){
       await pool.query('ALTER TABLE '+table+' DISABLE ROW LEVEL SECURITY');
@@ -367,6 +373,9 @@ try {
           (e:unknown)=>(e as {code?:string}).code==='42501');
         await direct.query('ROLLBACK');
       }
+      // Retain the historical shadow-resistance test even with TEMP revoked in
+      // final provisioning. This explicit synthetic-only grant is then removed.
+      await pool.query('GRANT TEMP ON DATABASE agentmargin_ci TO "'+runtimeRole+'"');
       await direct.query('BEGIN');
       await direct.query("SET LOCAL search_path=pg_temp,public,pg_catalog");
       await direct.query('CREATE TEMP TABLE workspace_api_keys(key_digest text,workspace_id uuid,access_role text)');
@@ -379,6 +388,7 @@ try {
       await assert.rejects(direct.query('INSERT INTO customers(workspace_id,id) VALUES($1,$2)',[other,'cross-tenant']),
         (e:unknown)=>(e as {code?:string}).code==='42501');
       await direct.query('ROLLBACK');
+      await pool.query('REVOKE TEMP ON DATABASE agentmargin_ci FROM "'+runtimeRole+'"');
       assert.deepEqual(await selectTenants(),[],'Rollback leaked tenant context');
       await direct.query('BEGIN');
       await direct.query("SELECT set_config('agentmargin.api_key',$1,true)",[otherKey]);
@@ -635,7 +645,6 @@ try {
       assert.equal((await runtimeStore.authenticate('ignored'))?.accessRole,'admin','Authorization mutation did not roll back');
     }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
     assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
-    await testPaymentBinding(pool,runtimeStore,workspace,ingestKey);
     await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
     await testDeliveryRecovery(pool,runtimeStore,workspace,other,key,ingestKey,readKey);
     await testFinancialReports(pool,runtimeURL.toString());
