@@ -12,7 +12,7 @@ docker_local(){
 endpoint=$(docker_local context inspect "$context" --format '{{.Endpoints.docker.Host}}')
 [[ "$endpoint" == unix:///* ]] || { echo 'Refusing non-local Docker endpoint.' >&2; exit 2; }
 docker_local info >/dev/null
-[[ -f db/014_delivery_transition_guard.sql && -d node_modules ]] || { echo 'Run from candidate checkout after npm ci.' >&2; exit 2; }
+[[ -f db/016_runtime_security_contract.sql && -d node_modules ]] || { echo 'Run from candidate checkout after npm ci.' >&2; exit 2; }
 container=''
 cleanup(){
  local code=$?

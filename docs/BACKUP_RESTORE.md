@@ -29,31 +29,33 @@ References: [PostgreSQL 16 pg_dump](https://www.postgresql.org/docs/16/app-pgdum
 
 ## Operator backup utility and hook contract
 
-`scripts/postgres-backup.sh` uses libpq PG*/PGSERVICE configuration and requires a private, operator-owned mode-700 `AGENTMARGIN_BACKUP_DIR`. It refuses overlapping runs, creates a custom-format dump, validates its archive, encrypts it, uploads it, invokes external retention, removes plaintext and updates `last-success.json` atomically only after success. Failures return nonzero with a fixed secret-free event; hook/libpq diagnostics are suppressed. The local directory and temporary files must reside on encrypted operator storage. A crash/SIGKILL can leave a private plaintext work directory and lock: investigate and securely expire these before clearing the lock.
+`scripts/postgres-backup.sh` uses libpq PG*/PGSERVICE configuration and requires a private, operator-owned mode-700 `AGENTMARGIN_BACKUP_DIR`. It refuses overlapping runs, creates a custom-format dump, validates its archive, encrypts it, signs a bounded origin manifest, uploads the three-file bundle, invokes external retention, removes plaintext and updates `last-success.json` atomically only after success. Failures return nonzero with a fixed secret-free event; hook/libpq diagnostics are suppressed. The local directory and temporary files must reside on encrypted operator storage. A crash/SIGKILL can leave a private plaintext work directory and lock: investigate and securely expire these before clearing the lock.
 
 Configure executable **absolute paths**, never shell snippets:
 
 | Variable | Hook arguments / responsibility |
 | --- | --- |
 | `AGENTMARGIN_BACKUP_ENCRYPT` | input dump, output encrypted file; use authenticated encryption such as age and separately protected recovery keys; exit nonzero on failure |
-| `AGENTMARGIN_BACKUP_UPLOAD` | encrypted file, object name; upload through verified TLS to an independently administered storage account and confirm durable completion |
+| `AGENTMARGIN_BACKUP_UPLOAD` | file, object name; called separately for encrypted archive, signed manifest and signature; upload through verified TLS to an independently administered storage account and confirm durable completion |
 | `AGENTMARGIN_BACKUP_PRUNE` | retention days; enforce remote retention, legal holds and deletion permissions; exit nonzero on failure |
+| `AGENTMARGIN_BACKUP_SIGNING_KEY` | protected mode-600/400 Ed25519 private key outside storage credential authority |
+| `AGENTMARGIN_BACKUP_HOOK_CONFIG` | private operator config selector available to hooks; no inherited libpq/API environment |
 | `AGENTMARGIN_BACKUP_RETENTION_DAYS` | positive integer, default 7; local deletion affects only utility-owned encrypted archives older than this policy |
 
 Keep keys, hook config and libpq secrets outside the repository. Storage credentials must not be API runtime credentials. This interface does not prove that an arbitrary encryption hook encrypts or an upload hook durably stores bytes; operators must validate the selected implementations.
 
 Schedule the utility under a dedicated account (for example, an hourly systemd timer with `OnFailure=` routing to the operator's alert service). Monitor the exit status **and freshness** of `last-success.json`, with an alert if no success occurs within two scheduled intervals. Disk exhaustion, upload, retention and encryption failures must alert. Do not log hook arguments or dump contents.
 
-The synthetic automation CI drill uses an ephemeral public recipient and authenticated OpenSSL CMS AES-256-GCM envelope with a local storage fixture. It removes the initial private key, recovers a copy from a separate local directory, rejects missing/wrong keys and truncated/content-tampered envelopes, authenticates before restore, verifies full row fingerprints and checks failure cleanup. Same-UID local directories do not establish independent credential custody or external storage recovery. This is not cloud-storage validation. The separate full restore drill covers all application tables and schema integrity.
+The synthetic automation CI drill uses an ephemeral public recipient and authenticated OpenSSL CMS AES-256-GCM envelope with a local storage fixture, RSA-OAEP-SHA256 key transport, and a separate Ed25519 origin key. It removes the initial private key, recovers a copy from a separate local directory, rejects missing/wrong keys and truncated/content-tampered envelopes, authenticates before restore, verifies full row fingerprints and checks failure cleanup. Same-UID local directories do not establish independent credential custody or external storage recovery. This is not cloud-storage validation. The separate full restore drill covers all application tables and schema integrity.
 
 ## Recovery runbook and objectives
 
 For hourly logical dumps, planning RPO is **at least one hour plus failed/missed schedules**, not a guarantee. Logical dumps do not provide PITR. RTO remains unmeasured until a timed production-scale isolated restore includes storage download, key recovery, role/grant provisioning, application verification and approved cutover. Choose WAL/PITR if this RPO is insufficient.
 
 1. Stop or isolate affected writers and record the incident window without exporting sensitive records.
-2. Select a known-good successful object; retrieve/decrypt with separately managed keys into protected temporary storage.
-3. Create a new isolated PostgreSQL 16 database. Restore with `pg_restore --exit-on-error --no-owner --no-acl`; restore trusted ownership and runtime grants separately.
-4. Run row fingerprints, financial consistency and direct tenant-isolation tests; test the matching API/schema version. Do not apply old broad grants to bypass a failed check.
+2. Select a known-good successful bundle using independently trusted freshness/inventory evidence. Verify the Ed25519 manifest with an out-of-band protected public key and compare archive identity/hash/size BEFORE decrypting. Then require successful authenticated decryption into protected temporary storage. An attacker can encrypt to a public recipient, so envelope integrity alone never proves origin.
+3. Create a fresh PostgreSQL 16 recovery instance with no application ingress, copied runtime logins or reachable tenant sessions. Restore as a dedicated non-superuser schema owner using `pg_restore --exit-on-error --no-owner --role=REVIEWED_RESTORE_OWNER`, preserving ACLs. Inspect actual owners/ACLs/function settings/policy and trigger definitions against reviewed migration evidence BEFORE any repair. Reject missing source roles or unsafe defaults; do not use --no-acl as a shortcut.
+4. Compare pre-quarantine row fingerprints, then explicitly run db/quarantine_restored_credentials.psql on the isolated restored target: restore_database must equal that target and restore_confirmation=invalidate-all-restored-keys. This revokes ALL restored bearer keys while preserving digests/history; never re-enable one based on an old backup. Without independently durable revocation evidence, fail closed and issue fresh random keys only through a separately approved cutover. Reapply final runtime grants, verify financial consistency and tenant isolation with fresh fictional keys, and test matching binaries. Do not repair and then mislabel the result as the archive's original state.
 5. Measure recovery duration and backup age. Obtain operator cutover approval; preserve the old environment for investigation. Document the drill and expire temporary plaintext and old backups under the approved privacy policy.
 
 Migration 008 adds normalized revenue deliveries to full restore fingerprints. Queue payloads, failed-job evidence and pending/delivered state must be restored together with the revenue ledger; replay is idempotent after recovery. Validate the worker and migration-008 grants before enabling delivery again.
@@ -64,25 +66,37 @@ Migration 012 adds immutable delivery transition/requeue history to the full res
 Both restore drills now run post-restore probes on the newly created isolated DB:
 all ten RLS-enabled tables, catalog-safe definer settings, missing credential denial,
 original/customer/currency/time linkage, cumulative reduction limits and Stripe
-source-account attribution. `--no-acl` restores default PUBLIC EXECUTE on functions;
-the isolated restore is quarantined by revoking PUBLIC auth-schema/function access.
-Before enabling a provisioned runtime, reapply the final runtime template, which
-also revokes those defaults and grants only the exact entry points. Synthetic
-probes complement row/schema fingerprints; they do not replace staging role/secret
-recovery and approved operational cutover.
+source-account attribution. Archive ACLs are preserved; the pre-remediation probe
+rejects PUBLIC EXECUTE, unexpected/superuser definer owners, weakened definitions
+and path/policy drift. The synthetic drill deliberately grants PUBLIC EXECUTE and
+changes a definer owner, proves each is rejected BEFORE controlled repair, and
+then performs final verification. It restores under a fresh non-superuser owner,
+not a superuser --no-owner session. A separate genuine restricted LOGIN tests RLS.
+These tests complement fingerprints; staging role/secret recovery, independent
+ownership review and approved operational cutover remain required.
 
 
 ## Recovery hardening and evidence limits
 
 The success marker now additionally records startedAt, archive object name,
 encrypted-byte SHA-256 and byte count. Preserve this inventory privately. Existing
-encrypt/upload/prune hook arguments are unchanged; no manifest upload or vendor
-access is silently added. A hash is a transport reference, not a MAC, signature or
-proof that an arbitrary hook encrypts. Authenticated decryption must succeed before
+encrypt/prune arguments stay compatible. Upload now receives THREE objects per
+bundle (archive, manifest, signature); upgrade hooks/inventory/retention atomically.
+The signed v1 manifest binds format, basename, SHA-256 and byte count. Encryption
+provides confidentiality/integrity; Ed25519 proves origin under the separately
+held signing root. A compromised storage credential cannot sign replacements,
+but same-UID/root compromise or a stolen signing key remains outside this control.
+A valid OLD signed bundle is still replayable; independently trusted inventory,
+object locks and approved backup-age evidence remain external gates.
+The utility rejects PGDMP/readable unencrypted hook output, but cannot certify
+arbitrary cryptography. Hooks get only PATH, LANG and the explicit config selector;
+libpq/API/password/signing-key environment is not inherited. This is not a process
+sandbox: same-UID hook code can access files the operator can access. Authenticated decryption must succeed before
 pg_restore; some decryptors leave unauthenticated partial plaintext on failure.
 Never pipe unchecked output directly into restore or infer success from file size.
 The local work directory must be encrypted storage; SIGKILL/power loss can leave
-plaintext and a stale lock. Isolate/investigate and expire it under the approved
+plaintext and a stale lock. A subsequent run refuses residual .work-* directories
+and never steals the lock or deletes unknown residue. Isolate/investigate and expire it under the approved
 storage policy. Cleanup is not guaranteed physical secure erasure on SSDs.
 
 Both restore drills now provision a fresh synthetic restricted LOGIN in the
@@ -257,3 +271,38 @@ The freshness command measures last-success completion age. It does not calculat
 RPO or certify a recovery point; a long-running dump can complete recently with an
 older snapshot. Use the protected start/snapshot/backup-age evidence when measuring
 recovery objectives, and verify actual restore viability separately.
+
+
+### Origin verification and revoked-key recovery evidence (AM-09–AM-12)
+
+`bash scripts/verify-backup-origin.sh ARCHIVE MANIFEST SIGNATURE TRUSTED_PUBLIC_KEY`
+must succeed before decrypt/restore. The public key is mode 600/400 with trusted
+ancestors and comes from the recovery operator, not the storage bundle. Fixtures
+reject an independently encrypted substitute, missing signature, wrong signing
+key, plaintext encryption hook, wrong recovery key and damaged envelope. These
+are local cryptographic tests, not independent vault/storage recovery.
+
+Both drills now take a backup with a fictional active key, revoke it on the source,
+restore the older snapshot and demonstrate stale authorization WHILE QUARANTINED.
+They invalidate every restored key before runtime provisioning and prove denial.
+Fresh fictional keys then verify legitimate access; no real credential is changed.
+Selective reuse is not supported without independently durable, reviewed revocation
+history and incident policy. The default recovery process never restores old proof
+as active. Financial rows/fingerprints precede quarantine; credentials are the only
+intentionally changed restored records. A knowingly invalid AM-01 baseline fixture
+is first migration-preservation tested, then disposed of through the existing
+export-verified fictional workspace teardown before backup acceptance.
+
+For abrupt loss: keep traffic isolated; identify the originating host/run and prove
+no backup/hook is active; preserve encrypted incident evidence of the private lock
+and work directory; reconcile partial remote bundles; expire only reviewed residue
+under retention/legal-hold policy; then clear that specific lock and retry. The
+script does not decide whether an abandoned process is dead, recover arbitrary
+plaintext automatically or guarantee physical erasure. The synthetic residue test
+proves refusal/preservation and explicit fixture-only recovery, not a power-loss
+or independent infrastructure exercise.
+
+Run the existing guarded Mac wrapper on a pinned reviewed candidate if targeted
+operator verification is needed for these NEW controls. Earlier default/orbstack
+attestations remain authentic historical evidence; they do not certify later code.
+No repeat provider billing experiment is required or performed.
