@@ -32,6 +32,7 @@ const source='agentmargin-v'+platform+'.tar.gz';
 run('git',['archive','--format=tar.gz','--output',join(out,source),'HEAD']);
 const sha=(p)=>createHash('sha256').update(readFileSync(p)).digest('hex');
 const manifest={preparedOnly:true,published:false,platformVersion:platform,sdkVersion:sdk,
+ sourceHead:process.env.AGENTMARGIN_REHEARSAL_SOURCE_HEAD??null,integrationHeads:['ec812275ce4ba3a030f981942fe15d619a21820d'],sourceCommitIsPublishedRef:false,
  sourceCommit:run('git',['rev-parse','HEAD']).trim(),sourceTree:run('git',['rev-parse','HEAD^{tree}']).trim(),
  workflowRun:process.env.GITHUB_RUN_ID?'https://github.com/rzkarsyad/agentmargin/actions/runs/'+process.env.GITHUB_RUN_ID:null,
  artifacts:[source,packed.filename].map(name=>({name,sha256:sha(join(out,name))})),npmIntegrity:packed.integrity,

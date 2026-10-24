@@ -207,7 +207,7 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | AM-05 | Low, precondition confirmed; exploit not demonstrated: 016 explicit pg_temp-last, dedicated-database TEMP removal and negative probes | Explicit pg_temp-last and provisioning guard |
 | AM-06 | Low, CONFIRMED then contained: payload-only INSERT grants and ledger-backed completion trigger; negative probes and normal admin requeue tests | Restrict initial payload and verify completion evidence |
 | AM-07 | Medium residual, CONFIRMED: admitted/cursor/held results survive revocation; next statement denies | Human boundary decision and session containment; no absolute timeout claim |
-| AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings and combined tree includes #33 | Exact-source scan/triage and protected integration remain required |
+| AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings. Follow-up scans both exact PR head and explicit combined #33 tree, records both identities and retains all findings | Exact-source scan/triage and protected integration remain required |
 | AM-09 | Medium, CONFIRMED then contained: Ed25519 signed origin manifest verified before decrypt/restore; fresh encrypted substitute/missing/wrong signature rejected | Separate signing trust root and pre-restore verification |
 | AM-10 | Medium, CONFIRMED then quarantined: backup-before/source-revoke/restore reproduction; all restored keys revoked before runtime provision; selective reuse unsupported without independent evidence | Quarantine and independently durable revocation evidence |
 | AM-11 | Medium, CONFIRMED then fixed in drills: preserved ACLs, fresh non-superuser owner, pre-repair PUBLIC/owner drift rejection and full installed-contract comparison | Inspect before repair; non-superuser definer ownership |
@@ -216,8 +216,8 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | AM-14 | Medium, CONFIRMED then fixed: both converters require explicit expectedLivemode; signed cross-mode/missing-mode negatives | Explicit test/live expectation and mismatch regressions |
 | AM-15 | Medium, CONFIRMED then fixed: legacy converter rejects unmapped/malformed/mismatched connected accounts; API retained with required explicit mode | Reject unmapped accounts and malformed options |
 | AM-16 | Low, CONFIRMED then made visible: typed non-retryable accounting-review error, fixed redacted example diagnostics/422; no automatic reversal policy | Visible bounded review disposition; no retry storm |
-| AM-17 | Medium, OPEN: publishing job has OIDC authority during build/dependency execution | Separate unprivileged build and minimal protected publication |
-| AM-18 | Low, OPEN: mutable workflow/dependency download references | Pin privileged actions and maintain update policy; external image/browser trust |
+| AM-17 | Medium, CONFIRMED then separated: unprivileged build, exact integrity-pinned CLI and minimal OIDC job without checkout/install/lifecycle scripts; no publishing run | Separate unprivileged build and minimal protected publication |
+| AM-18 | Low, PARTIALLY contained: current-branch Actions full-SHA pins, multi-architecture PG image digest and hashed Python wheels; transitive browser/OS/Node distribution trust and independent #33 legacy audit workflow remain | Pin privileged actions and maintain update policy; external image/browser trust |
 
 ### Migration 015 rollout and financial compatibility
 

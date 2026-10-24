@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
         env:
           POSTGRES_DB: agentmargin_ci
           POSTGRES_USER: agentmargin_ci
@@ -29,8 +29,8 @@ jobs:
     env:
       AGENTMARGIN_STANDALONE_DATABASE_URL: postgresql://agentmargin_ci:ci-only-disposable@127.0.0.1:5432/agentmargin_ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: npm
@@ -73,14 +73,15 @@ jobs:
             -e PGUSER=agentmargin_ci \
             -e PGPASSWORD=ci-only-disposable \
             -v "$PWD:/src:ro" -w /src \
-            postgres:16 bash scripts/postgres-restore-drill.sh
+            postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 bash scripts/postgres-restore-drill.sh
       - name: Encrypted backup automation drill (synthetic only)
         run: |
           docker run --rm --network host \
             -e GITHUB_ACTIONS=true -e AGENTMARGIN_BACKUP_DRILL=ci-only \
             -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=agentmargin_ci \
             -e PGUSER=agentmargin_ci -e PGPASSWORD=ci-only-disposable \
-            -v "$PWD:/src:ro" -w /src postgres:16 bash scripts/backup-automation-ci.sh
+            -v "$PWD:/src:ro" -w /src postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 bash scripts/backup-automation-ci.sh
+      - run: python3 scripts/check-publish-authority.py
       - run: python3 scripts/check-release-files.py
       # npm's advisory endpoint can transiently return HTTP 503. Retry briefly,
       # but NEVER treat an unsuccessful audit as a pass.
@@ -98,17 +99,20 @@ jobs:
             sleep $((attempt * 5))
           done
       # Browser uses a mocked analytics response; this is not a deployed-service E2E.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
       - name: Browser smoke test (Chromium desktop + mobile)
         run: |
           python3 -m venv .browser-venv
-          .browser-venv/bin/python -m pip install --disable-pip-version-check playwright==1.56.0
+          .browser-venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r .github/browser-requirements.txt
           .browser-venv/bin/python -m playwright install --with-deps chromium
           .browser-venv/bin/python scripts/browser-smoke.py
       - name: Live demo E2E (Docker PostgreSQL, authenticated API, SDK, Chromium)
         run: .browser-venv/bin/python scripts/live-demo-smoke.py
       - name: Upload Arc UI review screenshots (synthetic data only)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: agentmargin-arc-v03-review
           path: ci-artifacts/*.png

@@ -24,7 +24,7 @@ trap cleanup EXIT
 started=$SECONDS
 container=$(docker_local run -d --label agentmargin.synthetic-recovery=true \
  -e POSTGRES_DB=agentmargin_ci -e POSTGRES_USER=agentmargin_ci -e POSTGRES_PASSWORD=ci-only-disposable \
- -p 127.0.0.1::5432 postgres:16)
+ -p 127.0.0.1::5432 postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97)
 [[ "$container" =~ ^[a-f0-9]{64}$ ]] || exit 1
 for attempt in {1..60}; do
  if docker_local exec "$container" pg_isready -h 127.0.0.1 -U agentmargin_ci -d agentmargin_ci >/dev/null 2>&1; then break; fi
@@ -42,6 +42,6 @@ for drill in postgres-restore-drill backup-automation-ci; do
   -e GITHUB_ACTIONS=true -e AGENTMARGIN_RESTORE_DRILL=ci-only -e AGENTMARGIN_BACKUP_DRILL=ci-only \
   -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=agentmargin_ci -e PGUSER=agentmargin_ci \
   -e PGPASSWORD=ci-only-disposable -v "$PWD:/src:ro" -w /src \
-  postgres:16 bash "scripts/$drill.sh"
+  postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 bash "scripts/$drill.sh"
 done
 printf '{"kind":"operator_disposable_drill","status":"pass","durationSeconds":%d,"externalStorageVerified":false,"productionRtoMeasured":false}\n' "$((SECONDS-started))"
