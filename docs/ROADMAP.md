@@ -412,3 +412,13 @@ Remaining founder/operator/reviewer actions, in order:
 v0.4–v0.9 implementation/financial evidence above is preserved. v0.7/v0.8 technical
 coverage improves; independent approval, deployed operations and production-ready
 remain BLOCKED. v0.9.0-alpha.1 is still an unreleased candidate.
+
+### External AI assessment follow-up
+
+The founder supplied Claude's assessment of fdc3c7d. It is an AI source review,
+not independent human security approval. See the AM-01–AM-18 disposition register
+in [TENANT_THREAT_MODEL.md](TENANT_THREAT_MODEL.md#external-ai-assessment-remediation-2026-10-24).
+AM-01 is reproduced on disposable PostgreSQL and corrected additively in 015;
+remaining findings and deployment approvals are open. Ruleset 25719548 Protect
+main is active; the assessment's contrary legacy-protection inference is corrected.
+All security/operational/release gates remain subject to their documented review.

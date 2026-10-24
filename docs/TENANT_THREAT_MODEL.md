@@ -190,3 +190,58 @@ Before approval, a reviewer who did not implement these changes must:
 
 **Independent reviewer identity/decision: none recorded. Security gate BLOCKED.**
 Operator ingress, privacy, storage/recovery and release approvals remain separate.
+
+## External AI assessment remediation (2026-10-24)
+
+Input: Claude's read-only AI assessment of candidate fdc3c7d, supplied by the
+founder. This is an external finding list, not a certified penetration test or
+qualified independent human approval. Findings are rechecked against source and
+synthetic PostgreSQL before disposition. Severity below is preliminary.
+
+| ID | Preliminary disposition / evidence | Remaining gate |
+| --- | --- | --- |
+| AM-01 | Medium, CONFIRMED: restricted ingest HTTP/SQL accepts a non-Stripe label against Stripe payment provenance before 015. Additive 015 binds every new adjustment to original provenance and rejects conflicting late source attachment. Regression reproduces baseline before testing denial, rollback, replay and generic compatibility | Independent financial/security review; inspect existing inconsistent immutable rows |
+| AM-02 | Medium, OPEN: reusable proof reaches PostgreSQL parameters; log/transport hardening under review | Verify effective log and TLS settings, extensions and operators |
+| AM-03 | Medium, OPEN: unknown well-formed keys acquire database resources before invalid-attempt limiter | Bound pre-auth concurrency; deployed ingress quotas |
+| AM-04 | Low, OPEN: readiness checks object shape, not policy/function semantics or effective grants | Strengthen installed contract detection; owner remains trusted |
+| AM-05 | Low, OPEN: TEMP defaults and four pg_catalog-only paths | Explicit pg_temp-last and provisioning guard |
+| AM-06 | Low, OPEN: terminal-state inbox INSERT and completion authority | Restrict initial payload and verify completion evidence |
+| AM-07 | Medium residual, CONFIRMED: admitted/cursor/held results survive revocation; next statement denies | Human boundary decision and session containment; no absolute timeout claim |
+| AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings and combined tree includes #33 | Exact-source scan/triage and protected integration remain required |
+| AM-09 | Medium, OPEN: public-key envelope integrity is not archive origin authentication | Separate signing trust root and pre-restore verification |
+| AM-10 | Medium, OPEN: pre-revocation backup can restore active credentials | Quarantine and independently durable revocation evidence |
+| AM-11 | Medium, OPEN: ACL repair precedes probe; no-owner restore inherits privileged owner | Inspect before repair; non-superuser definer ownership |
+| AM-12 | Low, OPEN: non-encrypting hook, inherited DB secrets and crash residue | Reject clear archive, restrict hook environment, controlled residue recovery |
+| AM-13 | Info, CONFIRMED provenance distinction: Mac timing report is founder-attested; tested SHA/raw logs not supplied | Separate operator attestation from independent external verification; do not retract authentic reported execution |
+| AM-14 | Medium, OPEN: Stripe adapter does not require trusted mode | Explicit test/live expectation and mismatch regressions |
+| AM-15 | Medium, OPEN: legacy converter connected-account routing defaults | Reject unmapped accounts and malformed options |
+| AM-16 | Low, OPEN: unsupported financial transitions can return ignored | Visible bounded review disposition; no retry storm |
+| AM-17 | Medium, OPEN: publishing job has OIDC authority during build/dependency execution | Separate unprivileged build and minimal protected publication |
+| AM-18 | Low, OPEN: mutable workflow/dependency download references | Pin privileged actions and maintain update policy; external image/browser trust |
+
+### Migration 015 rollout and financial compatibility
+
+Apply only unapplied 015 after 001–014 during an approved drained rollout; no
+historical row is modified or deleted. Existing migrations are byte-for-byte
+unchanged. Generic validated provider labels remain supported for payments with
+no Stripe source row; they assert caller provenance, not verified provider data.
+A Stripe-sourced payment requires provider=stripe and the exact recorded account.
+Stripe adjustments without source evidence fail closed, as before. Late source
+attachment serializes on the payment and rejects contradictory adjustment history.
+
+Before approval, inspect existing rows privately (zero rows required for cutover;
+any result requires a reviewed append-only remediation, never a silent rewrite):
+
+```sql
+SELECT a.workspace_id, a.id
+FROM public.revenue_adjustments a
+JOIN public.revenue_payment_sources s
+ ON s.workspace_id=a.workspace_id AND s.record_id=a.original_payment_id
+WHERE a.provider<>'stripe' OR a.provider_account<>s.provider_account;
+```
+
+The disposable regression intentionally preserves two bad baseline rows to prove
+that upgrading does not erase evidence. They are fictional test data only. The
+preflight must not be interpreted as permission to read real customer data here.
+
+015 SHA-256: `2b68e4d64475d8e060119d887a214cf7979c25192ed6a776bc85530f8e43d334`. Local `npm run check` PASS (120 pass, one existing TODO); PostgreSQL 16 full suite PASS including the before/after bypass and inverse provenance-order test. CI evidence is recorded in the child PR after completion.
