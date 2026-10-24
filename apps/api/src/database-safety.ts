@@ -25,6 +25,9 @@ export async function databaseSessionSafe(client:pg.PoolClient,requireTls=false)
    -- EXPLAIN VERBOSE can reveal literals in plans independently of bind logging.
    AND coalesce(current_setting('auto_explain.log_min_duration',true),'-1')='-1'
    AND coalesce(current_setting('pgaudit.log_parameter',true),'off')='off'
+   AND current_setting('debug_print_parse')='off'
+   AND current_setting('debug_print_rewritten')='off'
+   AND current_setting('debug_print_plan')='off'
    AND (NOT $1::boolean OR coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid()),false))
    AS safe`,[requireTls]);
  return r.rows[0]?.safe===true;
