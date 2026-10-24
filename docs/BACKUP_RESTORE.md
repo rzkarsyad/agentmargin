@@ -44,7 +44,7 @@ Keep keys, hook config and libpq secrets outside the repository. Storage credent
 
 Schedule the utility under a dedicated account (for example, an hourly systemd timer with `OnFailure=` routing to the operator's alert service). Monitor the exit status **and freshness** of `last-success.json`, with an alert if no success occurs within two scheduled intervals. Disk exhaustion, upload, retention and encryption failures must alert. Do not log hook arguments or dump contents.
 
-The synthetic automation CI drill uses an ephemeral OpenSSL test key and local external-storage fixture, decrypts the uploaded bytes, restores them into a new database, verifies revenue fingerprints and proves upload-failure cleanup. This is not cloud-storage validation. The separate full restore drill covers all application tables and schema integrity.
+The synthetic automation CI drill uses an ephemeral public recipient and authenticated OpenSSL CMS AES-256-GCM envelope with a local storage fixture. It removes the initial private key, recovers a copy from a separate local directory, rejects missing/wrong keys and truncated/content-tampered envelopes, authenticates before restore, verifies full row fingerprints and checks failure cleanup. Same-UID local directories do not establish independent credential custody or external storage recovery. This is not cloud-storage validation. The separate full restore drill covers all application tables and schema integrity.
 
 ## Recovery runbook and objectives
 
@@ -70,3 +70,190 @@ Before enabling a provisioned runtime, reapply the final runtime template, which
 also revokes those defaults and grants only the exact entry points. Synthetic
 probes complement row/schema fingerprints; they do not replace staging role/secret
 recovery and approved operational cutover.
+
+
+## Recovery hardening and evidence limits
+
+The success marker now additionally records startedAt, archive object name,
+encrypted-byte SHA-256 and byte count. Preserve this inventory privately. Existing
+encrypt/upload/prune hook arguments are unchanged; no manifest upload or vendor
+access is silently added. A hash is a transport reference, not a MAC, signature or
+proof that an arbitrary hook encrypts. Authenticated decryption must succeed before
+pg_restore; some decryptors leave unauthenticated partial plaintext on failure.
+Never pipe unchecked output directly into restore or infer success from file size.
+The local work directory must be encrypted storage; SIGKILL/power loss can leave
+plaintext and a stale lock. Isolate/investigate and expire it under the approved
+storage policy. Cleanup is not guaranteed physical secure erasure on SSDs.
+
+Both restore drills now provision a fresh synthetic restricted LOGIN in the
+restored database, reapply the runtime template and connect with that identity.
+They deny missing/revoked/expired proof, other-tenant SELECT and INSERT, auth-table
+reads and financial deletion; verify legitimate access and transaction-local
+context reset; then revoke/drop only that generated role. SET ROLE in the owner's
+session would retain session_user exemptions and is deliberately not the evidence.
+The restored database stays disposable and quarantined, with no cutover.
+
+The encrypted drill also verifies failed dump/encryption/upload/retention leave the
+previous success marker unchanged and remove temporary plaintext/lock; a held lock
+rejects overlap without deleting that lock. It tests expiry just beyond seven days and preservation just inside the boundary,
+plus unrelated-file preservation. Local retention uses an explicit UTC cutoff;
+GNU -mtime +7 previously rounded down and retained almost eight days. A normal
+backup succeeds again after the failed operations and held lock are resolved. Existing restart, financial rollback/idempotency
+and bounded-concurrency suites remain separate checks. A failed remote retention
+hook can leave a newly uploaded object, so operators must reconcile the protected
+inventory rather than treating absence of a success marker as no remote upload.
+
+### Safe macOS / Docker Desktop / OrbStack rehearsal
+
+Requires Node 24, Git, Python 3 for the source scan, and Docker with a **local Unix-socket context**. No provider keys,
+paid calls, external backup credentials or existing databases are used. Keep any
+private reports outside the checkout. Preserve a dirty checkout and use a new
+worktree; the following commands do not reset or overwrite existing work:
+
+```bash
+git fetch origin refs/heads/feat/backup-recovery-evidence:refs/remotes/origin/feat/backup-recovery-evidence
+git worktree add --detach ../agentmargin-recovery-review origin/feat/backup-recovery-evidence
+cd ../agentmargin-recovery-review
+npm ci
+npm run check
+npm audit --audit-level=low
+python3 scripts/check-release-files.py
+# List contexts; choose default, desktop-linux or orbstack only if local.
+docker context ls
+AGENTMARGIN_DOCKER_CONTEXT=desktop-linux AGENTMARGIN_OPERATOR_DRILL=synthetic-only \
+  bash scripts/operator-recovery-drill.sh
+```
+
+Replace desktop-linux with the actual local context (Linux often default; OrbStack
+usually orbstack). The wrapper ignores inherited endpoint/TLS selectors, resolves
+the named context and rejects TCP/SSH endpoints. It creates only a new labelled
+PostgreSQL 16 container, binds a random port on 127.0.0.1, applies all 001–014 through
+the guarded clean/upgrade suite, then runs both recovery drills using separate
+client containers sharing **that fixture's** network namespace. GNU stat/find and
+OpenSSL CMS are supplied by the Linux PostgreSQL image; no macOS GNU-tool install
+is required. It deletes only the container it created and its anonymous volumes.
+SIGKILL/host failure can prevent cleanup: inspect the agentmargin.synthetic-recovery
+label and exact recorded container before separately removing leftover fixtures.
+Do not prune unrelated containers or Docker volumes. Do not point this at production.
+
+For the actual combined candidate, additionally merge the pinned independent #33
+commit **only in this detached rehearsal worktree**, then rerun the checks/drill:
+
+```bash
+git fetch origin refs/heads/fix/codeql-alert-audit:refs/remotes/origin/fix/codeql-alert-audit
+git -c user.name='Local recovery rehearsal' -c user.email='rehearsal@localhost' \
+  merge --no-ff --no-edit ec812275ce4ba3a030f981942fe15d619a21820d
+npm run check
+AGENTMARGIN_DOCKER_CONTEXT=desktop-linux AGENTMARGIN_OPERATOR_DRILL=synthetic-only \
+  bash scripts/operator-recovery-drill.sh
+```
+
+This creates a local merge commit only; do not push it, merge any GitHub PR, publish
+or deploy. Record git rev-parse HEAD and HEAD^{tree} privately with the command exit
+statuses. If pinned parents move or conflict, stop and review rather than forcing.
+The normal PR and combined CI additionally cover SDK/Next.js, browser and restart
+checks. The founder has now attested successful Mac execution with both default
+and orbstack contexts; see the acceptance record below. This is operator evidence
+of the local synthetic procedure, not independent infrastructure validation.
+
+### Founder/operator-attested Mac acceptance — reported 2026-10-24
+
+Evidence source: the founder/operator's report in this conversation. The operator
+ran scripts/operator-recovery-drill.sh on macOS with
+AGENTMARGIN_OPERATOR_DRILL=synthetic-only. The implementing agent did not rerun the
+Mac tests or inspect their raw logs; no tested commit SHA was supplied, so none is
+inferred. The local Mac execution gate is **PASS, founder/operator-attested**.
+
+| Docker context | Result | Total elapsed | Synthetic restore | Authenticated recovery |
+| --- | --- | --- | --- | --- |
+| default | PASS, operator-attested | 13 seconds | 1 second | 1 second |
+| orbstack | PASS, operator-attested | 9 seconds | 1 second | 2 seconds |
+
+| Reported acceptance check | Result / scope |
+| --- | --- |
+| PostgreSQL 16 migrations/security/financial/concurrency | PASS, local synthetic fixtures |
+| Restored RLS, fresh restricted LOGIN, tenant isolation and immutable financial records | PASS, local synthetic fixtures |
+| Authenticated backup encryption and local recovery-key procedure | PASS, local fixture; not independent external key custody |
+| Disposable privacy lifecycle | PASS, fictional export/teardown; not real-data privacy approval |
+| externalStorageVerified | false |
+| productionRtoMeasured | false |
+
+Both runs emitted a `DOCKER_INSECURE_NO_IPTABLES_RAW` warning. Record this as an
+**environment observation only**: it is neither a confirmed vulnerability nor
+proof of effective deployed network isolation. Two context names do not establish
+two independent infrastructures; they may address the same local Docker daemon.
+No deployed network/firewall configuration was inspected or certified here.
+
+These elapsed times are observed local synthetic run durations, not approved RPO
+or RTO. Genuine encrypted external object recovery, independently administered key
+custody/recovery, remote retention, scheduled operation, actual alert receipt,
+production-representative recovery/load objectives, incident procedures and
+privacy/security approval remain **BLOCKED**. Existing provider billing QA was not
+repeated. No raw financial evidence is included in this acceptance record.
+
+### Freshness and alert procedure
+
+The backup utility itself runs in an operator-controlled Linux/libpq environment.
+Run this read-only Node check where the private local marker is available:
+
+```bash
+AGENTMARGIN_BACKUP_DIR=/absolute/private/backup-directory \
+  AGENTMARGIN_BACKUP_MAX_AGE_SECONDS=7200 \
+  node --experimental-strip-types scripts/backup-status.ts
+```
+
+Exit 0=fresh marker, 1=stale, 2=unavailable/invalid/unsafe file or config. Output is
+fixed aggregate status/age/duration, with no path, object name, hashes or arbitrary
+marker fields. Old marker format remains accepted; future/invalid timestamps fail.
+This checks only a local marker, not an external object or its decryptability.
+Monitor both scheduler exit/failures **and** marker age; a recent success must not
+hide a subsequent failed upload. A hung hook needs a scheduler-level deadline and
+missed-heartbeat alarm; the utility does not enforce a portable hard hook timeout.
+
+For real notification evidence, an authorized operator must use a labelled drill
+in the approved staging monitoring route: record synthetic backup failure,
+stale/missing marker, readiness loss, worker heartbeat/backlog and metrics scrape
+failure; retain alert firing time, actual receipt/acknowledgement by the intended
+on-call destination, escalation and recovery-resolved receipt. Test collector loss
+out of band. Restore normal thresholds afterward. Use no customer/object IDs or
+raw bodies in alert payloads. Unit tests and stdout logs are not delivered alerts.
+No such external delivery is recorded by this source change.
+
+### Recovery objectives / operator handoff
+
+The local Linux Docker run measured full dump/restore/probes **2 seconds**,
+authenticated backup/key-recovery/failure/restore probes **2 seconds**, and the
+complete startup/migration/recovery wrapper **17 seconds** on tiny synthetic data.
+These are elapsed test observations, not contractual RTOs; machine, load and dataset
+differ. Each CI/operator run prints its own duration. No real backup age/RPO,
+remote download latency, vault recovery, production-scale restore or approved
+cutover was measured. Hourly scheduling still implies at least an hour plus failed
+or missed intervals of logical-backup exposure, and provides no PITR.
+
+Before external recovery can PASS, the founder/operator must select the scheduler,
+retention/legal holds, independent storage and key custodians; create an approved
+nonproduction exercise; destroy access to the writer's original key copy; recover
+using the real separately authorized mechanism; download and authenticate a known
+object; provision roles/ACLs; restore into a new isolated PG16 target; run tenant and
+financial probes; measure full elapsed time and backup age; retain private evidence
+and obtain the incident/recovery owner's acceptance. Include erased-subject manifest
+reapplication before any cutover. No step in this follow-up authorizes production
+access or cutover. See PRIVACY_LIFECYCLE.md for outstanding policy decisions.
+
+
+The operator backup utility now resolves canonical directory/hook paths once and
+rejects files or ancestors owned by another UID or writable by group/others,
+except root-owned sticky directories such as /tmp. Hook files must not be writable
+by other users. Previously only the mode-700 leaf directory was checked, allowing
+unsafe ancestor/hook configuration and local replacement races. Regression fixtures
+require rejection before a dump, hook or lock is started. Same-UID/root compromise
+and malicious configured hooks are still trusted-boundary risks; this is not a
+proof that arbitrary hooks implement encryption/storage correctly. Use encrypted
+operator storage and independently controlled credentials, not a shared writable
+working directory. The Docker wrapper waits for TCP readiness rather than the
+entrypoint's temporary initialization socket.
+
+The freshness command measures last-success completion age. It does not calculate
+RPO or certify a recovery point; a long-running dump can complete recently with an
+older snapshot. Use the protected start/snapshot/backup-age evidence when measuring
+recovery objectives, and verify actual restore viability separately.
