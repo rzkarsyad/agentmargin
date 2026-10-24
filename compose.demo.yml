@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_demo_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentmargin_demo -d agentmargin_demo"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U agentmargin_demo -d agentmargin_demo"]
       interval: 2s
       timeout: 2s
       retries: 20

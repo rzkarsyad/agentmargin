@@ -45,3 +45,14 @@ export class InvalidCredentialLimiter {
     this.count++;return true;
   }
 }
+
+/** Bound unauthenticated DB work without a queue or a cache of valid credentials.
+ * This is local concurrency containment, not distributed abuse prevention.
+ */
+export class AuthenticationAdmission {
+ private active=0;
+ readonly maximum:number;
+ constructor(maximum=2){if(!Number.isSafeInteger(maximum)||maximum<1)throw new Error('Invalid authentication capacity');this.maximum=maximum;}
+ enter():boolean{if(this.active>=this.maximum)return false;this.active++;return true;}
+ leave():void{this.active--;}
+}

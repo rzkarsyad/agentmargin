@@ -2,6 +2,7 @@
  * never a key. Authentication stays in the environment and is never printed. */
 import {readCheckedFile} from './lib/private-files.ts';
 import pg from 'pg';
+import {databaseSessionSafe} from '../apps/api/src/database-safety.ts';
 async function main(){
 const url=process.env.DATABASE_URL,key=process.env.AGENTMARGIN_API_KEY,path=process.argv[2];
 if(!url||!key||!path||process.env.AGENTMARGIN_RECOVERY_ENV!=='disposable')throw new Error('Disposable recovery configuration required');
@@ -13,6 +14,7 @@ pool.on('error',()=>{process.stderr.write('{"kind":"delivery_recovery_pool_error
 try{
  const c=await pool.connect();
  try{
+   if(!await databaseSessionSafe(c))throw new Error('Unsafe database session configuration');
    await c.query('BEGIN');await c.query("SELECT set_config('agentmargin.api_key',$1,true)",[key]);
    const q=await c.query('SELECT agentmargin_auth.requeue_delivery($1,$2,$3,$4,$5,$6) AS cycle',
      [input.workspaceId,input.kind,input.providerEventId,input.payloadDigest,input.reviewRef,input.requestId]);

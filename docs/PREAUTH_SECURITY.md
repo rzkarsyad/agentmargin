@@ -1,5 +1,13 @@
 # v0.7 security baseline — development
 
+AM-03 follow-up: the application now admits at most two concurrent authentication
+lookups per createApp instance, without queueing or caching valid keys. Saturation
+returns 503/Retry-After, and finally releases capacity on success/error. It bounds
+unknown-key database occupancy while reserving the rest of the ten-connection pool
+for admitted work; it does not cap total auth QPS, provide tenant fairness or stop
+distributed abuse. A valid key is never blacklisted by the global invalid bucket.
+Ingress identity/atomic quota and network overload tests remain deployment gates.
+
 This experimental branch adds a **pre-authentication invalid-key limiter** to `/v1/*`. It applies before JSON body parsing and counts missing, malformed, and unknown workspace bearer keys. It cannot be bypassed by forging `X-Forwarded-For`; instead it is process-local and global, and intentionally does not lock out authenticated keys if invalid attempts flood the service.
 
 **Limitations:** This is NOT adequate internet-facing abuse prevention. Multiple Node processes do not share this state. A flood of valid-looking keys still incurs database lookup before being rejected; attackers may exhaust DB connections. Direct public use also needs a trusted TLS gateway, distributed/IP+account rate limiting, request size limits at ingress, alerting and adversarial review.

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
 export const DEMO_WORKSPACE = '11111111-2222-4333-8444-555555555555';
-const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql', '008_revenue_deliveries.sql','009_credential_containment.sql','010_revenue_adjustments.sql','011_adjustment_deliveries.sql','012_delivery_audit.sql','013_definer_catalog_path.sql','014_delivery_transition_guard.sql','015_original_payment_binding.sql'] as const;
+const migrations = ['001_initial.sql', '002_ingestion.sql', '003_revenue_ingestion.sql', '004_workspace_pricing.sql', '005_api_key_roles.sql', '006_api_key_expiry.sql', '007_credential_tenant_isolation.sql', '008_revenue_deliveries.sql','009_credential_containment.sql','010_revenue_adjustments.sql','011_adjustment_deliveries.sql','012_delivery_audit.sql','013_definer_catalog_path.sql','014_delivery_transition_guard.sql','015_original_payment_binding.sql','016_runtime_security_contract.sql'] as const;
 export interface Queryable {
   query(sql: string, params?: unknown[]): Promise<{rows: Record<string, unknown>[]}>;
 }
@@ -92,6 +92,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const pool = new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:5000});
   const apiKey = `am_${randomBytes(32).toString('base64url')}`;
   try {
+    // This CLI is guarded to the disposable loopback demo above. Fresh API pool
+    // connections must inherit the same safe logging contract as runtime roles.
+    await pool.query('ALTER ROLE agentmargin_demo SET log_parameter_max_length=0; ALTER ROLE agentmargin_demo SET log_parameter_max_length_on_error=0; ALTER ROLE agentmargin_demo SET auto_explain.log_parameter_max_length=0; ALTER ROLE agentmargin_demo SET auto_explain.log_min_duration=-1; ALTER ROLE agentmargin_demo SET pgaudit.log_parameter=off');
     await provisionDemo(pool,apiKey);
     process.stdout.write('\nSynthetic demo workspace created. Never use with real customer records.\n');
     process.stdout.write(`Demo API key (visible once; keep local): ${apiKey}\n`);

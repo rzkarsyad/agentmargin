@@ -19,6 +19,9 @@ export async function testDefinerCatalogShadow(pool:pg.Pool,url:string){
      [randomUUID(),tenant,createHash('sha256').update(key).digest('hex'),'shadow-test','ingest']);
    await pool.query("INSERT INTO customers(workspace_id,id) VALUES($1,'hidden')",[victim]);
    await pool.query("INSERT INTO revenue_records(workspace_id,id,customer_id,occurred_at,amount_micros) VALUES($1,'hidden-payment','hidden','2026-10-10Z',1)",[victim]);
+   // Explicitly grant TEMP solely to reproduce the historical pre-013 condition.
+   // Final provisioning revokes and guards it; this is never a production grant.
+   await pool.query('GRANT TEMP ON DATABASE agentmargin_ci TO "'+role+'"');
    await client.connect();
    await client.query('CREATE TEMP TABLE pg_roles(oid oid,rolname name); CREATE TEMP TABLE pg_class(oid oid,relowner oid)');
    await client.query('INSERT INTO pg_roles SELECT oid,rolname FROM pg_catalog.pg_roles WHERE rolname=session_user');

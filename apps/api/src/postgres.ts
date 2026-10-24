@@ -1,4 +1,5 @@
 import pg from 'pg';
+import {validateDatabaseUrl,databaseSessionSafe} from './database-safety.ts';
 import {summarizeFinancialLedger,type FinancialLedgerInput} from '../../../packages/core/src/financial-ledger.ts';
 import {parseAdjustment,type StoredAdjustment} from '../../../packages/core/src/adjustments.ts';
 import type { PriceVersion } from '../../../packages/core/src/index.ts';
@@ -95,16 +96,23 @@ export class PostgresEventStore implements EventStore {
   readonly pool: pg.Pool;
   private readonly credential?:string;
   private readonly brokenClients=new WeakSet<pg.PoolClient>();
+  private readonly requireTls:boolean;
   constructor(connectionString: string, options:{pool?:pg.Pool;credential?:string}={}) {
     this.credential=options.credential;
+    if(!options.pool)validateDatabaseUrl(connectionString);
+    const target=connectionString||options.pool?.options.connectionString;
+    this.requireTls=!!target&&!['localhost','127.0.0.1','[::1]'].includes(new URL(target).hostname);
     this.pool = options.pool??new Pool({ connectionString, max:10, connectionTimeoutMillis:5000,
-      statement_timeout:15000, idle_in_transaction_session_timeout:15000,
-      ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized:true } : undefined });
+      statement_timeout:15000, idle_in_transaction_session_timeout:15000 });
   }
   async ready():Promise<boolean>{
     // Connectivity alone can be healthy while every authenticated request fails.
     // Check the migration contract without reading tenant or authentication rows.
-    const result=await this.pool.query<{ready:boolean}>(`
+    const client=await this.pool.connect();
+    try{
+    if(!await databaseSessionSafe(client,this.requireTls))return false;
+    if(!(await client.query("SELECT to_regclass('agentmargin_auth.security_contract') AS contract")).rows[0]?.contract)return false;
+    const result=await client.query<{ready:boolean}>(`
       SELECT (
         (SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname IN
@@ -136,17 +144,41 @@ export class PostgresEventStore implements EventStore {
         )
         AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
           WHERE p.oid=to_regprocedure('agentmargin_auth.requeue_delivery(uuid,text,text,text,text,uuid)')
-            AND p.prosecdef AND p.provolatile='v' AND p.proconfig @> ARRAY['search_path=pg_catalog']
+            AND p.prosecdef AND p.provolatile='v' AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']
             AND has_function_privilege(current_user,p.oid,'EXECUTE'))
         AND (SELECT count(*) FROM pg_catalog.pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.validate_adjustment()'),to_regprocedure('agentmargin_auth.validate_stripe_adjustment_source()'),to_regprocedure('agentmargin_auth.record_delivery_transition()'))
           AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp'])=3
         AND (SELECT count(*) FROM pg_catalog.pg_proc p WHERE p.oid IN
           (to_regprocedure('agentmargin_auth.principal(text)'),to_regprocedure('agentmargin_auth.workspace(text)'),to_regprocedure('agentmargin_auth.event_digest(uuid,text,text)'))
-          AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog']
+          AND p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']
           AND has_function_privilege(current_user,p.oid,'EXECUTE'))=3
+        AND NOT EXISTS ((SELECT * FROM agentmargin_auth.installed_contract() EXCEPT SELECT * FROM agentmargin_auth.security_contract)
+          UNION ALL (SELECT * FROM agentmargin_auth.security_contract EXCEPT SELECT * FROM agentmargin_auth.installed_contract()))
+        -- Anchor the installation baseline to a clean 001–016 source contract.
+        -- A pre-existing weak policy must not be blessed by capturing its hash.
+        AND (SELECT encode(sha256(convert_to(string_agg(kind||chr(10)||identity||chr(10)||digest,chr(10)
+          ORDER BY kind COLLATE "C",identity COLLATE "C"),'UTF8')),'hex') FROM agentmargin_auth.security_contract)
+          ='b85b4896a7c818c4956b065b337f262618b62af3910c088af21e3db7837ad95c'
+        AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.pronamespace='agentmargin_auth'::regnamespace
+          AND p.proowner<>(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.workspaces'::regclass))
+        AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+          WHERE p.pronamespace='agentmargin_auth'::regnamespace AND a.grantee=0 AND a.privilege_type='EXECUTE')
+        AND (current_user=(SELECT pg_get_userbyid(relowner) FROM pg_catalog.pg_class WHERE oid='public.workspaces'::regclass)
+          OR (NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
+            AND NOT has_any_column_privilege(current_user,'public.workspace_api_keys','SELECT,INSERT,UPDATE,REFERENCES')
+            AND NOT has_any_column_privilege(current_user,'public.workspaces','SELECT,INSERT,UPDATE,REFERENCES')
+            AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace
+              AND relname IN ('usage_events','revenue_records','revenue_adjustments','revenue_payment_sources','workspace_price_versions','price_versions','customers','delivery_history','delivery_requeues')
+              AND (has_table_privilege(current_user,oid,'UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES') OR has_any_column_privilege(current_user,oid,'UPDATE,REFERENCES')))
+            AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN ('public.revenue_deliveries'::regclass,'public.adjustment_deliveries'::regclass)
+              AND a.attnum>0 AND NOT a.attisdropped AND a.attname IN ('state','attempts','retry_cycle','error_class','delivered_at','received_at','available_at')
+              AND has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT'))
+            AND NOT has_any_column_privilege(current_user,'agentmargin_auth.security_contract','INSERT,UPDATE,REFERENCES')
+            AND NOT has_table_privilege(current_user,'agentmargin_auth.security_contract','DELETE,TRUNCATE,TRIGGER')))
       ) AS ready`);
     return result.rows[0]?.ready===true;
+    }finally{client.release();}
   }
   forCredential(credential:string):PostgresEventStore {
     return new PostgresEventStore('',{pool:this.pool,credential});
@@ -154,6 +186,8 @@ export class PostgresEventStore implements EventStore {
   private async begin(sql='BEGIN'):Promise<pg.PoolClient> {
     const client=await this.pool.connect();
     try {
+      if(this.credential!==undefined&&!await databaseSessionSafe(client,this.requireTls))
+        throw new Error('Unsafe database session configuration');
       await client.query(sql);
       // Always overwrite context, including unauthenticated calls, before SQL.
       await client.query("SELECT set_config('agentmargin.api_key',$1,true)",[this.credential??'']);
@@ -175,7 +209,7 @@ export class PostgresEventStore implements EventStore {
   async authenticate(keyDigest: string): Promise<AuthenticatedWorkspace | null> {
     if(this.credential!==undefined){
       const q=await this.query<{workspace_id:string;access_role:WorkspaceKeyRole}>(
-        'SELECT * FROM agentmargin_auth.principal($1)',[this.credential]);
+        "SELECT * FROM agentmargin_auth.principal(current_setting('agentmargin.api_key',true))");
       const row=q.rows[0];
       return row?{workspaceId:row.workspace_id,accessRole:row.access_role}:null;
     }

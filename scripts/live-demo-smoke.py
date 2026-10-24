@@ -8,6 +8,8 @@ import os
 import json
 import re
 import signal
+import socket
+import uuid
 import subprocess
 import threading
 import time
@@ -19,6 +21,7 @@ from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "http://127.0.0.1:8787"
+RUN_ENV = {}
 KEY_PATTERN = re.compile(r"Demo API key \(visible once; keep local\): (am_[A-Za-z0-9_-]{32,})")
 
 
@@ -147,14 +150,14 @@ def live_adjustment_browser(browser, key: str):
     """A real prior-period payment/refund must remain negative in the current UI."""
     code = """
 import {AgentMarginClient} from './packages/sdk/src/index.ts';
-const client=new AgentMarginClient({endpoint:'http://127.0.0.1:8787',apiKey:process.env.AGENTMARGIN_API_KEY});
+const client=new AgentMarginClient({endpoint:process.env.AGENTMARGIN_ENDPOINT,apiKey:process.env.AGENTMARGIN_API_KEY});
 const now=new Date(),old=new Date(now.getTime()-400*86400000);
 await client.trackRevenue([{id:'prior-period-demo',customerId:'refund-period-demo',occurredAt:old.toISOString(),amountMicros:'500000'}]);
 await client.trackAdjustments([{originalPaymentId:'prior-period-demo',customerId:'refund-period-demo',kind:'refund',amountMicros:'80000',currency:'USD',
 occurredAt:now.toISOString(),provider:'import',providerAccount:'synthetic',sourceObjectId:'partial_refund_demo',evidenceRef:'synthetic:refund:demo'}]);
 """
     result = subprocess.run(["node", "--experimental-strip-types", "--input-type=module", "-e", code], cwd=ROOT,
-                            env={**os.environ, "AGENTMARGIN_API_KEY": key}, capture_output=True, text=True, timeout=20)
+                            env={**RUN_ENV, "AGENTMARGIN_API_KEY": key}, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, "Synthetic adjustment SDK ingestion failed"
     for width in (1280, 390):
         page = browser.new_page(viewport={"width": width, "height": 850})
@@ -180,13 +183,13 @@ def v09_fixture_browser(browser):
     code = """
 import pg from 'pg';
 import {testV09FinancialFixture} from './scripts/v09-financial-fixture.ts';
-const url='postgresql://agentmargin_demo:local-development-only@127.0.0.1:55432/agentmargin_demo';
+const url=process.env.AGENTMARGIN_DEMO_TEST_DATABASE_URL;
 const pool=new pg.Pool({connectionString:url});
 try {const result=await testV09FinancialFixture(pool,url);process.stdout.write(JSON.stringify(result));}
 finally {await pool.end();}
 """
     result = subprocess.run(["node", "--experimental-strip-types", "--input-type=module", "-e", code], cwd=ROOT,
-                            capture_output=True, text=True, timeout=30)
+                            env=RUN_ENV, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, "Synthetic v0.9 fixture failed"
     fixture = json.loads(result.stdout.splitlines()[-1])
     for width in (1280, 390):
@@ -207,6 +210,19 @@ finally {await pool.end();}
 def main():
     if not (os.environ.get("CI") == "true" and os.environ.get("GITHUB_ACTIONS") == "true"):
         raise SystemExit("This disposable Docker demo smoke test is restricted to GitHub Actions CI.")
+    global BASE, RUN_ENV
+    # Unique Compose identity and free loopback ports isolate concurrent jobs and
+    # preserve any existing operator demo. Binding failures still fail closed.
+    with socket.socket() as database, socket.socket() as api:
+        database.bind(("127.0.0.1", 0))
+        api.bind(("127.0.0.1", 0))
+        database_port = str(database.getsockname()[1])
+        api_port = str(api.getsockname()[1])
+    BASE = "http://127.0.0.1:" + api_port
+    RUN_ENV = {**os.environ, "AGENTMARGIN_DEMO_DB_PORT": database_port, "PORT": api_port,
+               "COMPOSE_PROJECT_NAME": "agentmargin-ci-" + uuid.uuid4().hex,
+               "AGENTMARGIN_ENDPOINT": BASE, "AGENTMARGIN_SYNTHETIC_DEMO_PORT": api_port,
+               "AGENTMARGIN_DEMO_TEST_DATABASE_URL": "postgresql://agentmargin_demo:local-development-only@127.0.0.1:" + database_port + "/agentmargin_demo"}
     logs = []
     key_holder = []
     reader_finished = threading.Event()
@@ -218,7 +234,7 @@ def main():
         text=True,
         bufsize=1,
         start_new_session=True,
-        env={**os.environ, "AGENTMARGIN_DEMO_DB_PORT": "55432"},
+        env=RUN_ENV,
     )
 
     def consume_output():
@@ -269,7 +285,7 @@ def main():
                 sdk = subprocess.run(
                     ["node", "--experimental-strip-types", "examples/track-synthetic-openai.ts"],
                     cwd=ROOT,
-                    env={**os.environ, "AGENTMARGIN_API_KEY": key},
+                    env={**RUN_ENV, "AGENTMARGIN_API_KEY": key},
                     capture_output=True,
                     text=True,
                     timeout=35,
@@ -304,13 +320,13 @@ def main():
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait(timeout=8)
         subprocess.run(
-            ["npm", "run", "demo:stop"],
+            ["npm", "run", "demo:reset"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             timeout=45,
             check=False,
-            env={**os.environ, "AGENTMARGIN_DEMO_DB_PORT": "55432"},
+            env={**RUN_ENV, "AGENTMARGIN_CONFIRM_DEMO_RESET": "YES"},
         )
 
 

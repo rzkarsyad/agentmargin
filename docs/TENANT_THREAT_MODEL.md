@@ -201,11 +201,11 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | ID | Preliminary disposition / evidence | Remaining gate |
 | --- | --- | --- |
 | AM-01 | Medium, CONFIRMED: restricted ingest HTTP/SQL accepts a non-Stripe label against Stripe payment provenance before 015. Additive 015 binds every new adjustment to original provenance and rejects conflicting late source attachment. Regression reproduces baseline before testing denial, rollback, replay and generic compatibility | Independent financial/security review; inspect existing inconsistent immutable rows |
-| AM-02 | Medium, OPEN: reusable proof reaches PostgreSQL parameters; log/transport hardening under review | Verify effective log and TLS settings, extensions and operators |
-| AM-03 | Medium, OPEN: unknown well-formed keys acquire database resources before invalid-attempt limiter | Bound pre-auth concurrency; deployed ingress quotas |
-| AM-04 | Low, OPEN: readiness checks object shape, not policy/function semantics or effective grants | Strengthen installed contract detection; owner remains trusted |
-| AM-05 | Low, OPEN: TEMP defaults and four pg_catalog-only paths | Explicit pg_temp-last and provisioning guard |
-| AM-06 | Low, OPEN: terminal-state inbox INSERT and completion authority | Restrict initial payload and verify completion evidence |
+| AM-02 | Medium, CONFIRMED then contained: synthetic server-log exposure reproduced; per-checkout effective bind/error/extension guards before proof, remote verify-full and TLS checks implemented | Verify effective log and TLS settings, extensions and operators |
+| AM-03 | Medium, CONFIRMED then bounded: two concurrent auth lookups, no queue/cache, fail/recovery regression | Bound pre-auth concurrency; deployed ingress quotas |
+| AM-04 | Low, CONFIRMED then strengthened: 016 baseline checks policy expressions/roles/commands, function bodies/settings and triggers; effective unsafe grants tested | Strengthen installed contract detection; owner remains trusted |
+| AM-05 | Low, precondition confirmed; exploit not demonstrated: 016 explicit pg_temp-last, dedicated-database TEMP removal and negative probes | Explicit pg_temp-last and provisioning guard |
+| AM-06 | Low, CONFIRMED then contained: payload-only INSERT grants and ledger-backed completion trigger; negative probes and normal admin requeue tests | Restrict initial payload and verify completion evidence |
 | AM-07 | Medium residual, CONFIRMED: admitted/cursor/held results survive revocation; next statement denies | Human boundary decision and session containment; no absolute timeout claim |
 | AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings and combined tree includes #33 | Exact-source scan/triage and protected integration remain required |
 | AM-09 | Medium, OPEN: public-key envelope integrity is not archive origin authentication | Separate signing trust root and pre-restore verification |
@@ -245,3 +245,7 @@ that upgrading does not erase evidence. They are fictional test data only. The
 preflight must not be interpreted as permission to read real customer data here.
 
 015 SHA-256: `2b68e4d64475d8e060119d887a214cf7979c25192ed6a776bc85530f8e43d334`. Local `npm run check` PASS (120 pass, one existing TODO); PostgreSQL 16 full suite PASS including the before/after bypass and inverse provenance-order test. CI evidence is recorded in the child PR after completion.
+
+016 SHA-256: `2fc5dfb4b639f08a40a493dc752908c090af479c94c273fcc9ee49dbac1a3bdd`. Automated tests are synthetic; extension inventory, real remote TLS CA/hostname rejection, distributed ingress and independent architectural approval remain external gates.
+
+Runtime follow-up local verification: full npm run check PASS (122 passed, one existing TODO), PostgreSQL 16 complete suite PASS and actual synthetic server-log parameter regression PASS. No human risk acceptance is inferred.

@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { calculateEventCost, MAX_DATABASE_MICROS, type UsageEvent, type PriceVersion, parseAdjustment, type StoredAdjustment } from '../../../packages/core/src/index.ts';
 import type {OperationalMetrics} from './metrics.ts';
-import { WorkspaceRateLimiter, InvalidCredentialLimiter } from './rate-limit.ts';
+import { WorkspaceRateLimiter, InvalidCredentialLimiter, AuthenticationAdmission } from './rate-limit.ts';
 
 export interface IncomingEvent {
   id: string; customerId: string; model: string; occurredAt: string;
@@ -182,6 +182,7 @@ export interface OperationsOptions {
   metrics?:OperationalMetrics; metricsToken?:string;
 }
 export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(), invalidLimiter=new InvalidCredentialLimiter(), logSink?:RequestLogSink, operations:OperationsOptions={}) {
+  const authenticationAdmission=new AuthenticationAdmission();
   const app = new Hono<{ Variables: { workspaceId: string; keyDigest: string; keyRole:WorkspaceKeyRole; store:EventStore } }>();
   const builtDashboard=new URL('../../web/dist/index.html',import.meta.url);
   const hasReactBuild=existsSync(builtDashboard);
@@ -260,7 +261,9 @@ export function createApp(store: EventStore, limiter=new WorkspaceRateLimiter(),
     }
     const keyDigest=digest(auth.slice(7));
     const requestStore=store.forCredential?.(auth.slice(7))??store;
-    const principal=await requestStore.authenticate(keyDigest);
+    if(!authenticationAdmission.enter())return c.json({error:'Authentication capacity unavailable'},503,{'Retry-After':'1'});
+    let principal:AuthenticatedWorkspace|null;
+    try{principal=await requestStore.authenticate(keyDigest);}finally{authenticationAdmission.leave();}
     if(!principal){
       if(!invalidLimiter.allowInvalidAttempt())return c.json({error:'Too many invalid authorization attempts'},429);
       return c.json({error:'Unauthorized'},401);
