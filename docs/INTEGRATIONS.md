@@ -355,3 +355,45 @@ dismissal is used. An independent reviewer must assess these data flows along
 with the existing high-entropy bearer-digest classification. The fictional CLI
 now generates its payloads from source constants and limits HTTP destinations to
 loopback, rather than sending arbitrary JSON read from a configuration file.
+
+## Security compatibility update: trusted Stripe mode and routing
+
+The unpublished candidate now **requires explicit trusted mode** for both Stripe
+converters. This is an intentional fail-closed compatibility change from the
+published legacy helper: omission, missing event.livemode and mismatches reject
+even a correctly signed event. Configure the expectation with the endpoint's
+server-side account/secret binding, never from incoming JSON or headers.
+
+```ts
+stripeEventToFinancialDelivery(rawBody, signature, signingSecret, nowSeconds, {
+  expectedLivemode: false, // fixed TEST endpoint configuration
+  platformAccount: 'acct_CONFIGURED_PLATFORM',
+  refundLinks: trustedAccountScopedLinks,
+});
+// Legacy invoice-only helper, deprecated in favor of durable financial delivery:
+stripeInvoicePaidToRevenue(rawBody, signature, signingSecret, nowSeconds,
+  configuredConnectedAccountOrUndefined, false);
+```
+
+The local receiver is deliberately test-only (expectedLivemode=false). Connected
+account events require an exact valid expectedAccount in both adapters; omitted,
+empty, malformed or mismatched routing rejects. Dedicated platform events omit
+account; a platform binding cannot receive connected-account events. This does
+not verify the account-to-workspace registry independently or make asserted HTTP
+provenance into verified provider evidence. Platform/connected, both mode values,
+missing mode, wrong mapping and raw signature cases have signed synthetic tests.
+No live/test provider calls were made for these regressions.
+
+Failed/canceled refunds and unsupported financial transitions now throw exported
+StripeAccountingReviewRequired with retryable=false, instead of silently returning
+ignored. Unknown event types require review; only a small nonfinancial allowlist
+is ignored, as are explicitly supported nonterminal/no-additional-effect cases.
+The example emits only a fixed redacted category and returns 422. Never treat this
+as recorded money. Do not build an unbounded local retry loop around that error.
+Stripe may redeliver non-2xx within its own retry policy; subscribe to supported
+financial types and monitor review counts. A real receiver must durably quarantine
+unsupported evidence and alert an owner before acknowledging it; that deployment
+integration remains a gate, and this loopback example does not claim it exists.
+Database/transient delivery outages still return 503 and stable IDs prevent double
+counting. Accounting reversals/disputes still need an approved positive-adjustment
+policy; no automatic ledger mutation or new accounting assumption is introduced.

@@ -40,12 +40,12 @@ try{
     if(listening)break;await delay(50);
   }
   assert.ok(listening,'Local receiver did not start');
-  const raw=JSON.stringify({id:'evt_synthetic_signed',account:'acct_synthetic',type:'invoice.paid',created:now,
+  const raw=JSON.stringify({id:'evt_synthetic_signed',account:'acct_synthetic',type:'invoice.paid',created:now,livemode:false,
     data:{object:{id:'in_synthetic_signed',customer:'cus_synthetic_signed',currency:'usd',status:'paid',amount_paid:50,status_transitions:{paid_at:now-10}}}});
   const sign=(body:string)=>'t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+body).digest('hex');
   const post=(body:string,signature=sign(body))=>fetch('http://127.0.0.1:18788/stripe/webhook',{
     method:'POST',headers:{'stripe-signature':signature},body,signal:AbortSignal.timeout(7000)});
-  const refund=JSON.stringify({id:'evt_synthetic_refund_before',account:'acct_synthetic',type:'refund.created',created:now,
+  const refund=JSON.stringify({id:'evt_synthetic_refund_before',account:'acct_synthetic',type:'refund.created',created:now,livemode:false,
     data:{object:{id:'re_synthetic_signed',created:now-5,status:'succeeded',currency:'usd',amount:10,charge:'ch_synthetic'}}});
   assert.equal((await post(refund)).status,200);
   assert.equal((await store.forCredential(key).processNextAdjustmentDelivery(workspace)).state,'retry');
@@ -61,12 +61,16 @@ try{
   assert.equal((await store.forCredential(key).processNextAdjustmentDelivery(workspace)).inserted,1);
   assert.equal((await post(refund.replace('evt_synthetic_refund_before','evt_synthetic_refund_again').replace('refund.created','refund.updated'))).status,200);
   assert.equal((await store.forCredential(key).processNextAdjustmentDelivery(workspace)).duplicate,1);
-  const credit=JSON.stringify({id:'evt_synthetic_balance_credit',account:'acct_synthetic',type:'credit_note.created',created:now,
+  const credit=JSON.stringify({id:'evt_synthetic_balance_credit',account:'acct_synthetic',type:'credit_note.created',created:now,livemode:false,
     data:{object:{id:'cn_synthetic_signed',created:now-3,status:'issued',type:'post_payment',currency:'usd',invoice:'in_synthetic_signed',customer:'cus_synthetic_signed',
       pre_payment_amount:0,post_payment_amount:5,credit_amount:5,refund_amount:0,out_of_band_amount:0,refund:null,customer_balance_transaction:'cbtxn_synthetic'}}});
   assert.equal((await post(credit)).status,200);
   assert.equal((await store.forCredential(key).processNextAdjustmentDelivery(workspace)).inserted,1);
   assert.equal((await store.pool.query('SELECT sum(amount_micros)::text AS n FROM revenue_adjustments WHERE workspace_id=$1',[workspace])).rows[0].n,'150000');
+  assert.equal((await post(raw.replace('"livemode":false','"livemode":true'))).status,400);
+  assert.equal((await post(raw.replace('acct_synthetic','acct_unmapped'))).status,400);
+  assert.equal((await post(refund.replace('refund.created','refund.failed'))).status,422);
+  assert.equal((await store.pool.query('SELECT count(*)::int AS n FROM revenue_records WHERE workspace_id=$1',[workspace])).rows[0].n,1,'Rejected mode/account events must not add revenue');
   assert.equal((await post(refund.replace('evt_synthetic_refund_before','evt_synthetic_conflict').replace('"amount":10','"amount":11'))).status,200);
   assert.equal((await store.forCredential(key).processNextAdjustmentDelivery(workspace)).state,'failed');
 

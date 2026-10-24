@@ -424,3 +424,5 @@ main is active; the assessment's contrary legacy-protection inference is correct
 All security/operational/release gates remain subject to their documented review.
 
 AM-02–AM-06 source containment is implemented in the runtime follow-up (016, final grants, effective log/TLS checks, auth admission and installed-contract drift detection). Local full SDK/web/types/tests, real PG16 regression and synthetic server-log verification PASS. Deployment TLS/extension inventory and independent approval remain BLOCKED. See DB_RUNTIME_ROLE.md for breaking configuration prerequisites; no approved accounting or key digest changes.
+
+AM-14/15/16: Stripe candidate mode/routing is now fail closed with explicit trusted configuration; unsupported financial states produce a non-retryable accounting review category. Signed synthetic regressions do not repeat or replace the completed genuine sandbox acceptance. Durable production quarantine/account binding and financial-policy approval remain gates. Published SDK is unchanged; candidate converter callers need the documented mode argument.
