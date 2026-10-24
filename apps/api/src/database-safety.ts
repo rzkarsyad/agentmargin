@@ -2,10 +2,13 @@ import type pg from 'pg';
 
 /** URL parsing must not silently downgrade certificate or hostname validation. */
 export function validateDatabaseUrl(connectionString:string):void{
- const url=new URL(connectionString);
- if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname||url.searchParams.has('host')||url.searchParams.has('hostaddr'))
+ let url:URL;
+ try{url=new URL(connectionString);}catch{throw new Error('Invalid PostgreSQL connection configuration');}
+ const parameters=[...url.searchParams.keys()];
+ if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname||new Set(parameters).size!==parameters.length||url.searchParams.has('host')||url.searchParams.has('hostaddr'))
    throw new Error('Invalid PostgreSQL connection configuration');
  const local=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+ if(!local&&process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new Error('PostgreSQL TLS verification must remain enabled');
  const mode=url.searchParams.get('sslmode');
  if((!local&&mode!=='verify-full')||(mode!==null&&!['verify-full','disable'].includes(mode))||(!local&&mode==='disable'))
    throw new Error('Non-loopback PostgreSQL requires sslmode=verify-full');
