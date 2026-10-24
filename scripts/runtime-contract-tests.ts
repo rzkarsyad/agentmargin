@@ -32,7 +32,8 @@ export async function testRuntimeContract(pool:pg.Pool,runtime:PostgresEventStor
  await pool.query(def.replace('k.revoked_at IS NULL','true'));
  try{assert.equal(await runtime.ready(),false,'Function body drift must fail readiness');}finally{await pool.query(def);}
  assert.equal(await runtime.ready(),true);
- for(const [setting,value,safe] of [['auto_explain.log_min_duration','0','-1'],['auto_explain.log_parameter_max_length','20','0'],['pgaudit.log_parameter','on','off']]){
+ for(const [setting,value,safe] of [['auto_explain.log_min_duration','0','-1'],['auto_explain.log_parameter_max_length','20','0'],['pgaudit.log_parameter','on','off'],
+   ['debug_print_parse','on','off'],['debug_print_rewritten','on','off'],['debug_print_plan','on','off']]){
    await runtime.pool.query('SET '+setting+'='+value);
    try{
      assert.equal(await runtime.ready(),false);
