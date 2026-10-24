@@ -103,10 +103,20 @@ jobs:
       - name: Verify publishing inputs
         env:
           SDK_SHA: ${{ needs.build.outputs.sdk_sha256 }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           [[ "$SDK_SHA" =~ ^[a-f0-9]{64}$ ]]
           cd "$RUNNER_TEMP/sdk-publish"
           printf '%s  agentmargin-sdk.tgz\n' "$SDK_SHA" | sha256sum --check --status
+          tar -xOzf agentmargin-sdk.tgz package/package.json > "$RUNNER_TEMP/publish-package.json"
+          node --input-type=module -e '
+          import fs from "node:fs";
+          const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/publish-package.json"));
+          if(p.name!=="@makinohq/agentmargin"||process.env.RELEASE_TAG!==`sdk-v${p.version}`||
+             !/^sdk-v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$/.test(process.env.RELEASE_TAG)||
+             p.private===true||p.publishConfig?.access!=="public"||Object.keys(p.publishConfig).some(k=>k!=="access"))
+            throw new Error("Unexpected package identity or publish configuration");
+          '
           node --input-type=module -e '
           import fs from "node:fs"; import {createHash} from "node:crypto";
           const bytes=fs.readFileSync("npm-cli.tgz");
@@ -115,4 +125,4 @@ jobs:
           mkdir "$RUNNER_TEMP/pinned-npm"
           tar -xzf npm-cli.tgz -C "$RUNNER_TEMP/pinned-npm" --strip-components=1
       - name: Publish approved prerelease with lifecycle scripts disabled
-        run: node "$RUNNER_TEMP/pinned-npm/bin/npm-cli.js" publish "$RUNNER_TEMP/sdk-publish/agentmargin-sdk.tgz" --ignore-scripts --access public --provenance --tag alpha
+        run: node "$RUNNER_TEMP/pinned-npm/bin/npm-cli.js" publish "$RUNNER_TEMP/sdk-publish/agentmargin-sdk.tgz" --ignore-scripts --access public --provenance --tag alpha --registry=https://registry.npmjs.org
