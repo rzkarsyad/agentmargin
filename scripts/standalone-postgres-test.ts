@@ -10,6 +10,7 @@ import {testFinancialReports} from './financial-report-tests.ts';
 import {testDefinerCatalogShadow} from './definer-shadow-tests.ts';
 import {testDeliveryRecovery} from './delivery-recovery-tests.ts';
 import {testAdjustmentDeliveries} from './adjustment-delivery-tests.ts';
+import {testPaymentBinding} from './payment-binding-tests.ts';
 import {parseAdjustment} from '../packages/core/src/adjustments.ts';
 import {PostgresEventStore} from '../apps/api/src/postgres.ts';
 import {createApp, type StoredEvent, type StoredRevenue, type AnalyticsSnapshot} from '../apps/api/src/app.ts';
@@ -634,6 +635,7 @@ try {
       assert.equal((await runtimeStore.authenticate('ignored'))?.accessRole,'admin','Authorization mutation did not roll back');
     }finally{await pool.query('DROP TRIGGER queue_scope_change ON revenue_records; DROP FUNCTION queue_scope_change()');}
     assert.equal((await runtimeStore.processNextRevenueDelivery(workspace)).state,'delivered');
+    await testPaymentBinding(pool,runtimeStore,workspace,ingestKey);
     await testAdjustmentDeliveries(pool,runtimeStore,runtimeURL.toString(),workspace,other,ingestKey,readKey);
     await testDeliveryRecovery(pool,runtimeStore,workspace,other,key,ingestKey,readKey);
     await testFinancialReports(pool,runtimeURL.toString());
