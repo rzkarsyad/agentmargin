@@ -130,6 +130,7 @@ jobs:
           node scripts/sdk-registry-consumer-smoke.mjs --verify-signatures
           npm --prefix examples/nextjs-starter ci --no-audit --no-fund
           npm --prefix examples/nextjs-starter run build
+          node --experimental-strip-types scripts/starter-origin-smoke.ts
           npm --prefix examples/nextjs-starter audit --audit-level=high
       - name: Prepare candidate artifact with integrity metadata (no publish)
         run: node scripts/prepare-release.mjs "$RUNNER_TEMP/release-package"

@@ -438,3 +438,8 @@ and recovery-key custody, anti-rollback inventory, retention, delivered alerts,
 representative RPO/RTO/scale and independent security/privacy approval remain BLOCKED.
 
 AM-08/17/18: exact-head and combined CodeQL evidence are separate; main ruleset verified active. Publication authority is split from build/install and all current-branch Actions/PG image/Python wheels are pinned. Local unprivileged build and checks PASS; no publish dispatch or publisher/environment approval occurred. Transitive browser/OS/Node and legacy independent audit workflow trust remain disclosed. Finding-count triage, npm environment/tag restrictions and final protected-main release authorization are BLOCKED. See the candidate release acceptance report.
+
+The AI report's additional starter CSRF/DNS-rebinding concern is source-confirmed
+and contained with early JSON/origin/Host checks. Full SDK/web/type tests, starter
+build and actual localhost HTTP negatives PASS without provider keys. This does
+not authorize or validate paid calls, public authentication or deployment.

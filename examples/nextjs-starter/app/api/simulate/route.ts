@@ -1,9 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {NextResponse} from 'next/server';
 import {margin,DEMO_CUSTOMER_ID} from '../../../lib/margin';
+import {rejectDemoRequest} from '../../../lib/request-guard';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export async function POST(){
+export async function POST(request:Request){
+ const rejected=rejectDemoRequest(request,process.env.AGENTMARGIN_STARTER_ORIGIN);
+ if(rejected)return rejected;
  try{
   const at=new Date().toISOString(),eventId='synthetic-'+randomUUID();
   const tracked=await margin().track([{id:eventId,customerId:DEMO_CUSTOMER_ID,model:'synthetic-unpriced-model',occurredAt:at,inputTokens:500,outputTokens:100}]);

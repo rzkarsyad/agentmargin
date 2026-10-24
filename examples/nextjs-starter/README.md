@@ -38,3 +38,13 @@ Optional: set `OPENAI_API_KEY` in **server-only** `.env.local`, then click **Opt
 - Uses local `file:../../packages/sdk` dependency so it works before npm publication. For registry installs, replace with the verified published prerelease version.
 
 For a complete set of historical and scope limitations, see [the repo's security policy](../../SECURITY.md) and [SDK docs](../../packages/sdk/README.md).
+
+The demo POST routes require application/json and exact same-origin browser
+requests before reading provider credentials or recording financial fixtures.
+Default host validation permits HTTP loopback only, preventing an arbitrary Host
+from defining a trusted origin. A non-loopback installation must explicitly set
+the server-only AGENTMARGIN_STARTER_ORIGIN to its exact HTTPS origin, and add real
+user authentication, authorization and rate limiting before exposure. This guard
+is CSRF/DNS-rebinding containment, not an authentication or billing quota system.
+Server/curl JSON requests without browser Origin remain supported. No paid call
+is required to test rejection; leave OPENAI_API_KEY unset for route smoke tests.

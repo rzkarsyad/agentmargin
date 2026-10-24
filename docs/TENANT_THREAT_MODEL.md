@@ -269,3 +269,16 @@ PASS; both source-ACL/non-superuser restore and signed/encrypted/key-recovery dr
 PASS (3 seconds each on tiny fixtures). ExternalStorageVerified=false and
 productionRtoMeasured=false. The warning from the earlier Mac report remains an
 environment observation only, not network isolation or vulnerability evidence.
+
+### Additional starter finding from the AI report (AM-18 related)
+
+Confirmed from source: the demo live/simulate POST handlers accepted form/cross-site
+requests before checking browser origin, so a visited page could initiate a fixed
+provider call when a developer configured a key. The candidate now requires JSON,
+validates the actual Host authority (Next may normalize URL host), permits only
+loopback by default or a fixed configured HTTPS origin, ignores forwarded-host
+assertions, and rejects foreign/null Origin and cross-site Fetch Metadata before
+credentials or side effects. This is not user authentication or a billing quota;
+public deployments still need both. Pure negative tests and actual built Next.js
+HTTP rejection tests PASS with provider/API keys removed; no provider request or
+financial mutation is used to verify the guard. Same-origin UI contract is intact.

@@ -36,6 +36,8 @@ jobs:
         run: |
           npm --prefix examples/nextjs-starter ci --no-audit --no-fund
           npm --prefix examples/nextjs-starter run build
+      - name: Verify starter request rejection without provider keys
+        run: node --experimental-strip-types scripts/starter-origin-smoke.ts
       - name: Audit Next.js starter dependencies (fail closed)
         run: |
           set -euo pipefail
