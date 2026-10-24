@@ -11,8 +11,11 @@ if (!apiKey) {
   throw new Error('Set AGENTMARGIN_API_KEY to the localhost demo key printed by npm run demo');
 }
 const endpoint = process.env.AGENTMARGIN_ENDPOINT ?? 'http://127.0.0.1:8787';
-if (!['http://127.0.0.1:8787', 'http://localhost:8787'].includes(endpoint)) {
-  throw new Error('Synthetic tracking example only supports the localhost AgentMargin demo at port 8787');
+const ciPort=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'?process.env.AGENTMARGIN_SYNTHETIC_DEMO_PORT:undefined;
+if(ciPort!==undefined&&(!/^[0-9]{4,5}$/.test(ciPort)||Number(ciPort)<1024||Number(ciPort)>65535))throw new Error('Invalid disposable demo port');
+const demoPort=ciPort??'8787';
+if (!['http://127.0.0.1:'+demoPort, 'http://localhost:'+demoPort].includes(endpoint)) {
+  throw new Error('Synthetic tracking example requires the exact configured loopback demo endpoint');
 }
 
 const client = new AgentMarginClient({ endpoint, apiKey });
