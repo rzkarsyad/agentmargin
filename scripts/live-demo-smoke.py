@@ -221,7 +221,7 @@ def main():
     BASE = "http://127.0.0.1:" + api_port
     RUN_ENV = {**os.environ, "AGENTMARGIN_DEMO_DB_PORT": database_port, "PORT": api_port,
                "COMPOSE_PROJECT_NAME": "agentmargin-ci-" + uuid.uuid4().hex,
-               "AGENTMARGIN_ENDPOINT": BASE,
+               "AGENTMARGIN_ENDPOINT": BASE, "AGENTMARGIN_SYNTHETIC_DEMO_PORT": api_port,
                "AGENTMARGIN_DEMO_TEST_DATABASE_URL": "postgresql://agentmargin_demo:local-development-only@127.0.0.1:" + database_port + "/agentmargin_demo"}
     logs = []
     key_holder = []
