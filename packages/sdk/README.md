@@ -67,3 +67,15 @@ reduction fields preserve its derivation. Non-USD FX, mixed credits and positive
 reinstatements remain unsupported. SDK alpha.2 does **not** gain source-only methods
 through a server upgrade. Follow the authoritative [release dashboard](../../docs/ROADMAP.md)
 and [integration contract](../../docs/INTEGRATIONS.md). No new npm version is released.
+
+### Stripe security compatibility
+
+The candidate Stripe converters require trusted `expectedLivemode` configuration.
+Pass `{expectedLivemode:false, platformAccount: configuredAccount}` to
+`stripeEventToFinancialDelivery`, or append the explicit boolean sixth argument
+to the deprecated `stripeInvoicePaidToRevenue`. Missing/mismatched mode fails
+closed. Connected events require exact `expectedAccount`; platform events must
+omit `event.account`. Never infer either expectation from the incoming event.
+`StripeAccountingReviewRequired` is non-retryable by the caller: durably quarantine
+and reconcile unsupported financial events, rather than silently ignoring them or
+retrying forever. See the repository integration contract for routing and limits.

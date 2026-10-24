@@ -8,7 +8,7 @@ const note={id:'cn_current',created:now,status:'issued',type:'post_payment',curr
 function parse(object:unknown,account?:string){
  const body=JSON.stringify({id:'evt_current',created:now,account,type:'credit_note.created',api_version:'2026-09-30.endive',livemode:false,data:{object}});
  const header='t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+body).digest('hex');
- return stripeEventToFinancialDelivery(body,header,secret,now,{platformAccount:'acct_fixture'});
+ return stripeEventToFinancialDelivery(body,header,secret,now,{expectedLivemode:false,platformAccount:'acct_fixture'});
 }
 test('current credit-note object maps pure balance credit with explicit platform routing',()=>{
  const result=parse(note);

@@ -108,4 +108,4 @@ export type { ResponsesUsage, ChatCompletionsUsage } from './openai.ts';
 export {fromAnthropicMessage} from './anthropic.ts';
 export type {AnthropicMessageUsage} from './anthropic.ts';
 export type {StripeFinancialDelivery,StripeFinancialOptions,StripeRefundLink} from './stripe.ts';
-export {stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery} from './stripe.ts';
+export {stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery,StripeAccountingReviewRequired} from './stripe.ts';

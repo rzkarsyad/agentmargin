@@ -17,22 +17,22 @@ test('Anthropic usage has correct cached-read token semantics',()=>{
 });
 test('Stripe signature, timestamp, USD cents, invoice ID and provider customer mapping',()=>{
  const secret='whsec_testing_key_123',now=1792663200;
- const data={id:'evt_abc',type:'invoice.paid',created:now,account:'acct_expected',
+ const data={id:'evt_abc',type:'invoice.paid',created:now,livemode:false,account:'acct_expected',
   data:{object:{id:'in_123',customer:'cus_test123',amount_paid:1299,currency:'usd',status:'paid'}}};
  const body=JSON.stringify(data);
  const sign=(txt:string,t=now)=>'t='+t+',v1='+createHmac('sha256',secret).update(t+'.'+txt).digest('hex');
- const record=stripeInvoicePaidToRevenue(body,sign(body),secret,now,'acct_expected');
+ const record=stripeInvoicePaidToRevenue(body,sign(body),secret,now,'acct_expected',false);
  assert.equal(record?.amountMicros,'12990000');
  assert.equal(record?.customerId,'stripe:cus_test123');
  assert.equal(record?.id,'stripe:invoice:in_123');
  assert.equal(record?.occurredAt,new Date(now*1000).toISOString());
- assert.throws(()=>stripeInvoicePaidToRevenue(body+' ',sign(body),secret,now),/signature/);
- assert.throws(()=>stripeInvoicePaidToRevenue(body,sign(body,now-301),secret,now),/tolerance/);
- assert.throws(()=>stripeInvoicePaidToRevenue(body,sign(body),secret,now,'acct_other'),/account/);
+ assert.throws(()=>stripeInvoicePaidToRevenue(body+' ',sign(body),secret,now,'acct_expected',false),/signature/);
+ assert.throws(()=>stripeInvoicePaidToRevenue(body,sign(body,now-301),secret,now,'acct_expected',false),/tolerance/);
+ assert.throws(()=>stripeInvoicePaidToRevenue(body,sign(body),secret,now,'acct_other',false),/account/);
  assert.throws(()=>stripeInvoicePaidToRevenue(JSON.stringify({...data,data:{object:{...data.data.object,currency:'eur'}}}),
-   sign(JSON.stringify({...data,data:{object:{...data.data.object,currency:'eur'}}})),secret,now),/Non-USD/);
+   sign(JSON.stringify({...data,data:{object:{...data.data.object,currency:'eur'}}})),secret,now,'acct_expected',false),/Non-USD/);
  const other=JSON.stringify({...data,type:'customer.created'});
- assert.equal(stripeInvoicePaidToRevenue(other,sign(other),secret,now),null);
+ assert.equal(stripeInvoicePaidToRevenue(other,sign(other),secret,now,'acct_expected',false),null);
 });
 
 test('Anthropic rejects normalized impossible dates and unsafe cached counts',()=>{
@@ -45,9 +45,9 @@ test('Stripe duplicate/out-of-order invoice events use stable paid_at and valida
  const secret='whsec_synthetic_paid_time',now=1792663200;
  const invoice={id:'in_synthetic',customer:'cus_synthetic',status:'paid',currency:'usd',amount_paid:100,status_transitions:{paid_at:now-100}};
  const convert=(id:string,created:number,object:unknown=invoice)=>{
-  const raw=JSON.stringify({id,type:'invoice.paid',created,data:{object}});
+  const raw=JSON.stringify({id,type:'invoice.paid',created,livemode:false,data:{object}});
   const signature='t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+raw).digest('hex');
-  return stripeInvoicePaidToRevenue(raw,signature,secret,now);
+  return stripeInvoicePaidToRevenue(raw,signature,secret,now,undefined,false);
  };
  assert.deepEqual(convert('evt_first',now-50),convert('evt_second',now));
  assert.equal(convert('evt_first',now)?.occurredAt,new Date((now-100)*1000).toISOString());

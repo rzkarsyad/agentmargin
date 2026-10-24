@@ -4,7 +4,7 @@ import type {RevenueInput,AdjustmentInput} from './index.ts';
 /** Verify the literal, unmodified Stripe raw JSON body. Do not JSON.parse then stringify before verification. */
 function verifiedStripeEvent(
  rawBody:string|Uint8Array,signatureHeader:string,webhookSecret:string,
- nowSeconds=Math.floor(Date.now()/1000),expectedAccount?:string
+ nowSeconds=Math.floor(Date.now()/1000),expectedAccount?:string,expectedLivemode?:boolean
 ):Record<string,unknown>{
  if(!webhookSecret?.startsWith('whsec_')||webhookSecret.length<12)throw new Error('Invalid Stripe signing secret');
  if(typeof signatureHeader!=='string'||signatureHeader.length>3000)throw new Error('Missing or invalid Stripe-Signature header');
@@ -29,16 +29,21 @@ function verifiedStripeEvent(
  if(!event||typeof event!=='object'||Array.isArray(event))throw new Error('Invalid Stripe event');
  const e=event as Record<string,unknown>;
  if(typeof e.id!=='string'||!e.id.startsWith('evt_'))throw new Error('Invalid Stripe event identifier');
- if(expectedAccount&&e.account!==expectedAccount)throw new Error('Stripe account does not match this workspace');
+ if(typeof expectedLivemode!=='boolean')throw new Error('Explicit expectedLivemode is required');
+ if(typeof e.livemode!=='boolean'||e.livemode!==expectedLivemode)throw new Error('Stripe event mode does not match trusted configuration');
+ if(expectedAccount!==undefined&&(!/^acct_[A-Za-z0-9_]{1,190}$/.test(expectedAccount)))throw new Error('Invalid Stripe account routing');
+ if(expectedAccount!==undefined&&e.account!==expectedAccount)throw new Error('Stripe account does not match this workspace');
+ if(e.account!=null&&expectedAccount===undefined)throw new Error('Stripe platform endpoint cannot accept connected-account events without trusted mapping');
  return e;
 }
-/** Verify the raw body before inspecting any invoice evidence. */
+/** @deprecated Use stripeEventToFinancialDelivery for durable account-bound delivery.
+ * Verify raw bytes; an explicit sixth expectedLivemode argument is required. */
 export function stripeInvoicePaidToRevenue(
  rawBody:string|Uint8Array,signatureHeader:string,webhookSecret:string,
- nowSeconds=Math.floor(Date.now()/1000),expectedAccount?:string
+ nowSeconds=Math.floor(Date.now()/1000),expectedAccount?:string,expectedLivemode?:boolean
 ):RevenueInput|null{
- const e=verifiedStripeEvent(rawBody,signatureHeader,webhookSecret,nowSeconds,expectedAccount);
- if(e.type!=='invoice.paid')return null;
+ const e=verifiedStripeEvent(rawBody,signatureHeader,webhookSecret,nowSeconds,expectedAccount,expectedLivemode);
+ if(e.type!=='invoice.paid')return ignoreOrReview(e);
  if(!Number.isSafeInteger(e.created)||Number(e.created)<=0)throw new Error('Invalid Stripe event time');
  const data=e.data;
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Invalid Stripe event data');
@@ -70,6 +75,8 @@ export function stripeInvoicePaidToRevenue(
 
 export interface StripeRefundLink {originalPaymentId:string;customerId:string}
 export interface StripeFinancialOptions {
+ /** Trusted server configuration, never inferred from the incoming event. */
+ expectedLivemode:boolean;
  expectedAccount?:string;
  /** Account owning a dedicated platform webhook secret; platform events omit event.account. */
  platformAccount?:string;
@@ -83,19 +90,20 @@ export type StripeFinancialDelivery =
  * Missing linkage and unsupported currency/allocation require operator reconciliation.
  */
 export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatureHeader:string,webhookSecret:string,
- nowSeconds=Math.floor(Date.now()/1000),options:StripeFinancialOptions={}):StripeFinancialDelivery|null{
- if(options.platformAccount&&(!/^acct_[A-Za-z0-9_]{1,190}$/.test(options.platformAccount)||options.expectedAccount))throw new Error('Invalid Stripe account routing');
- const e=verifiedStripeEvent(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount);
+ nowSeconds=Math.floor(Date.now()/1000),options?:StripeFinancialOptions):StripeFinancialDelivery|null{
+ if(!options||typeof options.expectedLivemode!=='boolean')throw new Error('Explicit expectedLivemode is required');
+ if(options.platformAccount!==undefined&&(!/^acct_[A-Za-z0-9_]{1,190}$/.test(options.platformAccount)||options.expectedAccount!==undefined))throw new Error('Invalid Stripe account routing');
+ const e=verifiedStripeEvent(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount,options.expectedLivemode);
  if(options.platformAccount&&e.account!=null)throw new Error('Stripe platform endpoint cannot accept connected-account events');
  if(!/^evt_[A-Za-z0-9_]{1,196}$/.test(String(e.id)))throw new Error('Invalid Stripe event identifier');
  if(e.account&&!options.expectedAccount)throw new Error('Stripe connected account requires trusted mapping');
  const providerAccount=options.expectedAccount??options.platformAccount??'platform';
  const envelope={providerEventId:e.id as string,providerAccount};
  if(e.type==='invoice.paid')return {kind:'payment',...envelope,
-   record:stripeInvoicePaidToRevenue(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount)!};
+   record:stripeInvoicePaidToRevenue(rawBody,signatureHeader,webhookSecret,nowSeconds,options.expectedAccount,options.expectedLivemode)!};
  if(e.type==='credit_note.voided'||e.type==='charge.dispute.funds_reinstated')
-   throw new Error('Unsupported positive reinstatement requires accounting review');
- if(!['refund.created','refund.updated','credit_note.created'].includes(String(e.type)))return null;
+   throw new StripeAccountingReviewRequired('Unsupported positive reinstatement requires accounting review');
+ if(!['refund.created','refund.updated','credit_note.created'].includes(String(e.type)))return ignoreOrReview(e);
  const obj=(e.data as {object?:unknown}|null)?.object;
  if(!obj||typeof obj!=='object'||Array.isArray(obj))throw new Error('Invalid Stripe financial object');
  const r=obj as Record<string,unknown>;
@@ -110,7 +118,8 @@ export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatu
  const stripeId=(v:unknown,prefix:string):v is string=>typeof v==='string'&&new RegExp('^'+prefix+'_[A-Za-z0-9_]{1,145}$').test(v);
  if(e.type==='refund.created'||e.type==='refund.updated'){
    if(!stripeId(r.id,'re'))throw new Error('Invalid Stripe refund ID');
-   if(['pending','requires_action','failed','canceled'].includes(String(r.status)))return null;
+   if(['pending','requires_action'].includes(String(r.status)))return null;
+   if(['failed','canceled'].includes(String(r.status)))throw new StripeAccountingReviewRequired('Unsupported terminal refund requires accounting review');
    if(r.status!=='succeeded')throw new Error('Unsupported Stripe refund status');
    const link=options.refundLinks?.[r.id];
    if(!link||!/^stripe:invoice:in_[A-Za-z0-9_]+$/.test(link.originalPaymentId)||!/^stripe:cus_[A-Za-z0-9_]+$/.test(link.customerId))
@@ -168,4 +177,18 @@ export function stripeEventToFinancialDelivery(rawBody:string|Uint8Array,signatu
  return {kind:'adjustment',...envelope,record:{originalPaymentId:'stripe:invoice:'+r.invoice,customerId:'stripe:'+r.customer,
    kind:'credit',currency:'USD',amountMicros:micros(r.credit_amount),occurredAt:at.toISOString(),provider:'stripe',providerAccount,
    sourceObjectId:r.id,evidenceRef:'stripe:credit_note:'+r.id}};
+}
+
+/** No automatic retry is appropriate for unsupported accounting semantics.
+ * Integrators must durably quarantine/alert; never claim that money was recorded.
+ */
+export class StripeAccountingReviewRequired extends Error {
+ readonly code='stripe_accounting_review_required';
+ readonly retryable=false;
+ constructor(message='Unsupported Stripe financial event requires accounting review'){super(message);this.name='StripeAccountingReviewRequired';}
+}
+function ignoreOrReview(e:Record<string,unknown>):null{
+ // Deliberately narrow: financial status changes are never silently acknowledged.
+ if(['customer.created','customer.updated','customer.deleted','ping'].includes(String(e.type)))return null;
+ throw new StripeAccountingReviewRequired();
 }

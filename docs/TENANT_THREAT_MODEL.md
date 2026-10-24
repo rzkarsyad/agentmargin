@@ -213,9 +213,9 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | AM-11 | Medium, OPEN: ACL repair precedes probe; no-owner restore inherits privileged owner | Inspect before repair; non-superuser definer ownership |
 | AM-12 | Low, OPEN: non-encrypting hook, inherited DB secrets and crash residue | Reject clear archive, restrict hook environment, controlled residue recovery |
 | AM-13 | Info, CONFIRMED provenance distinction: Mac timing report is founder-attested; tested SHA/raw logs not supplied | Separate operator attestation from independent external verification; do not retract authentic reported execution |
-| AM-14 | Medium, OPEN: Stripe adapter does not require trusted mode | Explicit test/live expectation and mismatch regressions |
-| AM-15 | Medium, OPEN: legacy converter connected-account routing defaults | Reject unmapped accounts and malformed options |
-| AM-16 | Low, OPEN: unsupported financial transitions can return ignored | Visible bounded review disposition; no retry storm |
+| AM-14 | Medium, CONFIRMED then fixed: both converters require explicit expectedLivemode; signed cross-mode/missing-mode negatives | Explicit test/live expectation and mismatch regressions |
+| AM-15 | Medium, CONFIRMED then fixed: legacy converter rejects unmapped/malformed/mismatched connected accounts; API retained with required explicit mode | Reject unmapped accounts and malformed options |
+| AM-16 | Low, CONFIRMED then made visible: typed non-retryable accounting-review error, fixed redacted example diagnostics/422; no automatic reversal policy | Visible bounded review disposition; no retry storm |
 | AM-17 | Medium, OPEN: publishing job has OIDC authority during build/dependency execution | Separate unprivileged build and minimal protected publication |
 | AM-18 | Low, OPEN: mutable workflow/dependency download references | Pin privileged actions and maintain update policy; external image/browser trust |
 

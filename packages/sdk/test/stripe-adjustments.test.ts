@@ -4,9 +4,9 @@ import {createHmac} from 'node:crypto';
 import {stripeEventToFinancialDelivery,type StripeFinancialOptions} from '../src/stripe.ts';
 const now=1800000000,secret='whsec_synthetic_adjustments',account='acct_synthetic';
 const refund={id:'re_partial',created:now-10,status:'succeeded',currency:'usd',amount:11,charge:'ch_synthetic'};
-const options={expectedAccount:account,refundLinks:{re_partial:{originalPaymentId:'stripe:invoice:in_synthetic',customerId:'stripe:cus_synthetic'}}};
+const options={expectedLivemode:false,expectedAccount:account,refundLinks:{re_partial:{originalPaymentId:'stripe:invoice:in_synthetic',customerId:'stripe:cus_synthetic'}}};
 function convert(type:string,object:unknown,opts:StripeFinancialOptions=options){
- const raw=JSON.stringify({id:'evt_synthetic',account,type,created:now,data:{object}});
+ const raw=JSON.stringify({id:'evt_synthetic',account,type,created:now,livemode:false,data:{object}});
  const signature='t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+raw).digest('hex');
  return stripeEventToFinancialDelivery(raw,signature,secret,now,opts);
 }
@@ -15,9 +15,9 @@ test('signed Stripe refunds use stable object time and trusted linkage across de
  assert.deepEqual(a,b);assert.equal(a?.record.amountMicros,'110000');
  assert.equal(a?.record.occurredAt,new Date((now-10)*1000).toISOString());
  assert.equal(convert('refund.updated',{...refund,status:'pending'}),null);
- assert.throws(()=>convert('refund.created',refund,{expectedAccount:account,refundLinks:{}}),/trusted payment mapping/);
+ assert.throws(()=>convert('refund.created',refund,{expectedLivemode:false,expectedAccount:account,refundLinks:{}}),/trusted payment mapping/);
  assert.throws(()=>convert('refund.created',{...refund,currency:'eur'}),/FX evidence/);
- assert.throws(()=>stripeEventToFinancialDelivery('{}','t='+now+',v1='+'0'.repeat(64),secret,now),/signature/);
+ assert.throws(()=>stripeEventToFinancialDelivery('{}','t='+now+',v1='+'0'.repeat(64),secret,now,options),/signature/);
 });
 const credit={id:'cn_credit',created:now-5,status:'issued',type:'post_payment',currency:'usd',invoice:'in_synthetic',customer:'cus_synthetic',
  pre_payment_amount:0,post_payment_amount:7,credit_amount:7,refund_amount:0,out_of_band_amount:0,refund:null,customer_balance_transaction:'cbtxn_synthetic'};

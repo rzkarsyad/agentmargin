@@ -3,10 +3,12 @@
  */
 import {readFileSync} from 'node:fs';
 import * as http from 'node:http';
-import {AgentMarginClient,stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery,type StripeRefundLink} from '../packages/sdk/src/index.ts';
+import {AgentMarginClient,stripeInvoicePaidToRevenue,stripeEventToFinancialDelivery,StripeAccountingReviewRequired,type StripeRefundLink} from '../packages/sdk/src/index.ts';
 const secret=process.env.STRIPE_WEBHOOK_SECRET;
 const key=process.env.AGENTMARGIN_API_KEY;
 if(!secret||!key)throw new Error('Set STRIPE_WEBHOOK_SECRET and AGENTMARGIN_API_KEY in the local shell');
+// This loopback example accepts test-mode events only, with a trusted constant.
+const expectedLivemode=false;
 const client=new AgentMarginClient({endpoint:process.env.AGENTMARGIN_ENDPOINT??'http://127.0.0.1:8787',apiKey:key});
 const refundLinks:Record<string,StripeRefundLink>=process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE?
  JSON.parse(readFileSync(process.env.AGENTMARGIN_STRIPE_REFUND_LINKS_FILE,'utf8')):{};
@@ -30,8 +32,12 @@ http.createServer(async(req,res)=>{
   const data=Buffer.concat(chunks);
   if(process.env.AGENTMARGIN_DURABLE_REVENUE==='true'){
     let delivery;
-    try{delivery=stripeEventToFinancialDelivery(data,header,secret!,Math.floor(Date.now()/1000),{expectedAccount,platformAccount,refundLinks});}
+    try{delivery=stripeEventToFinancialDelivery(data,header,secret!,Math.floor(Date.now()/1000),{expectedLivemode,expectedAccount,platformAccount,refundLinks});}
     catch(error){
+      if(error instanceof StripeAccountingReviewRequired){
+        console.error(JSON.stringify({kind:error.code,retryable:false}));
+        res.writeHead(422).end('{"error":"accounting_review_required"}');return;
+      }
       // Valid but unsupported/unmapped financial evidence must not be acknowledged
       // as successfully recorded. Integrators must alert on these repeated errors.
       const unresolved=error instanceof Error&&/^(Unsupported|Stripe .*requires)/.test(error.message);
@@ -42,8 +48,14 @@ http.createServer(async(req,res)=>{
     else await client.enqueueAdjustmentDelivery(delivery,AbortSignal.timeout(5000));
   }else{
     let record;
-    try{record=stripeInvoicePaidToRevenue(data,header,secret!,Math.floor(Date.now()/1000),expectedAccount);}
-    catch{res.writeHead(400).end();return;}
+    try{record=stripeInvoicePaidToRevenue(data,header,secret!,Math.floor(Date.now()/1000),expectedAccount,expectedLivemode);}
+    catch(error){
+      if(error instanceof StripeAccountingReviewRequired){
+        console.error(JSON.stringify({kind:error.code,retryable:false}));
+        res.writeHead(422).end('{"error":"accounting_review_required"}');return;
+      }
+      res.writeHead(400).end();return;
+    }
     if(!record){res.writeHead(200).end('{"ignored":true}');return;}
     await client.trackRevenue([record]);
   }

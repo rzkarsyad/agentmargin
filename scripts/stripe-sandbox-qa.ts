@@ -77,7 +77,7 @@ const accept=async(raw:Buffer,signature:string,event:Record<string,any>)=>{
  if(o.currency!=='usd')throw new QaFailure('unsupported_fx',422);
  if(!allowedInvoices.has(o.id)&&!allowedInvoices.has(o.invoice)&&!links[o.id])throw new QaFailure('fixture_mapping_pending',503);
  let delivery;
- try{delivery=stripeEventToFinancialDelivery(raw,signature,listenerInfo.secret,Math.floor(Date.now()/1000),{platformAccount:account,refundLinks:links});}
+ try{delivery=stripeEventToFinancialDelivery(raw,signature,listenerInfo.secret,Math.floor(Date.now()/1000),{expectedLivemode:false,platformAccount:account,refundLinks:links});}
  catch{throw new QaFailure('normalization',422);}
  try{
   if(delivery?.kind==='payment')await client!.enqueueRevenueDelivery(delivery,AbortSignal.timeout(10000));

@@ -21,7 +21,7 @@ export async function testV09FinancialFixture(pool:pg.Pool,runtimeURL:string){
  const normalize=(id:string,type:string,object:unknown)=>{
    const raw=JSON.stringify({id,type,created:now,livemode:false,api_version:'2026-09-30.endive',data:{object}});
    const signature='t='+now+',v1='+createHmac('sha256',secret).update(now+'.'+raw).digest('hex');
-   return stripeEventToFinancialDelivery(raw,signature,secret,now,{platformAccount:account,refundLinks:links});
+   return stripeEventToFinancialDelivery(raw,signature,secret,now,{expectedLivemode:false,platformAccount:account,refundLinks:links});
  };
  const reductions=[normalize('evt_625','refund.created',objects[0]),normalize('evt_9900','refund.created',objects[1]),normalize('evt_1200','credit_note.created',credit)];
  const payments=[29,99].map(n=>normalize('evt_paid'+n,'invoice.paid',{id:'in_'+n,customer,currency:'usd',status:'paid',amount_paid:n*100,status_transitions:{paid_at:now-10}}));
