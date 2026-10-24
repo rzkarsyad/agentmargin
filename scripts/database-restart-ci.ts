@@ -11,7 +11,7 @@ const env={...process.env};
 for(const key of ['DOCKER_HOST','DOCKER_CONTEXT','DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'])delete env[key];
 const docker=(args:string[])=>execFileSync('docker',['--host=unix:///var/run/docker.sock',...args],{env,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:45000});
 const config=JSON.parse(docker(['inspect',id]))[0];
-if(config.Config.Image!=='postgres:16'||!config.Config.Env.includes('POSTGRES_DB=agentmargin_ci')||!config.Config.Env.includes('POSTGRES_USER=agentmargin_ci'))throw new Error('Wrong service identity');
+if(config.Config.Image!=='postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'||!config.Config.Env.includes('POSTGRES_DB=agentmargin_ci')||!config.Config.Env.includes('POSTGRES_USER=agentmargin_ci'))throw new Error('Wrong service identity');
 const store=new PostgresEventStore(url);let disconnects=0;
 store.pool.on('error',()=>{disconnects++;});
 const tables=['revenue_records','revenue_adjustments','revenue_payment_sources','revenue_deliveries','adjustment_deliveries','delivery_history','delivery_requeues'];
