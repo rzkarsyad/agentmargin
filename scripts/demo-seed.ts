@@ -92,6 +92,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const pool = new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:5000});
   const apiKey = `am_${randomBytes(32).toString('base64url')}`;
   try {
+    // This CLI is guarded to the disposable loopback demo above. Fresh API pool
+    // connections must inherit the same safe logging contract as runtime roles.
+    await pool.query('ALTER ROLE agentmargin_demo SET log_parameter_max_length=0; ALTER ROLE agentmargin_demo SET log_parameter_max_length_on_error=0; ALTER ROLE agentmargin_demo SET auto_explain.log_parameter_max_length=0; ALTER ROLE agentmargin_demo SET auto_explain.log_min_duration=-1; ALTER ROLE agentmargin_demo SET pgaudit.log_parameter=off');
     await provisionDemo(pool,apiKey);
     process.stdout.write('\nSynthetic demo workspace created. Never use with real customer records.\n');
     process.stdout.write(`Demo API key (visible once; keep local): ${apiKey}\n`);
