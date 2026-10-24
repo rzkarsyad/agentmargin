@@ -7,14 +7,19 @@ set -euo pipefail
 umask 077
 fixture=$(mktemp -d)
 restored=''
+restore_owner=''
 cleanup(){
  local code=$?
  trap - EXIT
  if [[ -n "$restored" ]]; then dropdb --if-exists "$restored" || code=1; fi
+ if [[ -n "$restore_owner" ]]; then psql -Xq -v ON_ERROR_STOP=1 -c "DROP ROLE \"$restore_owner\"" >/dev/null || code=1; fi
  rm -rf -- "$fixture" || code=1
  exit "$code"
 }
 trap cleanup EXIT
+source scripts/lib/restore-fixture.sh
+prepare_restore_fixture
+snapshot_restore_fingerprints "$fixture/source-fingerprints"
 started=$SECONDS
 mkdir "$fixture/backups" "$fixture/external" "$fixture/recovery-store" "$fixture/recovered"
 # The encryption hook uses a public recipient certificate. Private key recovery
@@ -22,17 +27,20 @@ mkdir "$fixture/backups" "$fixture/external" "$fixture/recovery-store" "$fixture
 # separation, a remote vault test, or an external-storage claim.
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=agentmargin-synthetic-backup \
  -keyout "$fixture/initial-key" -out "$fixture/recipient" >/dev/null 2>&1
+openssl genpkey -algorithm ED25519 -out "$fixture/signing-key" >/dev/null 2>&1
+openssl pkey -in "$fixture/signing-key" -pubout -out "$fixture/trusted-origin" >/dev/null 2>&1
 cp "$fixture/initial-key" "$fixture/recovery-store/recovery-key"
 rm "$fixture/initial-key"
 cat > "$fixture/encrypt" <<'HOOK'
 #!/usr/bin/env bash
 set -euo pipefail
-openssl cms -encrypt -aes-256-gcm -binary -in "$1" -outform DER -out "$2" "$BACKUP_FIXTURE/recipient"
+openssl cms -encrypt -aes-256-gcm -binary -in "$1" -outform DER -out "$2" -recip "$AGENTMARGIN_BACKUP_HOOK_CONFIG/recipient" -keyopt rsa_padding_mode:oaep -keyopt rsa_oaep_md:sha256
 HOOK
 cat > "$fixture/upload" <<'HOOK'
 #!/usr/bin/env bash
 set -euo pipefail
-cp -- "$1" "$BACKUP_FIXTURE/external/$2"
+[[ -z "${PGPASSWORD+x}" && -z "${DATABASE_URL+x}" && -z "${AGENTMARGIN_BACKUP_SIGNING_KEY+x}" ]]
+cp -- "$1" "$AGENTMARGIN_BACKUP_HOOK_CONFIG/external/$2"
 HOOK
 cat > "$fixture/prune" <<'HOOK'
 #!/usr/bin/env bash
@@ -43,11 +51,11 @@ cat > "$fixture/recover-key" <<'HOOK'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ ! -e "$1" ]]
-cp -- "$BACKUP_FIXTURE/recovery-store/recovery-key" "$1"
+cp -- "$AGENTMARGIN_BACKUP_HOOK_CONFIG/recovery-store/recovery-key" "$1"
 chmod 600 "$1"
 HOOK
 chmod 700 "$fixture/encrypt" "$fixture/upload" "$fixture/prune" "$fixture/recover-key"
-export BACKUP_FIXTURE=$fixture AGENTMARGIN_BACKUP_DIR="$fixture/backups" \
+export AGENTMARGIN_BACKUP_HOOK_CONFIG=$fixture AGENTMARGIN_BACKUP_SIGNING_KEY="$fixture/signing-key" AGENTMARGIN_BACKUP_DIR="$fixture/backups" \
  AGENTMARGIN_BACKUP_ENCRYPT="$fixture/encrypt" AGENTMARGIN_BACKUP_UPLOAD="$fixture/upload" \
  AGENTMARGIN_BACKUP_PRUNE="$fixture/prune"
 # Unsafe ancestors/hook modes must fail before pg_dump, hook execution or a
@@ -70,9 +78,23 @@ touch -d '10 days ago' "$fixture/backups/agentmargin-old.dump.enc" "$fixture/bac
 bash scripts/postgres-backup.sh
 [[ ! -e "$fixture/backups/agentmargin-old.dump.enc" && -e "$fixture/backups/unrelated.dump.enc" ]]
 [[ ! -e "$fixture/backups/agentmargin-expired-boundary.dump.enc" && -e "$fixture/backups/agentmargin-fresh-boundary.dump.enc" ]]
-[[ $(find "$fixture/external" -type f | wc -l) == 1 ]]
-archive=("$fixture/external/"*)
+[[ $(find "$fixture/external" -type f | wc -l) == 3 ]]
+archive=("$fixture/external/"*.dump.enc)
 archive=${archive[0]}
+manifest=${archive%.dump.enc}.manifest
+signature=${archive%.dump.enc}.sig
+bash scripts/verify-backup-origin.sh "$archive" "$manifest" "$signature" "$fixture/trusted-origin"
+# Anyone with the recipient certificate can encrypt a NEW envelope. It still
+# must not pass archive-origin verification under our separately held trust root.
+mkdir "$fixture/substitution"
+substituted="$fixture/substitution/$(basename -- "$archive")"
+printf 'synthetic archive substitute' > "$fixture/other-input"
+"$fixture/encrypt" "$fixture/other-input" "$substituted"
+if bash scripts/verify-backup-origin.sh "$substituted" "$manifest" "$signature" "$fixture/trusted-origin" >/dev/null 2>&1; then exit 1; fi
+if bash scripts/verify-backup-origin.sh "$archive" "$manifest" "$fixture/missing-signature" "$fixture/trusted-origin" >/dev/null 2>&1; then exit 1; fi
+openssl genpkey -algorithm ED25519 -out "$fixture/wrong-signing-key" >/dev/null 2>&1
+openssl pkeyutl -sign -rawin -inkey "$fixture/wrong-signing-key" -in "$manifest" -out "$fixture/wrong-signature" >/dev/null 2>&1
+if bash scripts/verify-backup-origin.sh "$archive" "$manifest" "$fixture/wrong-signature" "$fixture/trusted-origin" >/dev/null 2>&1; then exit 1; fi
 # Recover the key only after the writer completed. A missing/wrong key and a
 # truncated authenticated envelope MUST fail before pg_restore is permitted.
 if openssl cms -decrypt -binary -inform DER -in "$archive" -inkey "$fixture/recovered/key" \
@@ -102,12 +124,11 @@ pg_restore --list "$fixture/restorable.dump" >/dev/null
 actual_sha=$(sha256sum "$archive"); actual_sha=${actual_sha%% *}
 [[ "$(cat "$fixture/backups/last-success.json")" == *"\"archiveSha256\":\"$actual_sha\""* ]]
 restored="agentmargin_backup_ci_$(openssl rand -hex 6)"
-createdb --template=template0 "$restored"
-pg_restore --exit-on-error --no-owner --no-acl --dbname="$restored" "$fixture/restorable.dump"
-for table in workspaces workspace_api_keys customers price_versions workspace_price_versions usage_events revenue_records revenue_deliveries revenue_adjustments revenue_payment_sources adjustment_deliveries delivery_history delivery_requeues; do
-  query="SELECT md5(coalesce(string_agg(to_jsonb(t)::text, ',' ORDER BY to_jsonb(t)::text),'')) FROM $table t"
-  [[ "$(psql -XAt -v ON_ERROR_STOP=1 -c "$query")" == "$(psql -XAt -v ON_ERROR_STOP=1 -d "$restored" -c "$query")" ]]
-done
+revoke_source_fixture
+createdb --template=template0 --owner="$restore_owner" "$restored"
+pg_restore --exit-on-error --no-owner --role="$restore_owner" --dbname="$restored" "$fixture/restorable.dump"
+compare_restore_fingerprints "$restored" "$fixture/restored-fingerprints"
+
 cp "$fixture/backups/last-success.json" "$fixture/before.json"
 expect_failure(){
  if "$@" > "$fixture/failure.log" 2>&1; then exit 1; fi
@@ -118,8 +139,24 @@ expect_failure(){
 }
 expect_failure env AGENTMARGIN_BACKUP_UPLOAD=/bin/false bash scripts/postgres-backup.sh
 expect_failure env AGENTMARGIN_BACKUP_ENCRYPT=/bin/false bash scripts/postgres-backup.sh
+cat > "$fixture/plaintext-encrypt" <<'HOOK'
+#!/usr/bin/env bash
+cp -- "$1" "$2"
+HOOK
+chmod 700 "$fixture/plaintext-encrypt"
+expect_failure env AGENTMARGIN_BACKUP_ENCRYPT="$fixture/plaintext-encrypt" bash scripts/postgres-backup.sh
 expect_failure env AGENTMARGIN_BACKUP_PRUNE=/bin/false bash scripts/postgres-backup.sh
 expect_failure env PGDATABASE=agentmargin_nonexistent_qa bash scripts/postgres-backup.sh
+# Simulate crash residue, not an actual unbounded orphan process. A retry must
+# refuse to delete or upload it; operator investigation is required.
+mkdir "$fixture/backups/.work-CRASH123"
+printf 'fictional plaintext residue' > "$fixture/backups/.work-CRASH123/plain.dump"
+if bash scripts/postgres-backup.sh > "$fixture/residue.log" 2>&1; then exit 1; fi
+[[ -s "$fixture/backups/.work-CRASH123/plain.dump" && ! -d "$fixture/backups/.backup-lock" ]]
+cmp "$fixture/backups/last-success.json" "$fixture/before.json"
+# Explicit disposal of only this known fictional fixture under the test owner.
+rm -- "$fixture/backups/.work-CRASH123/plain.dump"
+rmdir "$fixture/backups/.work-CRASH123"
 # An overlap never steals or removes the lock held by another run.
 mkdir "$fixture/backups/.backup-lock"
 if bash scripts/postgres-backup.sh >/dev/null 2>&1; then exit 1; fi

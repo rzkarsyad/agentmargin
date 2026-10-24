@@ -208,11 +208,11 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | AM-06 | Low, CONFIRMED then contained: payload-only INSERT grants and ledger-backed completion trigger; negative probes and normal admin requeue tests | Restrict initial payload and verify completion evidence |
 | AM-07 | Medium residual, CONFIRMED: admitted/cursor/held results survive revocation; next statement denies | Human boundary decision and session containment; no absolute timeout claim |
 | AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings and combined tree includes #33 | Exact-source scan/triage and protected integration remain required |
-| AM-09 | Medium, OPEN: public-key envelope integrity is not archive origin authentication | Separate signing trust root and pre-restore verification |
-| AM-10 | Medium, OPEN: pre-revocation backup can restore active credentials | Quarantine and independently durable revocation evidence |
-| AM-11 | Medium, OPEN: ACL repair precedes probe; no-owner restore inherits privileged owner | Inspect before repair; non-superuser definer ownership |
-| AM-12 | Low, OPEN: non-encrypting hook, inherited DB secrets and crash residue | Reject clear archive, restrict hook environment, controlled residue recovery |
-| AM-13 | Info, CONFIRMED provenance distinction: Mac timing report is founder-attested; tested SHA/raw logs not supplied | Separate operator attestation from independent external verification; do not retract authentic reported execution |
+| AM-09 | Medium, CONFIRMED then contained: Ed25519 signed origin manifest verified before decrypt/restore; fresh encrypted substitute/missing/wrong signature rejected | Separate signing trust root and pre-restore verification |
+| AM-10 | Medium, CONFIRMED then quarantined: backup-before/source-revoke/restore reproduction; all restored keys revoked before runtime provision; selective reuse unsupported without independent evidence | Quarantine and independently durable revocation evidence |
+| AM-11 | Medium, CONFIRMED then fixed in drills: preserved ACLs, fresh non-superuser owner, pre-repair PUBLIC/owner drift rejection and full installed-contract comparison | Inspect before repair; non-superuser definer ownership |
+| AM-12 | Low, CONFIRMED then contained: obvious plaintext rejected; minimal hook environment; residue blocks retry until explicit operator recovery; SIGKILL physical erasure remains unsupported | Reject clear archive, restrict hook environment, controlled residue recovery |
+| AM-13 | Info, documentation corrected: separate operator attestation and independent-verification columns; authentic Mac report retained, exact-source reproducibility INCONCLUSIVE | Separate operator attestation from independent external verification; do not retract authentic reported execution |
 | AM-14 | Medium, CONFIRMED then fixed: both converters require explicit expectedLivemode; signed cross-mode/missing-mode negatives | Explicit test/live expectation and mismatch regressions |
 | AM-15 | Medium, CONFIRMED then fixed: legacy converter rejects unmapped/malformed/mismatched connected accounts; API retained with required explicit mode | Reject unmapped accounts and malformed options |
 | AM-16 | Low, CONFIRMED then made visible: typed non-retryable accounting-review error, fixed redacted example diagnostics/422; no automatic reversal policy | Visible bounded review disposition; no retry storm |
@@ -249,3 +249,23 @@ preflight must not be interpreted as permission to read real customer data here.
 016 SHA-256: `2fc5dfb4b639f08a40a493dc752908c090af479c94c273fcc9ee49dbac1a3bdd`. Automated tests are synthetic; extension inventory, real remote TLS CA/hostname rejection, distributed ingress and independent architectural approval remain external gates.
 
 Runtime follow-up local verification: full npm run check PASS (122 passed, one existing TODO), PostgreSQL 16 complete suite PASS and actual synthetic server-log parameter regression PASS. No human risk acceptance is inferred.
+
+
+The recovery follow-up does not introduce a schema migration or change 001–016.
+`quarantine_restored_credentials.psql` is an explicit operator-run recovery step,
+not normal boot or production migration. In a separate quarantined restore it
+invalidates all restored bearer keys, including unknown post-backup revocations;
+new keys require separate authorized issuance. This does not clear shared runtime,
+cursor/in-flight, incident policy or independently durable audit-history gates.
+The backup signing key must remain outside storage-credential authority; signatures
+without independently trusted freshness/inventory do not prevent rollback to an
+old valid archive. Same-UID malicious hook/host root and stolen signing keys are
+not contained. Non-superuser ownership limits cluster privilege, not the financial
+database damage a schema owner can cause; only approved origins are restored.
+
+Recovery follow-up local verification: full npm run check PASS (124 passed, one
+existing TODO); full PostgreSQL 16 security/financial/concurrency/privacy suite
+PASS; both source-ACL/non-superuser restore and signed/encrypted/key-recovery drills
+PASS (3 seconds each on tiny fixtures). ExternalStorageVerified=false and
+productionRtoMeasured=false. The warning from the earlier Mac report remains an
+environment observation only, not network isolation or vulnerability evidence.

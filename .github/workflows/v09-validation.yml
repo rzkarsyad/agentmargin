@@ -43,7 +43,7 @@ jobs:
       - run: npm run check
       - name: Validate demo shell and Docker Compose config
         run: |
-          bash -n scripts/demo-local.sh scripts/operator-recovery-drill.sh scripts/postgres-backup.sh scripts/backup-automation-ci.sh scripts/postgres-restored-probes.sh
+          bash -n scripts/demo-local.sh scripts/operator-recovery-drill.sh scripts/postgres-backup.sh scripts/backup-automation-ci.sh scripts/postgres-restored-probes.sh scripts/verify-backup-origin.sh scripts/lib/restore-fixture.sh
           docker compose -f compose.demo.yml config --quiet
       - name: Verify newcomer quickstart example
         run: node --experimental-strip-types examples/calculate-margin.ts

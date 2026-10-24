@@ -7,25 +7,34 @@ restored_db=${1:-}
    "${PGUSER:-}" == agentmargin_ci && \
    "$restored_db" =~ ^agentmargin_(restore|backup)_ci_[a-f0-9]{12}$ ]] || exit 2
 sql() { psql -XAt -v ON_ERROR_STOP=1 --dbname="$restored_db" -c "$1"; }
-# --no-acl deliberately omits original ACLs. Quarantine those default function
-# grants before any runtime access. The runtime template repeats this step and
-# grants only its exact public entry points when an operator provisions a role.
-sql 'REVOKE ALL ON SCHEMA agentmargin_auth FROM PUBLIC;
-     REVOKE ALL ON ALL FUNCTIONS IN SCHEMA agentmargin_auth FROM PUBLIC' >/dev/null
+# Inspect BEFORE repair: no ACL revocation may make this probe tautological.
+[[ "${AGENTMARGIN_RESTORE_OWNER:-}" =~ ^agentmargin_restore_owner_[a-f0-9]{12}$ && -n "${AGENTMARGIN_RESTORE_OWNER_PASSWORD:-}" ]] || exit 2
+owner_sql(){ PGUSER="$AGENTMARGIN_RESTORE_OWNER" PGPASSWORD="$AGENTMARGIN_RESTORE_OWNER_PASSWORD" psql -XAt -v ON_ERROR_STOP=1 --dbname="$restored_db" -c "$1"; }
 predicates=(
  "SELECT count(*)=2 FROM pg_catalog.pg_trigger WHERE tgname='enforce_delivery_transition' AND tgfoid='agentmargin_auth.enforce_delivery_transition()'::regprocedure AND tgenabled='O'"
  "SELECT count(*)=10 FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace AND relrowsecurity"
  "SELECT count(*)=3 FROM pg_catalog.pg_proc WHERE oid IN ('agentmargin_auth.validate_adjustment()'::regprocedure,'agentmargin_auth.validate_stripe_adjustment_source()'::regprocedure,'agentmargin_auth.record_delivery_transition()'::regprocedure) AND prosecdef AND proconfig @> ARRAY['search_path=pg_catalog, pg_temp']"
  "SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.pronamespace='agentmargin_auth'::regnamespace AND a.grantee=0 AND a.privilege_type='EXECUTE')"
+ "SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles r ON r.oid=p.proowner WHERE p.pronamespace='agentmargin_auth'::regnamespace AND (r.rolsuper OR r.rolbypassrls OR r.rolname<>'$AGENTMARGIN_RESTORE_OWNER' OR (p.prosecdef AND NOT p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp'])))"
+ "SELECT NOT EXISTS((SELECT * FROM agentmargin_auth.installed_contract() EXCEPT SELECT * FROM agentmargin_auth.security_contract) UNION ALL (SELECT * FROM agentmargin_auth.security_contract EXCEPT SELECT * FROM agentmargin_auth.installed_contract()))"
  "SELECT count(*)=0 FROM agentmargin_auth.principal(NULL)"
  "SELECT NOT EXISTS(SELECT 1 FROM revenue_adjustments a JOIN revenue_records p ON p.workspace_id=a.workspace_id AND p.id=a.original_payment_id WHERE a.customer_id<>p.customer_id OR a.currency<>p.currency OR a.occurred_at<p.occurred_at)"
  "SELECT NOT EXISTS(SELECT 1 FROM revenue_records p JOIN (SELECT workspace_id,original_payment_id,sum(amount_micros) AS reductions FROM revenue_adjustments GROUP BY workspace_id,original_payment_id) a ON a.workspace_id=p.workspace_id AND a.original_payment_id=p.id WHERE a.reductions>p.amount_micros)"
- "SELECT NOT EXISTS(SELECT 1 FROM revenue_adjustments a LEFT JOIN revenue_payment_sources s ON a.workspace_id=s.workspace_id AND a.original_payment_id=s.record_id AND a.provider_account=s.provider_account WHERE a.provider='stripe' AND s.record_id IS NULL)"
+ "SELECT NOT EXISTS(SELECT 1 FROM revenue_adjustments a LEFT JOIN revenue_payment_sources s ON a.workspace_id=s.workspace_id AND a.original_payment_id=s.record_id AND a.provider_account=s.provider_account WHERE (a.provider='stripe' AND s.record_id IS NULL) OR EXISTS(SELECT 1 FROM revenue_payment_sources bound WHERE bound.workspace_id=a.workspace_id AND bound.record_id=a.original_payment_id AND (a.provider<>'stripe' OR a.provider_account<>bound.provider_account)))"
 )
 for predicate in "${predicates[@]}"; do
   [[ "$(sql "$predicate")" == t ]] || { echo 'Post-restore security/financial probe failed.' >&2; exit 1; }
 done
 echo 'Post-restore RLS, private definer ACLs, missing-proof denial and financial integrity: PASSED (synthetic only)'
+
+# Demonstrate the pre-revocation backup risk while isolated, then fail closed.
+[[ "${AGENTMARGIN_RESTORE_PRE_REVOKE_KEY:-}" =~ ^am_[a-f0-9]{64}$ ]] || exit 2
+[[ $(sql "SELECT count(*) FROM agentmargin_auth.principal('$AGENTMARGIN_RESTORE_PRE_REVOKE_KEY')") == 1 ]] || exit 1
+psql -Xq -v ON_ERROR_STOP=1 --dbname="$restored_db" -v restore_database="$restored_db" \
+ -v restore_confirmation=invalidate-all-restored-keys -f db/quarantine_restored_credentials.psql >/dev/null
+[[ $(sql "SELECT count(*) FROM agentmargin_auth.principal('$AGENTMARGIN_RESTORE_PRE_REVOKE_KEY')") == 0 ]] || exit 1
+[[ $(sql 'SELECT count(*) FROM workspace_api_keys WHERE revoked_at IS NULL') == 0 ]] || exit 1
+echo 'Pre-revocation backup resurrection REPRODUCED; restored keys quarantined before runtime provisioning: PASSED'
 
 # Authenticate a genuine fresh restricted LOGIN, not SET ROLE in an owner
 # session (session_user owner exemptions would make that a misleading probe).
@@ -46,7 +55,7 @@ cleanup_probe(){
 sql "CREATE ROLE \"$probe_role\" LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '$probe_password'" >/dev/null
 trap cleanup_probe EXIT
 psql -X -v ON_ERROR_STOP=1 --dbname="$restored_db" -v runtime_role="$probe_role" -f db/runtime_privileges.psql >/dev/null
-sql "INSERT INTO public.workspaces(id,name) VALUES('$probe_tenant','agentmargin-qa restore A'),('$probe_other','agentmargin-qa restore B');
+owner_sql "INSERT INTO public.workspaces(id,name) VALUES('$probe_tenant','agentmargin-qa restore A'),('$probe_other','agentmargin-qa restore B');
  INSERT INTO public.workspace_api_keys(id,workspace_id,key_digest,name,access_role) VALUES
  (gen_random_uuid(),'$probe_tenant',encode(sha256(convert_to('$probe_key','UTF8')),'hex'),'restore-probe','admin'),
  (gen_random_uuid(),'$probe_other',encode(sha256(convert_to('$probe_other_key','UTF8')),'hex'),'restore-probe','admin');

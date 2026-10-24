@@ -19,6 +19,7 @@ fi
 backup_dir=$(mktemp -d)
 backup_file="$backup_dir/agentmargin-ci.dump"
 restore_created=0
+restore_owner=''
 cleanup() {
   local exit_code=$?
   trap - EXIT
@@ -29,7 +30,9 @@ cleanup() {
     fi
   fi
   if ! rm -f -- "$backup_file"; then exit_code=1; fi
+  rm -f -- "$backup_dir/source-fingerprints" "$backup_dir/restored-fingerprints"
   if ! rmdir -- "$backup_dir"; then exit_code=1; fi
+  if [[ -n "$restore_owner" ]]; then psql -Xq -v ON_ERROR_STOP=1 -c "DROP ROLE \"$restore_owner\"" >/dev/null || exit_code=1; fi
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -47,25 +50,20 @@ if [[ "$(sql "$source_db" 'SELECT count(*) FROM public.workspaces')" -lt 2 || \
   exit 2
 fi
 
+source scripts/lib/restore-fixture.sh
+prepare_restore_fixture
+snapshot_restore_fingerprints "$backup_dir/source-fingerprints"
 restore_started=$SECONDS
-pg_dump --format=custom --no-owner --no-acl --file="$backup_file" "$source_db"
+pg_dump --format=custom --no-owner --file="$backup_file" "$source_db"
 pg_restore --list "$backup_file" >/dev/null
-createdb --template=template0 -- "$restore_db"
+revoke_source_fixture
+createdb --template=template0 --owner="$restore_owner" -- "$restore_db"
 restore_created=1
-pg_restore --exit-on-error --no-owner --no-acl --dbname="$restore_db" "$backup_file"
+pg_restore --exit-on-error --no-owner --role="$restore_owner" --dbname="$restore_db" "$backup_file"
 
 # Check exact restored logical rows (including hashed API-key records) without
 # printing values, plus integrity-related schema objects such as constraints.
-for table in workspaces workspace_api_keys customers price_versions \
-             workspace_price_versions usage_events revenue_records revenue_deliveries revenue_adjustments revenue_payment_sources adjustment_deliveries delivery_history delivery_requeues; do
-  query="SELECT count(*)::text || ':' || md5(coalesce(string_agg(to_jsonb(t)::text, E'\\n' ORDER BY to_jsonb(t)::text), '')) FROM public.\"$table\" t"
-  original=$(sql "$source_db" "$query")
-  restored=$(sql "$restore_db" "$query")
-  if [[ "$original" != "$restored" ]]; then
-    echo "Restore verification mismatch for table: $table" >&2
-    exit 1
-  fi
-done
+compare_restore_fingerprints "$restore_db" "$backup_dir/restored-fingerprints"
 
 for query in \
   "SELECT count(*) FROM pg_constraint WHERE connamespace='public'::regnamespace" \
@@ -77,5 +75,17 @@ for query in \
   fi
 done
 
+expect_contract_failure(){
+ if bash scripts/postgres-restored-probes.sh "$restore_db" > "$backup_dir/probe-failure" 2>&1; then exit 1; fi
+ [[ $(cat "$backup_dir/probe-failure") == *'Post-restore security/financial probe failed.'* ]]
+ rm -- "$backup_dir/probe-failure"
+}
+# Inspect drift BEFORE any repair. Each probe must reject its actual bad state.
+sql "$restore_db" 'GRANT EXECUTE ON FUNCTION agentmargin_auth.principal(text) TO PUBLIC' >/dev/null
+expect_contract_failure
+sql "$restore_db" 'REVOKE EXECUTE ON FUNCTION agentmargin_auth.principal(text) FROM PUBLIC' >/dev/null
+sql "$restore_db" 'ALTER FUNCTION agentmargin_auth.principal(text) OWNER TO agentmargin_ci' >/dev/null
+expect_contract_failure
+sql "$restore_db" "ALTER FUNCTION agentmargin_auth.principal(text) OWNER TO \"$restore_owner\"" >/dev/null
 bash scripts/postgres-restored-probes.sh "$restore_db"
 echo "PostgreSQL 16 restore drill: PASSED (full archive, row fingerprints, schema checks; synthetic dump/restore elapsed $((SECONDS-restore_started)) seconds)."
