@@ -155,6 +155,11 @@ export class PostgresEventStore implements EventStore {
           AND has_function_privilege(current_user,p.oid,'EXECUTE'))=3
         AND NOT EXISTS ((SELECT * FROM agentmargin_auth.installed_contract() EXCEPT SELECT * FROM agentmargin_auth.security_contract)
           UNION ALL (SELECT * FROM agentmargin_auth.security_contract EXCEPT SELECT * FROM agentmargin_auth.installed_contract()))
+        -- Anchor the installation baseline to a clean 001–016 source contract.
+        -- A pre-existing weak policy must not be blessed by capturing its hash.
+        AND (SELECT encode(sha256(convert_to(string_agg(kind||chr(10)||identity||chr(10)||digest,chr(10)
+          ORDER BY kind COLLATE "C",identity COLLATE "C"),'UTF8')),'hex') FROM agentmargin_auth.security_contract)
+          ='b85b4896a7c818c4956b065b337f262618b62af3910c088af21e3db7837ad95c'
         AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.pronamespace='agentmargin_auth'::regnamespace
           AND p.proowner<>(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.workspaces'::regclass))
         AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
