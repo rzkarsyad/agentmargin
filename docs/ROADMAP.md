@@ -18,7 +18,7 @@ methods; platform and SDK milestones deliberately differ). Neither is published.
 | v0.5 analytics/pricing | Supported contract plus private CSV validation and actual SDK/API/PG replay implemented | Baseline on main; billing follow-up stacked after #36 | Exact event rounding, effective prices, unknown costs, duplicates, pagination and tenant boundaries; synthetic replay in CI | **Operator PASS: second genuine 10/5/0 request, identity preserved, local cost 4 micros; org delta 3.5**. Reported total 13 vs 12.5, +0.5 event-rounding variance; org allocation unproven | Candidate review open | INCONCLUSIVE: historical price authority, project/key billing allocation, wider tier/cache/product coverage, rounding materiality and financial policy sign-off |
 | v0.6 integrations | Supported USD platform-account flow implemented and sandbox-validated | Original adapters on main; durable/current-schema fixes PR only | SDK/signature/current+legacy nullable allocation regressions; restricted PostgreSQL signed-delivery tests | **PASS: operator-verified Moland signed recovery**, eight receipts / seven accepted / EUR rejected; [aggregate evidence](INTEGRATIONS.md#genuine-sandbox-qa-harness-and-recovery) | Independent account/routing and CodeQL review open | Signed sandbox acceptance passed; account-bound integration review and approved protected integration remain. FX/mixed/multi-account extensions are not claimed |
 | v0.7 security | Implemented candidate boundary; residual powers remain | PR only | PostgreSQL 16 007–014 attacks, RLS, scopes, pooling; [013 CI](https://github.com/rzkarsyad/agentmargin/actions/runs/39965876033) | **No independent security approval** | Catalog error oracle fixed in 013; cursor/in-flight and inbox authority open | Blocked: independently review/accept boundary and migrations, approve protected PRs |
-| v0.8 reliability/privacy | Partial deployment validation | PR only | Encrypted/full restores, key rotation, readiness, lifecycle and bounded concurrency CI; disposable privacy/restart follow-up in release candidate | External storage/key recovery, delivered alerts, scale/RPO/RTO and privacy approval pending | Operations review open | Blocked: deployment-specific storage, ingress/shared quotas, scheduled drills and operator sign-off |
+| v0.8 reliability/privacy | Tested source and Mac local rehearsal; deployment validation pending | PR only | Encrypted/full restores, key rotation, readiness, lifecycle and bounded concurrency CI; disposable privacy/restart tests | **PASS, founder/operator-attested Mac synthetic recovery: default and orbstack**. External storage/key custody, delivered alerts, scale/RPO/RTO and privacy approval pending | Operations review open; no independent security approval | BLOCKED: deployment-specific storage, ingress/shared quotas, scheduled drills and operator sign-off |
 | v0.9 financial engineering | Supported ledger/replay/net reports implemented; genuine signed Stripe QA passed | PR only | Exact ledger/API/reconciliation/browser fixture, nullable allocation rejection and immutable recovery tests | **PASS: operator-verified $128 gross − $105.25 refunds − $12 credits = $10.75 net; $0 variance**. Independent official billing and policy approval pending | Independent SQL/accounting approval open | Blocked: independent billing/policy evidence, security/review and integration gates; validate final main/artifacts and authorize alpha publication |
 
 **Production-ready: No for every candidate stage.** Unsupported FX, mixed/prepayment
@@ -334,7 +334,7 @@ records exact immutable 007–014 checksums and decisions still requiring a revi
 | Cursor/in-flight revocation | New PG16 tests demonstrate retained WITH HOLD results and admitted statements; next SELECT denies revoked proof. Existing separate-owner session containment tested | No operator incident drill or accepted boundary | Residual INCONCLUSIVE; approval BLOCKED |
 | Shared runtime/ingest/inbox/recovery authority | Negative cross-tenant and direct failed-reset tests PASS; own-tenant worker/oracle/initial-inbox authority remains | No independent capability review | INCONCLUSIVE; required architectural decision BLOCKED |
 | CodeQL original/candidate triage | No suppression or dismissal; complete final combined scan required on follow-up | Authoritative alert state and independent triage unavailable | INCONCLUSIVE |
-| v0.8 operator controls | Synthetic restore/restart/privacy controls exist; authenticated backup integrity, separate recovery-key failure drills and operator evidence follow-up in progress | External storage, delivered alerts, scale, RPO/RTO and privacy approvals absent | BLOCKED; no operational PASS inferred |
+| v0.8 operator controls | Authenticated/full synthetic restore, local key recovery, restart/privacy controls tested; Mac rehearsal now PASS by founder/operator attestation | Mac local execution attested; external storage/key custody, delivered alerts, scale, RPO/RTO and privacy approvals absent | Local Mac gate PASS; deployed operational gate BLOCKED |
 
 There is no accounting, key hashing, SDK, UI or migration contract change in the
 security follow-up. Existing genuine financial acceptance evidence stays scoped
@@ -345,24 +345,36 @@ as recorded above. All candidate production-ready statuses remain NO.
 
 | Gate | Implemented | Tested / result | Externally verified | Production-ready / required evidence |
 | --- | --- | --- | --- | --- |
+| Mac operator recovery rehearsal | Guarded synthetic-only PG16 wrapper | Founder/operator-attested PASS: default 13s total / 1s restore / 1s authenticated recovery; orbstack 9s / 1s / 2s | Local Mac execution attested; raw logs not independently inspected and tested SHA not supplied | Local acceptance PASS; no independent cloud, network or security approval |
 | Local backup retention boundary | Explicit UTC cutoff; old -mtime rounding corrected | Baseline FAIL: a 7-day/5-minute-old file survived; new boundary/unrelated-file regression PASS | No external retention evidence | BLOCKED: approved schedule/holds and actual version/replica/object expiry |
-| Backup integrity / key recovery | Archive hash/size/start metadata, authenticated synthetic CMS envelope and distinct local key-recovery fixture | PASS: missing/wrong/recovered key, truncation/content tampering, full fingerprints and restore | Local only; same UID is not separate credential administration | BLOCKED: real independent key recovery and durable external download/authentication |
+| Backup integrity / key recovery | Archive hash/size/start metadata, authenticated synthetic CMS envelope and distinct local key-recovery fixture | PASS: missing/wrong/recovered key, truncation/content tampering, full fingerprints and restore | Founder-attested Mac local recovery PASS; same UID is not separate credential administration | BLOCKED: real independent key recovery and durable external download/authentication |
 | Local backup/hook path containment | Canonical paths, trusted owner/ancestor modes; reject shared writable paths | PASS: writable parent/hook fixtures denied before dump/lock; root-sticky /tmp fixture supported | No deployed secret/filesystem audit | BLOCKED: operator storage/secret custody review; same-UID/root compromise excluded |
 | Failure / retry / overlap | Existing lock/cleanup; expanded dump/encrypt/upload/prune failure and successful retry drills | PASS: old success marker preserved, no plaintext/lock after ordinary failures, held lock respected | No scheduler/hook outage evidence | BLOCKED: deadlines, crash residue handling, external inventory reconciliation and alert receipt |
-| Restored tenant/financial permissions | Fresh restricted LOGIN plus final grants on both restored targets | PASS: missing/revoked/expired key, auth-table denial, tenant SELECT/INSERT, transaction reset and immutable grants | No deployment-like role/secret restoration | BLOCKED: operator and independent review; no owner-session SET ROLE substitute |
+| Restored tenant/financial permissions | Fresh restricted LOGIN plus final grants on both restored targets | PASS: missing/revoked/expired key, auth-table denial, tenant SELECT/INSERT, transaction reset and immutable grants | Founder-attested Mac restricted LOGIN/RLS/tenant/immutability PASS; no deployment-like role/secret recovery | BLOCKED: deployed operator and independent review; no owner-session SET ROLE substitute |
 | Readiness / restart / shutdown / concurrency | #38 schema drift checks; existing pool/restart/lifecycle/rollback/load tests | PASS locally and #38 combined CI | No production-scale or deployed recovery measurement | BLOCKED: agreed RPO/RTO and load/ingress topology; synthetic elapsed times are not guarantees |
 | Backup monitoring / alerts | Read-only private freshness CLI; allowlisted error/metrics logs and operator procedure | PASS: age boundary, legacy/new markers, future clock, malformed/unsafe private file and output redaction | No actual notification receipt | BLOCKED: approved destination firing/ack/escalation/resolution and collector-loss drill |
-| Privacy lifecycle | Existing bounded fictional export/teardown, immutable ledger and protected evidence; per-category decision matrix | Synthetic PASS; real retention/erasure approval INCONCLUSIVE | No real-data privacy/legal review | BLOCKED: category owners/durations/holds, backup resurrection manifest, copies and independent approval |
+| Privacy lifecycle | Existing bounded fictional export/teardown, immutable ledger and protected evidence; per-category decision matrix | Synthetic PASS; real retention/erasure approval INCONCLUSIVE | Founder-attested Mac disposable privacy lifecycle PASS; no real-data privacy/legal review | BLOCKED: category owners/durations/holds, backup resurrection manifest, copies and independent approval |
 | Distributed rate limiting / TLS | Process-local limiter is explicitly local; shared gateway/atomic quota design documented | Multiple deployed instances and partition behavior NOT tested | None | BLOCKED: infrastructure selection and fail-closed quota/edge verification |
 
 Local Linux recovery observations: full restore/probes 2 seconds; authenticated
 backup/key/failure/restore probes 2 seconds; final wrapper 17 seconds on tiny
-fictional data. These are measurements, not RPO/RTO commitments. Mac execution,
-external object/key custody, real alert delivery, scale and policy acceptance remain
-unverified. No private financial evidence is committed or any new Stripe/OpenAI
-request performed. The [macOS/Docker operator commands](BACKUP_RESTORE.md#safe-macos--docker-desktop--orbstack-rehearsal)
+fictional data. These are measurements, not RPO/RTO commitments. The founder has
+now attested Mac PASS on default (13s total, 1s restore, 1s authenticated recovery)
+and orbstack (9s, 1s, 2s). Both report externalStorageVerified=false and
+productionRtoMeasured=false. External object/key custody, real alert delivery,
+scale and policy acceptance remain unverified. No private financial evidence is
+committed and no new Stripe/OpenAI request was performed. The [macOS/Docker operator commands](BACKUP_RESTORE.md#safe-macos--docker-desktop--orbstack-rehearsal)
 and [privacy decision matrix](PRIVACY_LIFECYCLE.md#v08-privacy-evidence-matrix-and-decisions)
 are the handoff, with no authorization for production actions.
+
+The founder-reported `DOCKER_INSECURE_NO_IPTABLES_RAW` warning on both Mac runs is
+an environment observation, not a confirmed vulnerability or proof of deployed
+network isolation. Context names may refer to one local daemon; no independent
+infrastructure, external key custody, real alert delivery, production RPO/RTO,
+privacy or security approval is inferred. See the [Mac acceptance report](BACKUP_RESTORE.md#founderoperator-attested-mac-acceptance--reported-2026-10-24)
+for provenance, timings and limitations. The implementing agent did not inspect
+raw logs or repeat completed provider billing QA. Overall v0.8 remains BLOCKED on
+the external evidence listed in the matrix.
 
 Verified parent evidence for #38 `91a46ac73caf358ed0bc9cdab2b956d213b11af3`:
 [source CI](https://github.com/rzkarsyad/agentmargin/actions/runs/40040048988) and
@@ -380,9 +392,10 @@ Remaining founder/operator/reviewer actions, in order:
 1. Independent reviewer reproduces the pinned PG16/migration/CodeQL packet and
    explicitly decides cursor/in-flight, shared runtime/ingest/worker/inbox and
    provider-authenticity boundaries. No independent security approval exists.
-2. Founder/operator performs the safe Mac rehearsal, then supplies separately
-   authorized nonproduction external storage/key-recovery, retention, notification,
-   incident, load and measured recovery evidence with accountable owners.
+2. Mac synthetic rehearsal is now PASS by founder/operator attestation. Next supply
+   separately authorized nonproduction external storage/independent key-recovery,
+   retention, notification, incident, load and measured recovery evidence with
+   accountable owners; retain run logs/source identity privately when available.
 3. Privacy/financial owners approve category retention/legal holds, erasure/restore
    manifests, operational objectives and existing accounting/precision/materiality
    policy. Genuine sandbox success is not independent provider billing validation.

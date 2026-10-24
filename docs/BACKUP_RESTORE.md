@@ -152,8 +152,44 @@ This creates a local merge commit only; do not push it, merge any GitHub PR, pub
 or deploy. Record git rev-parse HEAD and HEAD^{tree} privately with the command exit
 statuses. If pinned parents move or conflict, stop and review rather than forcing.
 The normal PR and combined CI additionally cover SDK/Next.js, browser and restart
-checks. This procedure is executable on local Docker; an actual Mac execution and
-operator review of its evidence remain required, not inferred from Linux CI.
+checks. The founder has now attested successful Mac execution with both default
+and orbstack contexts; see the acceptance record below. This is operator evidence
+of the local synthetic procedure, not independent infrastructure validation.
+
+### Founder/operator-attested Mac acceptance — reported 2026-10-24
+
+Evidence source: the founder/operator's report in this conversation. The operator
+ran scripts/operator-recovery-drill.sh on macOS with
+AGENTMARGIN_OPERATOR_DRILL=synthetic-only. The implementing agent did not rerun the
+Mac tests or inspect their raw logs; no tested commit SHA was supplied, so none is
+inferred. The local Mac execution gate is **PASS, founder/operator-attested**.
+
+| Docker context | Result | Total elapsed | Synthetic restore | Authenticated recovery |
+| --- | --- | --- | --- | --- |
+| default | PASS, operator-attested | 13 seconds | 1 second | 1 second |
+| orbstack | PASS, operator-attested | 9 seconds | 1 second | 2 seconds |
+
+| Reported acceptance check | Result / scope |
+| --- | --- |
+| PostgreSQL 16 migrations/security/financial/concurrency | PASS, local synthetic fixtures |
+| Restored RLS, fresh restricted LOGIN, tenant isolation and immutable financial records | PASS, local synthetic fixtures |
+| Authenticated backup encryption and local recovery-key procedure | PASS, local fixture; not independent external key custody |
+| Disposable privacy lifecycle | PASS, fictional export/teardown; not real-data privacy approval |
+| externalStorageVerified | false |
+| productionRtoMeasured | false |
+
+Both runs emitted a `DOCKER_INSECURE_NO_IPTABLES_RAW` warning. Record this as an
+**environment observation only**: it is neither a confirmed vulnerability nor
+proof of effective deployed network isolation. Two context names do not establish
+two independent infrastructures; they may address the same local Docker daemon.
+No deployed network/firewall configuration was inspected or certified here.
+
+These elapsed times are observed local synthetic run durations, not approved RPO
+or RTO. Genuine encrypted external object recovery, independently administered key
+custody/recovery, remote retention, scheduled operation, actual alert receipt,
+production-representative recovery/load objectives, incident procedures and
+privacy/security approval remain **BLOCKED**. Existing provider billing QA was not
+repeated. No raw financial evidence is included in this acceptance record.
 
 ### Freshness and alert procedure
 
