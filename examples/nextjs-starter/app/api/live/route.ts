@@ -1,9 +1,12 @@
 import {NextResponse} from 'next/server';
 import {margin,DEMO_CUSTOMER_ID} from '../../../lib/margin';
 import type {ResponsesUsage} from '@makinohq/agentmargin';
+import {rejectDemoRequest} from '../../../lib/request-guard';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export async function POST(){
+export async function POST(request:Request){
+ const rejected=rejectDemoRequest(request,process.env.AGENTMARGIN_STARTER_ORIGIN);
+ if(rejected)return rejected;
  const key=process.env.OPENAI_API_KEY;
  if(!key)return NextResponse.json({ok:false,message:'OPENAI_API_KEY not configured; use the synthetic demo.'},{status:400});
  try{

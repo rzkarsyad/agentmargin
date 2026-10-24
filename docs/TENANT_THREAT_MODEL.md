@@ -202,22 +202,22 @@ synthetic PostgreSQL before disposition. Severity below is preliminary.
 | --- | --- | --- |
 | AM-01 | Medium, CONFIRMED: restricted ingest HTTP/SQL accepts a non-Stripe label against Stripe payment provenance before 015. Additive 015 binds every new adjustment to original provenance and rejects conflicting late source attachment. Regression reproduces baseline before testing denial, rollback, replay and generic compatibility | Independent financial/security review; inspect existing inconsistent immutable rows |
 | AM-02 | Medium, CONFIRMED then contained: synthetic server-log exposure reproduced; per-checkout effective bind/error/extension guards before proof, remote verify-full and TLS checks implemented | Verify effective log and TLS settings, extensions and operators |
-| AM-03 | Medium, CONFIRMED then bounded: two concurrent auth lookups, no queue/cache, fail/recovery regression | Bound pre-auth concurrency; deployed ingress quotas |
-| AM-04 | Low, CONFIRMED then strengthened: 016 baseline checks policy expressions/roles/commands, function bodies/settings and triggers; effective unsafe grants tested | Strengthen installed contract detection; owner remains trusted |
-| AM-05 | Low, precondition confirmed; exploit not demonstrated: 016 explicit pg_temp-last, dedicated-database TEMP removal and negative probes | Explicit pg_temp-last and provisioning guard |
-| AM-06 | Low, CONFIRMED then contained: payload-only INSERT grants and ledger-backed completion trigger; negative probes and normal admin requeue tests | Restrict initial payload and verify completion evidence |
+| AM-03 | Medium, CONFIRMED then bounded: two concurrent auth lookups, no queue/cache, fail/recovery regression | Deployed ingress quotas/fairness and owner acceptance of saturation behavior |
+| AM-04 | Low, CONFIRMED then strengthened: 016 baseline checks policy expressions/roles/commands, function bodies/settings and triggers; effective unsafe grants tested | Independently recompute the pinned 47-entry clean-schema SHA-256; inspect owner and extension trust |
+| AM-05 | Low, precondition confirmed; exploit not demonstrated: 016 explicit pg_temp-last, dedicated-database TEMP removal and negative probes | Verify deployed effective TEMP grants and independently review the unproven type-shadow impact |
+| AM-06 | Low, CONFIRMED then contained: payload-only INSERT grants and ledger-backed completion trigger; negative probes and normal admin requeue tests | Decide shared runtime/ingest/worker authority and asserted-provenance boundaries |
 | AM-07 | Medium residual, CONFIRMED: admitted/cursor/held results survive revocation; next statement denies | Human boundary decision and session containment; no absolute timeout claim |
-| AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings. Follow-up scans both exact PR head and explicit combined #33 tree, records both identities and retains all findings | Exact-source scan/triage and protected integration remain required |
-| AM-09 | Medium, CONFIRMED then contained: Ed25519 signed origin manifest verified before decrypt/restore; fresh encrypted substitute/missing/wrong signature rejected | Separate signing trust root and pre-restore verification |
-| AM-10 | Medium, CONFIRMED then quarantined: backup-before/source-revoke/restore reproduction; all restored keys revoked before runtime provision; selective reuse unsupported without independent evidence | Quarantine and independently durable revocation evidence |
-| AM-11 | Medium, CONFIRMED then fixed in drills: preserved ACLs, fresh non-superuser owner, pre-repair PUBLIC/owner drift rejection and full installed-contract comparison | Inspect before repair; non-superuser definer ownership |
-| AM-12 | Low, CONFIRMED then contained: obvious plaintext rejected; minimal hook environment; residue blocks retry until explicit operator recovery; SIGKILL physical erasure remains unsupported | Reject clear archive, restrict hook environment, controlled residue recovery |
-| AM-13 | Info, documentation corrected: separate operator attestation and independent-verification columns; authentic Mac report retained, exact-source reproducibility INCONCLUSIVE | Separate operator attestation from independent external verification; do not retract authentic reported execution |
-| AM-14 | Medium, CONFIRMED then fixed: both converters require explicit expectedLivemode; signed cross-mode/missing-mode negatives | Explicit test/live expectation and mismatch regressions |
-| AM-15 | Medium, CONFIRMED then fixed: legacy converter rejects unmapped/malformed/mismatched connected accounts; API retained with required explicit mode | Reject unmapped accounts and malformed options |
-| AM-16 | Low, CONFIRMED then made visible: typed non-retryable accounting-review error, fixed redacted example diagnostics/422; no automatic reversal policy | Visible bounded review disposition; no retry storm |
-| AM-17 | Medium, CONFIRMED then separated: unprivileged build, exact integrity-pinned CLI and minimal OIDC job without checkout/install/lifecycle scripts; no publishing run | Separate unprivileged build and minimal protected publication |
-| AM-18 | Low, PARTIALLY contained: current-branch Actions full-SHA pins, multi-architecture PG image digest and hashed Python wheels; transitive browser/OS/Node distribution trust and independent #33 legacy audit workflow remain | Pin privileged actions and maintain update policy; external image/browser trust |
+| AM-08 | PARTLY INCORRECT: ruleset 25719548 Protect main is active (verified via ruleset API), default branch, one approval, resolved conversations, up-to-date test check, no bypass, force push/deletion prevented. Valid: successful CodeQL is not zero findings. Follow-up scans both exact PR head and explicit combined #33 tree, records both identities and retains all findings | Independent SARIF triage, authoritative integrated-main rescan and approved protected integration |
+| AM-09 | Medium, CONFIRMED then contained: Ed25519 signed origin manifest verified before decrypt/restore; fresh encrypted substitute/missing/wrong signature rejected | Independently administered signing trust root, archive freshness/anti-rollback and external recovery |
+| AM-10 | Medium, CONFIRMED then quarantined: backup-before/source-revoke/restore reproduction; all restored keys revoked before runtime provision; selective reuse unsupported without independent evidence | Approve all-key invalidation/new issuance at cutover; independent durable revocation evidence before any selective reuse |
+| AM-11 | Medium, CONFIRMED then fixed in drills: preserved ACLs, fresh non-superuser owner, pre-repair PUBLIC/owner drift rejection and full installed-contract comparison | Review deployment-like role/secret restoration and archived definitions/ACLs independently |
+| AM-12 | Low, CONFIRMED then contained: obvious plaintext rejected; minimal hook environment; residue blocks retry until explicit operator recovery; SIGKILL physical erasure remains unsupported | Approve deployed encryption/hooks, deadlines, crash-residue handling and storage expiry |
+| AM-13 | Info, documentation corrected: separate operator attestation and independent-verification columns; authentic Mac report retained, exact-source reproducibility INCONCLUSIVE | Source-pinned reproduction remains INCONCLUSIVE without tested SHA/log output; no independent approval inferred |
+| AM-14 | Medium, CONFIRMED then fixed: both converters require explicit expectedLivemode; signed cross-mode/missing-mode negatives | Approve endpoint mode/secret bindings and the intentional candidate compatibility change |
+| AM-15 | Medium, CONFIRMED then fixed: legacy converter rejects unmapped/malformed/mismatched connected accounts; API retained with required explicit mode | Independently verify account-to-workspace routing and legacy caller migration |
+| AM-16 | Low, CONFIRMED then made visible: typed non-retryable accounting-review error, fixed redacted example diagnostics/422; no automatic reversal policy | Durable quarantine/alerting and approved reversal/accounting policy; no unsupported money inferred |
+| AM-17 | Medium, CONFIRMED then separated: unprivileged build, exact integrity-pinned CLI and minimal OIDC job without checkout/install/lifecycle scripts; no publishing run | Verify npm environment reviewers/main-only rules, protected tags and trusted-publisher binding; no publish run |
+| AM-18 | Low, PARTIALLY contained: current-branch Actions full-SHA pins, multi-architecture PG image digest and hashed Python wheels; transitive browser/OS/Node distribution trust and independent #33 legacy audit workflow remain | Review transitive browser/OS/Node and legacy audit-workflow trust; maintain independently reviewed pin updates |
 
 ### Migration 015 rollout and financial compatibility
 
@@ -269,3 +269,60 @@ PASS; both source-ACL/non-superuser restore and signed/encrypted/key-recovery dr
 PASS (3 seconds each on tiny fixtures). ExternalStorageVerified=false and
 productionRtoMeasured=false. The warning from the earlier Mac report remains an
 environment observation only, not network isolation or vulnerability evidence.
+
+### Additional starter finding from the AI report (AM-18 related)
+
+Confirmed from source: the demo live/simulate POST handlers accepted form/cross-site
+requests before checking browser origin, so a visited page could initiate a fixed
+provider call when a developer configured a key. The candidate now requires JSON,
+validates the actual Host authority (Next may normalize URL host), permits only
+loopback by default or a fixed configured HTTPS origin, ignores forwarded-host
+assertions, and rejects foreign/null Origin and cross-site Fetch Metadata before
+credentials or side effects. This is not user authentication or a billing quota;
+public deployments still need both. Pure negative tests and actual built Next.js
+HTTP rejection tests PASS with provider/API keys removed; no provider request or
+financial mutation is used to verify the guard. Same-origin UI contract is intact.
+
+
+### Independent reviewer packet for the remediation stack
+
+This packet extends the earlier 007–014 review; no human approval is recorded.
+Pin the final PR head plus #33 ec812275, verify the published SARIF/source-tree
+hashes and preserve migrations 001–014 unchanged. Review 015 then 016 additively;
+checksums are recorded above. Reproduce only on the literal disposable CI database
+with fictional keys, never a production or provider account.
+
+- AM-01: review payment/source lock ordering and both trigger directions. Reproduce
+  restricted HTTP/SQL provider-label acceptance before 015, then denial/replay and
+  generic compatibility afterward. Run the private historical-row preflight before
+  any approved rollout; do not erase inconsistent accounting evidence.
+- AM-02: reproduce synthetic logging, inspect inherited/per-database/pooled and
+  extension overrides, and ensure no proof is bound before the checks. Verify real
+  CA/hostname/TLS negatives in the target nonproduction topology. DBA/extension
+  memory access is outside these controls; digest/issuer compatibility is unchanged.
+- AM-03–06: review admission saturation, effective grants/TEMP, every policy/function/
+  trigger fingerprint and PUBLIC/owner ACL. Independently recompute the 47-entry
+  SHA-256 from clean 001–016; merely capturing a weak installed state must fail.
+  Reproduce terminal INSERT and completion-without-ledger denial, then normal
+  worker/recovery/duplicate operation. A hash match is not formal semantic proof.
+- AM-07: explicitly approve or block the documented admitted/cursor/held-result
+  revocation boundary and shared-role containment blast radius. No timeout is an
+  absolute transaction lifetime or retroactive erasure of delivered results.
+- AM-09–12: independently inspect signing-root versus storage authority, freshness/
+  rollback evidence, encryption/key custody and non-superuser restore execution.
+  Run pre-repair ACL/owner drift negatives and pre-backup-key resurrection/quarantine.
+  Decide all-restored-key invalidation, fresh issuance, retention and crash procedure
+  before cutover. Local folders are not independent custody or external storage.
+- AM-13–16: preserve attestation provenance, verify trusted mode/account routing in
+  both SDK adapters, and approve the compatibility change plus unsupported-event
+  quarantine/accounting policy. Genuine provider receipts are private; synthetic
+  signatures do not reproduce their external authenticity.
+- AM-08/17/18: inspect ALL exact-head and combined SARIF findings and data-flow paths,
+  independently decide dispositions, verify main ruleset 25719548 plus separate
+  npm environment/tag/trusted-publisher restrictions and artifact identity. The
+  minimal publishing job must not regain install/build/lifecycle authority.
+
+Record reviewer identity, pinned source/tree/migration hashes, reproduced commands,
+findings and explicit approve/block decisions. Founder/operator attestation and
+external AI review do not replace qualified independent human security review.
+Operations/privacy/accounting and explicit merge/release authorization stay separate.
