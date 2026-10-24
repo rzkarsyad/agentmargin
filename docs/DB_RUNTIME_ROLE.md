@@ -226,3 +226,8 @@ Future reviewed migrations/PG definition-format changes require a reviewed sourc
 fingerprint update and matching binaries, never rewriting 016 or automatically
 blessing the installed database. This is drift detection, not remote attestation
 against a malicious DBA who controls catalog queries and the verifier function.
+
+The effective-session guard also requires debug_print_parse, debug_print_rewritten
+and debug_print_plan to be off. PostgreSQL debug trees/plans may expose literal
+or encoded constant values independently of bind-parameter truncation. Provisioning
+sets their role defaults; pooled override negatives verify denial before proof.
