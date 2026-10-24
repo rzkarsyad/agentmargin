@@ -216,3 +216,13 @@ statement/error logs and the named extension settings. They cannot hide secrets
 from a malicious DBA, debugger, unreviewed extension, driver trace or network/TLS
 endpoint operator. Inventory installed extensions and logs/shipper access privately;
 short-lived proof or distinct credential architecture remains a human design gate.
+
+Readiness additionally pins the 47-entry PostgreSQL 16 policy/function/trigger
+baseline to the source-generated SHA-256
+b85b4896a7c818c4956b065b337f262618b62af3910c088af21e3db7837ad95c.
+Ordering uses C collation. Recomputing the installation table from a pre-existing
+weakened policy therefore still fails readiness; a regression tests that case.
+Future reviewed migrations/PG definition-format changes require a reviewed source
+fingerprint update and matching binaries, never rewriting 016 or automatically
+blessing the installed database. This is drift detection, not remote attestation
+against a malicious DBA who controls catalog queries and the verifier function.
